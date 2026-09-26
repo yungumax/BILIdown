@@ -579,6 +579,8 @@ async function startSingle(item) {
         </h2>
         <span class="kind-tag">{{ kindLabel(activeSource.probe.kind) }}</span>
 
+        <span class="spacer"></span>
+
         <div v-if="allSources.length > 1" class="source-tabs">
           <button
             v-for="source in allSources"
@@ -1246,9 +1248,9 @@ input:focus {
   height: 17px;
 }
 
-/* 标题完整显示：占满剩余宽度，太长就折行 */
+/* 标题按内容占宽（长标题折行，不会被截断），这样类型标签才能紧跟在标题后面 */
 .select-title {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   margin: 0;
   font-size: 14px;
