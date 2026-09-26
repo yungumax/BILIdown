@@ -415,7 +415,7 @@ async function startAll() {
         </button>
       </div>
 
-      <div class="sources">
+      <div v-if="mode === 'batch'" class="sources">
         <span class="sources-label">支持来源</span>
         <span v-for="source in sources" :key="source.label" class="source">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -646,8 +646,9 @@ h1 {
   font-weight: 600;
 }
 
+/* 勾选框不算"输入框"：这条规则里的 width:100% 会把它拉成整行宽 */
 textarea,
-input {
+input:not([type="checkbox"]) {
   width: 100%;
   padding: 12px 14px;
   color: var(--text);
@@ -996,10 +997,8 @@ option:disabled {
   background: var(--raised);
 }
 
+/* 勾选框外观统一在 styles.css 里定义，这里只管它不被压缩 */
 .batch-list input {
-  width: 14px;
-  height: 14px;
-  accent-color: var(--accent);
   flex: none;
 }
 

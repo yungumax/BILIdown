@@ -108,3 +108,13 @@ coll  loaded=129 total=129 → 至少翻了 2 页
 
 踩坑：`seasons_series_list` 的 `page_size` 超过 20 会返回 `-400 请求错误`，
 别误当成风控或"该 UP 没有合集"。
+
+## 界面细节的回归测试
+
+`test-ui-polish.mjs` 覆盖四项：单个视频模式不显示支持来源行、勾选框为自绘的
+粉底白勾 16×16（`appearance:none`）、提示图标是圆圈问号、每个提示图标都有
+tooltip 文本。
+
+踩坑：解析页原来有一条 `textarea, input { width: 100% }`，把批量列表里的勾选框
+也拉成了整行宽（30×26）。设置页早就是 `input:not([type="checkbox"])`，解析页漏了。
+写宽泛的 input 规则时记得排除 checkbox。

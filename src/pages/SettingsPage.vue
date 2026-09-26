@@ -547,7 +547,7 @@ async function open(path) {
             <div class="group full">
               <div class="group-title">
                 解析节奏
-                <span class="info" title="批量解析时按此节奏分批请求，降低触发风控的概率">ⓘ</span>
+                <span class="info" title="批量解析时按此节奏分批请求，降低触发风控的概率">?</span>
               </div>
               <div class="grid2">
                 <div class="field">
@@ -562,7 +562,7 @@ async function open(path) {
                   </select>
                 </div>
                 <div class="field">
-                  <label>每批解析 <span class="info">ⓘ</span></label>
+                  <label>每批解析 <span class="info" title="一轮里同时解析几条">?</span></label>
                   <select v-model.number="draft.parse_batch">
                     <option :value="3">3 条</option>
                     <option :value="8">8 条</option>
@@ -571,7 +571,7 @@ async function open(path) {
                   </select>
                 </div>
                 <div class="field">
-                  <label>批间等待 <span class="info">ⓘ</span></label>
+                  <label>批间等待 <span class="info" title="两轮解析之间等多久，给接口留出间隔">?</span></label>
                   <select v-model.number="draft.parse_batch_wait_ms">
                     <option :value="500">0.5 秒</option>
                     <option :value="1000">1 秒</option>
@@ -580,7 +580,7 @@ async function open(path) {
                   </select>
                 </div>
                 <div class="field">
-                  <label>每 {{ draft.parse_rest_every }} 条休息 <span class="info">ⓘ</span></label>
+                  <label>每 {{ draft.parse_rest_every }} 条休息 <span class="info" title="累计解析这么多条后额外休息一次">?</span></label>
                   <div class="row-flex">
                     <select v-model.number="draft.parse_rest_every">
                       <option :value="50">每 50 条</option>
@@ -1391,15 +1391,9 @@ input::placeholder {
   cursor: pointer;
 }
 
+/* 勾选框外观统一在 styles.css 里定义，这里只管布局 */
 .check input {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--accent);
-}
-
-.check input:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
+  flex: none;
 }
 
 .card-check {
@@ -1422,10 +1416,26 @@ input::placeholder {
   font-weight: 700;
 }
 
+/* 提示图标：ASCII 的 ? + CSS 圆圈。
+   原来用 ⓘ 字符，WebView2 落到的字体把它渲染成"圆圈里一根竖条"，看着像坏图标；
+   字形落哪套字体不可控，不如自己画。 */
 .info {
+  display: inline-grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
   color: var(--faint);
-  font-weight: 400;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  vertical-align: 0.5px;
   cursor: help;
+}
+
+.info:hover {
+  color: var(--accent);
 }
 
 .sub-card {

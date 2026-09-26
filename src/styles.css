@@ -173,6 +173,47 @@ textarea {
   color: inherit;
 }
 
+/* 勾选框：粉色圆角方块 + 白色对勾。
+   原生勾选框的对勾颜色由系统决定，深色下会画出黑勾、和主题不搭，
+   所以关掉原生外观自己画；对勾用两条边框拼出来，不依赖字体或图片。 */
+input[type="checkbox"] {
+  appearance: none;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  background: var(--field);
+  border: 1.5px solid var(--seg-idle);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+input[type="checkbox"]:hover:not(:disabled) {
+  border-color: var(--accent-line);
+}
+
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+input[type="checkbox"]:checked::after {
+  content: "";
+  width: 8px;
+  height: 4px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) translate(1px, -1px);
+}
+
+input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 /* 进度、体积、速度这类跳动的数字用等宽数字，避免抖动 */
 .num {
   font-variant-numeric: tabular-nums;
