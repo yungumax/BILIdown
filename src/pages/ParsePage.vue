@@ -72,12 +72,32 @@ const steps = computed(() => {
   ];
 });
 
+// 支持的来源；图标用路径数据，避免为五个小图标各写一段模板
 const sources = [
-  { label: "视频与分P" },
-  { label: "多行批量" },
-  { label: "收藏夹与合集" },
-  { label: "UP 空间" },
-  { label: "番剧与课程" },
+  {
+    label: "视频与分P",
+    icon: ["M4.6 6.4h14.8v11.2H4.6z", "m10.6 10.2 3.4 1.8-3.4 1.8z"],
+  },
+  {
+    label: "收藏夹与合集",
+    icon: ["M6.6 4.6h10.8v14.8l-5.4-3.6-5.4 3.6z"],
+  },
+  {
+    label: "番剧与课程",
+    // 屏幕 + 两侧支脚，支脚在 14px 下要画得够开才看得出来
+    icon: ["M4.6 6.4h14.8v10.6H4.6z", "M9.8 20.4 8.8 17M14.2 20.4l1-3.4"],
+  },
+  {
+    label: "UP 空间",
+    icon: [
+      "M12 5.4a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z",
+      "M5.8 19.4c.9-3 3.4-4.6 6.2-4.6s5.3 1.6 6.2 4.6",
+    ],
+  },
+  {
+    label: "多行批量",
+    icon: ["M5.4 7.4h1.4M9.6 7.4h9M5.4 12h1.4M9.6 12h9M5.4 16.6h1.4M9.6 16.6h9"],
+  },
 ];
 
 function formatDuration(seconds) {
@@ -401,6 +421,18 @@ async function startAll() {
       <div class="sources">
         <span class="sources-label">支持来源</span>
         <span v-for="source in sources" :key="source.label" class="source">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              v-for="(d, index) in source.icon"
+              :key="index"
+              :d="d"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
           {{ source.label }}
         </span>
       </div>
@@ -726,6 +758,13 @@ input:focus {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+.source svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
 }
 
 /* 解析结果 */
