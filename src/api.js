@@ -135,6 +135,26 @@ export async function closeWindow() {
 }
 
 
+export async function showWindow() {
+  if (!hasTauri) return;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().show();
+  } catch {
+    // 忽略：仅影响窗口显示时机
+  }
+}
+
+export async function setWindowBackground(color) {
+  if (!hasTauri) return;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().setBackgroundColor(color);
+  } catch {
+    // 旧运行时不支持时忽略；页面不透明，底色仅影响边缘
+  }
+}
+
 export async function startWindowDrag() {
   const win = await windowApi();
   await win?.startDragging();

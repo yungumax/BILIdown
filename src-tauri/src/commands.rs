@@ -14,7 +14,7 @@ use bili_core::parser::{is_short_link, parse_target, Target};
 use bili_core::{ffmpeg, BiliClient};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::Semaphore;
 
@@ -1159,6 +1159,15 @@ pub async fn open_path(path: String) -> Result<(), String> {
         .spawn()
         .map_err(describe)?;
     Ok(())
+}
+
+/// 前端渲染完成后显示窗口（配合启动隐藏，杜绝首帧闪烁）。
+#[tauri::command]
+pub fn show_window(app: AppHandle) -> Result<(), String> {
+    app.get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?
+        .show()
+        .map_err(describe)
 }
 
 #[tauri::command]

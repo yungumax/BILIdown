@@ -63,22 +63,14 @@ onUnmounted(() => {
   clearTimeout(toastTimer);
 });
 
-let themeAnimTimer = null;
-
 /**
  * 把主题模式写到根元素上：light / dark 直接生效，
  * system 交给 CSS 的 prefers-color-scheme media query（首帧纯 CSS，最可靠）。
+ * 切换瞬时完成；同步窗口原生底色，避免边缘/滚动条区域露出旧色。
  */
 function applyTheme(mode) {
   document.documentElement.dataset.theme = mode;
-
-  // 切换瞬间给全页一个短促的配色过渡，避免生硬翻转
-  document.documentElement.classList.add("theme-switching");
-  clearTimeout(themeAnimTimer);
-  themeAnimTimer = setTimeout(
-    () => document.documentElement.classList.remove("theme-switching"),
-    240
-  );
+  api.setWindowBackground(mode === "dark" ? "#1b1d21" : "#f5f3f4");
 }
 
 async function loadSettings() {

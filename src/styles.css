@@ -128,16 +128,6 @@
   }
 }
 
-/* 主题切换时的短促过渡：只影响配色，不加长动画，避免生硬翻转 */
-html.theme-switching body,
-html.theme-switching body * {
-  transition:
-    background-color 0.16s ease,
-    color 0.16s ease,
-    border-color 0.16s ease,
-    fill 0.16s ease,
-    box-shadow 0.16s ease !important;
-}
 
 * {
   box-sizing: border-box;
