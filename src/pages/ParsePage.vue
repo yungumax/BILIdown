@@ -506,6 +506,7 @@ async function startSingle(item) {
     <!-- 选择内容：解析后的独立一页 -->
     <section v-if="view === 'select' && activeSource" class="card select-page">
       <header class="select-bar">
+        <div class="bar-top">
         <button class="back" title="返回解析" @click="view = 'input'">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
@@ -535,7 +536,9 @@ async function startSingle(item) {
           </button>
         </div>
 
-        <span class="spacer"></span>
+        </div>
+
+        <div class="bar-actions">
         <template v-if="activeIsBatch">
           <span class="loaded-hint num">
             已加载 {{ loadedCount }} / {{ activeSource.probe.total }} 项
@@ -617,6 +620,7 @@ async function startSingle(item) {
         >
           {{ activeIsBatch ? `下载所选 (${selectedCount})` : "加入下载" }}
         </button>
+        </div>
       </header>
 
       <p v-if="activeSource.probe.note" class="note">{{ activeSource.probe.note }}</p>
@@ -1129,10 +1133,27 @@ input:focus {
 
 .select-bar {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 9px;
   padding: 11px 14px;
   border-bottom: 1px solid var(--line-soft);
+}
+
+/* 第一行放身份：返回、标题、类型、多来源标签。标题独占整行宽度，
+   长标题折行也不会被动作按钮挤成"凡…" */
+.bar-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* 第二行放动作：来源多、按钮多也只会自己换行，不影响标题 */
+.bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .back {
@@ -1155,13 +1176,15 @@ input:focus {
   height: 17px;
 }
 
+/* 标题完整显示：占满剩余宽度，太长就折行 */
 .select-title {
-  max-width: 300px;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
   font-size: 14px;
   font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .kind-tag {
@@ -1203,8 +1226,9 @@ input:focus {
 /* 一次解析了多个批量来源时用来切换 */
 .source-tabs {
   display: flex;
+  flex: 0 1 auto;
   gap: 4px;
-  max-width: 32%;
+  max-width: 40%;
   overflow-x: auto;
 }
 
@@ -1267,9 +1291,12 @@ input:focus {
   width: 36px;
 }
 
-.col-idx {
-  width: 54px;
+/* 表头文字对齐要压过 .batch-table th 的 left */
+.batch-table th.col-idx,
+.batch-table td.col-idx {
+  width: 58px;
   color: var(--faint);
+  text-align: center;
 }
 
 .col-owner {
@@ -1280,10 +1307,11 @@ input:focus {
   white-space: nowrap;
 }
 
-.col-dur {
-  width: 80px;
+.batch-table th.col-dur,
+.batch-table td.col-dur {
+  width: 84px;
   color: var(--faint);
-  text-align: right;
+  text-align: center;
 }
 
 .col-title {

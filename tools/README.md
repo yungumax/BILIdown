@@ -175,3 +175,12 @@ cargo test -p bilidown -- --ignored --nocapture live_incremental_loading
 | 课程 | season 的 `up_info.uname` |
 
 条目自己没有上传者时，统一用来源的上传者补齐（`fill_missing_owner`）。
+
+## 切栏目后保留解析结果
+
+解析页在 App.vue 里用 `v-show` 常驻（其余页面仍按需挂载），所以切到设置/传输再回来，
+已解析的清单、勾选、所在的子页（输入页/选择页）都还在。注意：`v-if` + `v-else-if`
+链里插 `<KeepAlive>` 会破坏链式语法，编译不过，所以用 v-show。
+
+`test-persist.mjs` 覆盖：标题完整不截断、序号与时长列表头也居中、勾选后切栏目再切回来
+行数与勾选数都不变。

@@ -291,22 +291,24 @@ async function doLogout() {
       />
 
       <main class="content">
+        <!-- 解析页用 v-show 常驻：切到别的栏目再回来，已解析的清单与勾选都还在。
+             其余页面按需挂载，所以这里不用 v-else-if 链。 -->
         <ParsePage
-          v-if="page === 'parse'"
+          v-show="page === 'parse'"
           :login="login"
           :settings="settings"
           @toast="showToast"
           @goto="page = $event"
         />
         <TransferPage
-          v-else-if="page === 'transfer'"
+          v-if="page === 'transfer'"
           :tasks="tasks"
           @cancel="cancelTask"
           @open="openPath"
           @clear="clearFinished"
         />
         <SettingsPage
-          v-else-if="page === 'settings'"
+          v-if="page === 'settings'"
           :login="login"
           :settings="settings"
           :env="settingsEnv"
@@ -317,8 +319,8 @@ async function doLogout() {
           @reload="loadSettings"
           @reset="resetSettings"
         />
-        <AboutPage v-else-if="page === 'about'" :version="version" />
-        <LibraryPage v-else @goto="page = $event" />
+        <AboutPage v-if="page === 'about'" :version="version" />
+        <LibraryPage v-if="page === 'library'" @goto="page = $event" />
       </main>
     </div>
 
