@@ -46,7 +46,10 @@
     -apple-system, "Segoe UI", system-ui, sans-serif;
 }
 
-/* 深色主题：中性深灰，避免偏色；粉色强调保持不变 */
+/* 深色主题：中性深灰，避免偏色；粉色强调保持不变。
+   两条路径生效：
+   - data-theme="dark"：显式深色
+   - data-theme="system"：跟随系统（配合下方 media query，首帧纯 CSS 生效，不依赖 JS） */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
@@ -83,6 +86,46 @@
   --scroll: #3a3d44;
   --scroll-hover: #474b52;
   --shade: rgba(8, 9, 11, 0.6);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+
+    --app-bg: #1b1d21;
+    --side-bg: #1f2126;
+    --card: #24262b;
+    --raised: #2a2c32;
+
+    --line: #35383f;
+    --line-soft: #2c2f35;
+
+    --text: #e9eaec;
+    --muted: #9ba0a8;
+    --faint: #767b83;
+
+    --accent: #fb7299;
+    --accent-dark: #ff86a8;
+    --accent-soft: rgba(251, 114, 153, 0.15);
+    --accent-line: #5d424c;
+
+    --ok: #46c08c;
+    --err: #ec6a62;
+    --warn: #dda93f;
+
+    --hover: #2e3138;
+    --field: #1e2024;
+    --thumb: #2b2e34;
+    --seg-track: #303339;
+    --seg-idle: #4a4e56;
+    --done-bg: #1d2220;
+    --done-line: #2f4a3b;
+    --fail-bg: #241d1d;
+    --fail-line: #4d3232;
+    --scroll: #3a3d44;
+    --scroll-hover: #474b52;
+    --shade: rgba(8, 9, 11, 0.6);
+  }
 }
 
 /* 主题切换时的短促过渡：只影响配色，不加长动画，避免生硬翻转 */

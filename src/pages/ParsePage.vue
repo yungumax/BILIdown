@@ -145,8 +145,7 @@ async function parse() {
           audio: props.settings?.default_audio || "normal",
         });
       } else {
-        collected.push({ input, ok: true, error: "", probe });
-        // 批量来源默认全选
+        // 先完成全部处理，最后才 push —— 中途出错不会留下半成品条目
         probe.items.forEach((item) =>
           selected.value.add(`${probe.kind}:${item.bvid || `ep-${item.ep_id}`}`)
         );
@@ -156,6 +155,7 @@ async function parse() {
             ? props.settings.default_audio
             : "normal";
         selected.value = new Set(selected.value);
+        collected.push({ input, ok: true, error: "", probe });
       }
     } catch (error) {
       collected.push({ input, ok: false, error: String(error) });
@@ -268,6 +268,8 @@ async function startAll() {
     selected.value = new Set();
     text.value = "";
     emit("goto", "transfer");
+  } else {
+    emit("toast", "没有勾选任何内容，先在列表里勾选要下载的条目");
   }
 }
 </script>

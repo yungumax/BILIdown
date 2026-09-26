@@ -24,11 +24,7 @@ const qr = ref(null);
 const loginState = ref("loading");
 const settings = ref(null);
 const settingsEnv = ref(null);
-const resolvedTheme = ref("light");
 
-const systemPrefersDark =
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-color-scheme: dark)");
 
 let unlistenTask = null;
 let pollTimer = null;
@@ -53,9 +49,6 @@ onMounted(async () => {
   }
 
   await loadSettings();
-  systemPrefersDark?.addEventListener("change", () => {
-    if (settings.value?.theme === "system") applyTheme("system");
-  });
 
   unlistenTask = await api.onTaskUpdate((task) => {
     const index = tasks.value.findIndex((item) => item.id === task.id);
@@ -70,15 +63,14 @@ onUnmounted(() => {
   clearTimeout(toastTimer);
 });
 
-const THEME_BG = { light: "#f5f3f4", dark: "#1b1d21" };
 let themeAnimTimer = null;
 
-/** 把主题写到根元素上，CSS 令牌据此切换；同步窗口原生底色避免白闪 */
-function applyTheme(choice) {
-  const resolved =
-    choice === "system" ? (systemPrefersDark?.matches ? "dark" : "light") : choice;
-  resolvedTheme.value = resolved === "dark" ? "dark" : "light";
-  document.documentElement.dataset.theme = resolvedTheme.value;
+/**
+ * 把主题模式写到根元素上：light / dark 直接生效，
+ * system 交给 CSS 的 prefers-color-scheme media query（首帧纯 CSS，最可靠）。
+ */
+function applyTheme(mode) {
+  document.documentElement.dataset.theme = mode;
 
   // 切换瞬间给全页一个短促的配色过渡，避免生硬翻转
   document.documentElement.classList.add("theme-switching");
@@ -87,9 +79,6 @@ function applyTheme(choice) {
     () => document.documentElement.classList.remove("theme-switching"),
     240
   );
-
-  // WebView2 默认白底，切深色时会白闪；同步原生底色消除
-  api.setWindowBackground(THEME_BG[resolvedTheme.value]);
 }
 
 async function loadSettings() {
@@ -277,7 +266,6 @@ async function doLogout() {
       :login="login"
       :version="version"
       :theme="settings?.theme || 'system'"
-      :resolved-theme="resolvedTheme"
       @login="openLogin"
       @toggle-theme="toggleTheme"
     />

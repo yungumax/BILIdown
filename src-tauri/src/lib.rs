@@ -15,18 +15,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .setup(move |app| {
-            let script = format!(
-                r#"
-                (function () {{
-                  var mode = "{theme_mode}";
-                  var resolved = mode === "system"
-                    ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-                    : mode;
-                  document.documentElement.dataset.theme = resolved;
-                }})();
-                "#
-            );
-
+            // 初始化脚本在页面任何脚本执行前运行：跟随系统时直接写 "system"，
+            // 由 CSS 的 prefers-color-scheme media query 在首帧完成配色。
+            let init_theme = match theme_mode.as_str() {
+                "dark" => "dark",
+                "light" => "light",
+                _ => "system",
+            };
             let window = WebviewWindowBuilder::new(app.handle(), "main", WebviewUrl::default())
                 .title("BILIdown")
                 .inner_size(1100.0, 740.0)
@@ -34,15 +29,20 @@ pub fn run() {
                 .resizable(true)
                 .center()
                 .decorations(false)
-                .initialization_script(&script)
+                .initialization_script(format!(
+                    "document.documentElement.dataset.theme = '{init_theme}';"
+                ))
                 .build()?;
 
-            // 窗口原生底色与解析后的主题一致（system 时问一次系统偏好）
+            // 窗口原生主题跟随系统。WebView2 的 prefers-color-scheme 并不总是
+            // 可靠，因此「跟随系统」统一以 Tauri 的窗口主题为准。
             let resolved_dark = match theme_mode.as_str() {
                 "dark" => true,
                 "light" => false,
                 _ => matches!(window.theme(), Ok(Theme::Dark)),
             };
+
+            // 窗口原生底色同步设置，避免 WebView2 白底闪现。
             let (r, g, b) = if resolved_dark {
                 (27, 29, 33)
             } else {

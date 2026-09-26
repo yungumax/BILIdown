@@ -6,7 +6,6 @@ const props = defineProps({
   version: { type: String, default: "" },
   /** 主题模式：light / dark / system */
   theme: { type: String, default: "system" },
-  resolvedTheme: { type: String, default: "light" },
 });
 const emit = defineEmits(["login", "toggle-theme"]);
 
