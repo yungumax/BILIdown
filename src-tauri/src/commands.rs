@@ -69,10 +69,7 @@ pub async fn app_status(state: State<'_, AppState>) -> Result<AppStatus, String>
 }
 
 #[tauri::command]
-pub async fn probe_video(
-    state: State<'_, AppState>,
-    input: String,
-) -> Result<ProbeResult, String> {
+pub async fn probe_video(state: State<'_, AppState>, input: String) -> Result<ProbeResult, String> {
     let client = state.client();
 
     let input = if is_short_link(&input) {
@@ -121,7 +118,8 @@ pub async fn probe_video(
             })
             .collect();
     }
-    qualities.sort_by(|a, b| b.qn.cmp(&a.qn));
+    // 从高到低排列，界面下拉里高分档在前
+    qualities.sort_by_key(|q| std::cmp::Reverse(q.qn));
 
     let best_quality = obtainable.iter().copied().max().unwrap_or(0);
     let recommended_quality = if obtainable.contains(&80) {
@@ -151,11 +149,7 @@ pub async fn probe_video(
         AudioOption {
             kind: "flac".to_string(),
             label: "Hi-Res 无损".to_string(),
-            available: dash
-                .flac
-                .as_ref()
-                .and_then(|f| f.audio.as_ref())
-                .is_some(),
+            available: dash.flac.as_ref().and_then(|f| f.audio.as_ref()).is_some(),
         },
     ];
 
@@ -268,13 +262,17 @@ pub async fn start_download(
         }
     });
 
-    state.tasks.lock().unwrap_or_else(|e| e.into_inner()).insert(
-        task_id,
-        TaskEntry {
-            snapshot: shared,
-            abort: Some(handle.abort_handle()),
-        },
-    );
+    state
+        .tasks
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(
+            task_id,
+            TaskEntry {
+                snapshot: shared,
+                abort: Some(handle.abort_handle()),
+            },
+        );
 
     let _ = app.emit(TASK_EVENT, initial);
     Ok(id)
@@ -289,9 +287,10 @@ async fn run_download(
     shared: Arc<Mutex<TaskUpdate>>,
 ) -> Result<(), BiliError> {
     // 并发槽位不足时在这里排队，状态保持「排队中」
-    let _permit = slots.acquire().await.map_err(|e| {
-        BiliError::Unavailable(format!("并发控制异常: {e}"))
-    })?;
+    let _permit = slots
+        .acquire()
+        .await
+        .map_err(|e| BiliError::Unavailable(format!("并发控制异常: {e}")))?;
 
     mutate(&shared, &app, |t| {
         t.status = TaskStatus::Downloading;
@@ -517,10 +516,7 @@ pub async fn choose_output_dir(
 }
 
 #[tauri::command]
-pub async fn set_output_dir(
-    state: State<'_, AppState>,
-    dir: String,
-) -> Result<String, String> {
+pub async fn set_output_dir(state: State<'_, AppState>, dir: String) -> Result<String, String> {
     let dir = dir.trim();
     if dir.is_empty() {
         return Err("目录不能为空".to_string());

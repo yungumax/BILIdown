@@ -274,11 +274,7 @@ impl BiliClient {
 ///
 /// 供需要自己控制轮询节奏的调用方使用（如桌面端的登录弹窗），命令行侧由
 /// [`wait_for_login`] 内部调用。
-pub async fn confirm(
-    client: &BiliClient,
-    qrcode_key: &str,
-    success_url: &str,
-) -> Result<Cookies> {
+pub async fn confirm(client: &BiliClient, qrcode_key: &str, success_url: &str) -> Result<Cookies> {
     let probes: Vec<String> = [poll_url(qrcode_key), success_url.to_string()]
         .into_iter()
         .filter(|u| !u.is_empty())
