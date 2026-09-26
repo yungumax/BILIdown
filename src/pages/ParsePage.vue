@@ -347,6 +347,20 @@ watch(allSources, () => {
   multiAudio.value = pickDefaultAudio(first.probe);
 });
 
+/** 按来源把行分组，用来在表里画出分界：哪几行属于哪个来源 */
+const tableGroups = computed(() => {
+  const groups = [];
+  for (const row of tableRows.value) {
+    const last = groups[groups.length - 1];
+    if (last && last.source === row.source) last.rows.push(row);
+    else groups.push({ source: row.source, rows: [row] });
+  }
+  return groups;
+});
+
+/** 只有一个来源时不必分组（表头已经写了它是谁） */
+const showGroups = computed(() => allSources.value.length > 1);
+
 /** 有内容可列就出表（现在单视频也是表里的一行） */
 const hasTable = computed(() => tableRows.value.length > 0);
 
@@ -774,20 +788,31 @@ async function startSingle(item) {
             </tr>
           </thead>
           <tbody>
-            <tr
-              v-for="row in tableRows"
-              :key="row.key"
-              :class="{ on: isSelected(row) }"
-              :title="fileNameOf(row)"
-            >
-              <td class="col-check">
-                <input type="checkbox" :checked="isSelected(row)" @change="toggleEntry(row)" />
-              </td>
-              <td class="col-idx num">{{ String(row.seq).padStart(2, "0") }}</td>
-              <td class="col-title">{{ row.title }}</td>
-              <td class="col-owner" :title="row.owner">{{ row.owner || "—" }}</td>
-              <td class="col-dur num">{{ formatDuration(row.duration) }}</td>
-            </tr>
+            <template v-for="group in tableGroups" :key="group.source.input">
+              <tr v-if="showGroups" class="group-row">
+                <td colspan="5">
+                  <span class="group-kind">{{ kindLabel(group.source.probe.kind) }}</span>
+                  <span class="group-title" :title="group.source.probe.title">
+                    {{ group.source.probe.title }}
+                  </span>
+                  <span class="num faint">{{ group.rows.length }} 条</span>
+                </td>
+              </tr>
+              <tr
+                v-for="row in group.rows"
+                :key="row.key"
+                :class="{ on: isSelected(row) }"
+                :title="fileNameOf(row)"
+              >
+                <td class="col-check">
+                  <input type="checkbox" :checked="isSelected(row)" @change="toggleEntry(row)" />
+                </td>
+                <td class="col-idx num">{{ String(row.seq).padStart(2, "0") }}</td>
+                <td class="col-title">{{ row.title }}</td>
+                <td class="col-owner" :title="row.owner">{{ row.owner || "—" }}</td>
+                <td class="col-dur num">{{ formatDuration(row.duration) }}</td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -1346,6 +1371,39 @@ input:focus {
   text-align: left;
   background: var(--card);
   border-bottom: 1px solid var(--line);
+}
+
+/* 分组行：多来源时用它把各组分开，一眼看出哪几行属于哪个来源 */
+.batch-table tr.group-row td {
+  padding: 7px 10px 6px;
+  background: var(--raised);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.batch-table tbody tr.group-row:first-child td {
+  border-top: none;
+}
+
+.batch-table tr.group-row:hover td {
+  background: var(--raised);
+}
+
+.group-kind {
+  margin-right: 8px;
+  padding: 1px 7px;
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+}
+
+.group-title {
+  margin-right: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .batch-table td {
