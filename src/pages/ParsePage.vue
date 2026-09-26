@@ -1049,6 +1049,7 @@ async function startSingle(item) {
             {{ parseSkipped.length && dedupedCount ? " · " : "" }}
             {{ dedupedCount ? `合并 ${dedupedCount} 条重复内容` : "" }}
           </span>
+          <span v-if="parseSkipped.length > 5" class="skipped-more faint">（列表内可滚动）</span>
         </p>
         <ul class="skipped-list">
           <li v-for="(item, index) in parseSkipped" :key="`${item.input}-${index}`">
@@ -1267,10 +1268,13 @@ input:focus {
   font-weight: 600;
 }
 
+/* 明细不撑高整页：超过几行就在框内滚，整页该滚动的距离不受它影响 */
 .skipped-list {
   margin: 7px 0 0;
   padding: 0;
   list-style: none;
+  max-height: 108px;
+  overflow-y: auto;
 }
 
 .skipped-list li {
@@ -1297,6 +1301,7 @@ input:focus {
   flex: 1;
   min-width: 0;
   color: var(--faint);
+  overflow-wrap: anywhere;
 }
 
 /* 输入页里的"已解析来源"入口 */
