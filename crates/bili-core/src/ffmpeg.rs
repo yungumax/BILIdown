@@ -9,6 +9,24 @@ use tokio::process::Command;
 /// Tauri 打包时 sidecar 会按目标三元组重命名。
 const SIDECAR_NAMES: [&str; 3] = ["ffmpeg-x86_64-pc-windows-msvc.exe", "ffmpeg.exe", "ffmpeg"];
 
+/// Windows：不给子进程分配控制台。
+///
+/// 本程序是 GUI 子系统，启动控制台程序（ffmpeg）时系统默认会新建一个终端窗口：
+/// 只是探测版本也会弹出一个终端一闪而过，合成时终端更会一直挂着。
+/// 用窗口事件钩子实测，每次 spawn 都会 SHOW/HIDE 一个 Windows Terminal 窗口。
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[cfg(windows)]
+fn quiet(command: &mut Command) -> &mut Command {
+    command.creation_flags(CREATE_NO_WINDOW)
+}
+
+#[cfg(not(windows))]
+fn quiet(command: &mut Command) -> &mut Command {
+    command
+}
+
 pub fn find_ffmpeg(explicit: Option<&Path>) -> Option<PathBuf> {
     if let Some(path) = explicit {
         if path.exists() {
@@ -30,17 +48,27 @@ pub fn find_ffmpeg(explicit: Option<&Path>) -> Option<PathBuf> {
     path_ffmpeg()
 }
 
+/// 在 PATH 目录里找 ffmpeg。
+///
+/// 刻意不靠执行 `ffmpeg -version` 来判断可用性：那会多起一次子进程
+/// （Windows 上还会多弹一次终端窗口），版本探测另有 `probe_version`。
 fn path_ffmpeg() -> Option<PathBuf> {
-    let output = std::process::Command::new("ffmpeg")
-        .arg("-version")
-        .output()
-        .ok()?;
-    output.status.success().then(|| PathBuf::from("ffmpeg"))
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        for name in ["ffmpeg.exe", "ffmpeg"] {
+            let candidate = dir.join(name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
 }
 
 /// 返回版本首行，用于启动时自检。
 pub async fn probe_version(ffmpeg: &Path) -> Result<String> {
-    let output = Command::new(ffmpeg)
+    let mut command = Command::new(ffmpeg);
+    let output = quiet(&mut command)
         .arg("-version")
         .output()
         .await
@@ -126,7 +154,7 @@ pub async fn merge_video_audio(
         }
     }
 
-    let output = command
+    let output = quiet(&mut command)
         .arg(out)
         .output()
         .await

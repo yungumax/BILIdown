@@ -29,6 +29,27 @@ WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222" ./target/re
 | `cdp-probe.mjs` | 启动全程的 DOM 时间线 + 控制台异常 + 逐帧截图。用于看首帧配色、有没有未捕获异常。自开进程，启动应用前先跑它。 |
 | `cdp-visibility.mjs` | **最有用**：在文档创建前注入探针，把「`data-theme` 何时写入」「首帧背景色」「窗口何时可见」「DOM 何时填充」记在**同一条时钟**上，然后 reload 复现一次干净加载。用于判定"先绘制还是先显示""首帧是什么颜色"。 |
 | `cdp-toggle.mjs` | 真实点击右上角主题按钮，录下主题变化与 toast 文本。用于区分"主题切换本身有问题"和"启动期的问题"。 |
+| `watch-window-events.ps1` | **事件驱动，不漏毫秒级闪现**：`SetWinEventHook` 监听全系统顶层窗口的 CREATE/SHOW/HIDE/DESTROY/FOREGROUND。15ms 轮询抓不到的东西（一闪而过的窗口）全靠它。 |
+| `capture-startup.ps1` | 用 `PrintWindow(PW_RENDERFULLCONTENT)` 逐帧抓应用窗口，看用户实际看到的画面。 |
+
+## 2026-09-26 第二轮：真正"弹"的是一个终端窗口
+
+用 `watch-window-events.ps1` 抓到的（轮询、逐帧截图、DOM 探针都漏了这个）：
+
+```
+1539 SHOW    cls=CASCADIA_HOSTING_WINDOW_CLASS title='Windows Terminal'
+1651 HIDE    ... title='C:\Users\87845\AppData\Local\Programs\ffmpeg\bin\ffmpeg.exe'
+1914 SHOW    ... （第二次）
+```
+
+程序是 GUI 子系统（`windows_subsystem = "windows"`），但 spawn 控制台程序
+（`ffmpeg -version`）时不抑制控制台，Windows 就会为它新建一个终端窗口——
+**每次 spawn 弹一个终端一闪而过**；合成视频时终端会一直挂着。
+修法：`creation_flags(CREATE_NO_WINDOW)`；另外 `path_ffmpeg` 改为纯 PATH 文件系统
+查找，去掉了一次纯粹为了"试试能不能跑"的多余 spawn（探测 811ms → 68ms）。
+
+**教训**：GUI 程序 spawn 控制台子进程必须 `CREATE_NO_WINDOW`。这类缺陷在
+DOM 层、窗口几何层、应用窗口截图层全都不可见——子进程的窗口属于另一个进程。
 
 `cdp-visibility.mjs` 依赖 `Page.addScriptToEvaluateOnNewDocument` + reload：
 **初始化脚本在首次加载与 reload 时行为一致**，所以 reload 可以复现真实加载。
