@@ -167,6 +167,8 @@ const DEFAULT_SETTINGS = {
   data_dir: "",
   default_quality: 0,
   default_audio: "normal",
+  quality_prefs: [{ qn: 127, codec: "auto" }],
+  audio_prefs: ["auto"],
   proxy: "",
   theme: "system",
 };

@@ -199,23 +199,7 @@ impl PlayUrlData {
         let same_quality: Vec<&MediaStream> =
             candidates.into_iter().filter(|s| s.id == best_id).collect();
 
-        match codec_pref {
-            "avc" => {
-                if let Some(avc) = same_quality.iter().find(|s| s.codecs.starts_with("avc")) {
-                    return Some(avc);
-                }
-            }
-            "hevc" => {
-                if let Some(hevc) = same_quality
-                    .iter()
-                    .find(|s| s.codecs.starts_with("hev") || s.codecs.starts_with("hvc"))
-                {
-                    return Some(hevc);
-                }
-            }
-            _ => {}
-        }
-        same_quality.first().copied()
+        pick_by_codec(&same_quality, codec_pref)
     }
 
     pub fn pick_audio(&self, kind: AudioKind) -> Option<&MediaStream> {
@@ -230,6 +214,69 @@ impl PlayUrlData {
             AudioKind::Normal => None,
         };
         special.or_else(|| best_normal_audio(dash))
+    }
+
+    /// 按优先顺序挑视频流。
+    ///
+    /// 逐条尝试：命中该档位就取；同档内多个编码时按这一条的编码偏好选。
+    /// 全部没命中时按 `fallback` 处理：`fail` 返回 None，否则取可用的最高档
+    /// （编码偏好沿用链上第一条明确指定的编码）。
+    pub fn pick_video_chain(&self, chain: &[(u32, String)], fallback: &str) -> Option<&MediaStream> {
+        let dash = self.dash.as_ref()?;
+        if dash.video.is_empty() {
+            return None;
+        }
+
+        for (qn, codec) in chain {
+            let same_quality: Vec<&MediaStream> =
+                dash.video.iter().filter(|s| s.id == *qn).collect();
+            if same_quality.is_empty() {
+                continue;
+            }
+            if let Some(picked) = pick_by_codec(&same_quality, codec) {
+                return Some(picked);
+            }
+        }
+
+        if fallback == "fail" {
+            return None;
+        }
+        // 回退：可用的最高档，编码偏好取链上第一条非 auto 的
+        let codec = chain
+            .iter()
+            .map(|(_, codec)| codec.as_str())
+            .find(|codec| *codec != "auto")
+            .unwrap_or("auto");
+        let best_id = dash.video.iter().map(|s| s.id).max()?;
+        let same_quality: Vec<&MediaStream> =
+            dash.video.iter().filter(|s| s.id == best_id).collect();
+        pick_by_codec(&same_quality, codec)
+    }
+
+    /// 按优先顺序挑音轨：逐条尝试，都没有时退回普通音轨（普通音轨总在）。
+    pub fn pick_audio_chain(&self, chain: &[String]) -> Option<&MediaStream> {
+        let dash = self.dash.as_ref()?;
+        for kind in chain {
+            let special = match kind.as_str() {
+                "flac" => dash.flac.as_ref().and_then(|f| f.audio.as_ref()),
+                "dolby" => dash
+                    .dolby
+                    .as_ref()
+                    .and_then(|d| d.audio.as_ref())
+                    .and_then(|list| list.first()),
+                // auto / normal 都是普通音轨，auto 取最好的一条
+                _ => None,
+            };
+            if let Some(stream) = special {
+                return Some(stream);
+            }
+            if kind == "auto" || kind == "normal" {
+                if let Some(normal) = best_normal_audio(dash) {
+                    return Some(normal);
+                }
+            }
+        }
+        best_normal_audio(dash)
     }
 
     /// 实际可下载的最高画质档位。
@@ -479,6 +526,23 @@ impl AudioKind {
 
 /// 音频档位约定：30216=64k / 30232=132k / 30280=192k 是普通音轨；
 /// 30250=杜比全景声、30251=Hi-Res 无损是需要单独指定的特殊音轨，按码率排序时不能混入。
+/// 在同一清晰度档内按编码偏好挑一条；偏好编码不存在时取该档第一条。
+fn pick_by_codec<'a>(same_quality: &[&'a MediaStream], codec_pref: &str) -> Option<&'a MediaStream> {
+    let wanted: Option<&MediaStream> = match codec_pref {
+        "avc" => same_quality.iter().find(|s| s.codecs.starts_with("avc")).copied(),
+        "hevc" => same_quality
+            .iter()
+            .find(|s| s.codecs.starts_with("hev") || s.codecs.starts_with("hvc"))
+            .copied(),
+        "av1" => same_quality
+            .iter()
+            .find(|s| s.codecs.starts_with("av01"))
+            .copied(),
+        _ => None,
+    };
+    wanted.or_else(|| same_quality.first().copied())
+}
+
 fn best_normal_audio(dash: &DashData) -> Option<&MediaStream> {
     const SPECIAL_AUDIO_IDS: [u32; 2] = [30250, 30251];
     dash.audio
@@ -807,9 +871,117 @@ mod tests {
         }
     }
 
+    fn play_with_special(
+        video: Vec<MediaStream>,
+        audio: Vec<MediaStream>,
+        dolby: Option<Vec<MediaStream>>,
+        flac: Option<Vec<MediaStream>>,
+    ) -> PlayUrlData {
+        PlayUrlData {
+            quality: 0,
+            accept_quality: vec![],
+            accept_description: vec![],
+            dash: Some(DashData {
+                duration: 0,
+                video,
+                audio,
+                dolby: dolby.map(|audio| DolbyData { audio: Some(audio) }),
+                // flac 在接口里是单条流，不是列表
+                flac: flac.map(|audio| FlacData {
+                    audio: audio.into_iter().next(),
+                }),
+            }),
+            durl: None,
+        }
+    }
+
+    fn pref(qn: u32, codec: &str) -> (u32, String) {
+        (qn, codec.to_string())
+    }
+
     #[test]
-    fn picks_requested_quality_and_prefers_avc() {
-        let p = play(
+    fn video_chain_takes_the_first_available_preference() {
+        let p = play(vec![stream(80, "avc1"), stream(120, "hev1")], vec![]);
+        // 8K 没有 → 落到链上第二条 1080P
+        let chain = vec![pref(127, "auto"), pref(80, "auto")];
+        assert_eq!(p.pick_video_chain(&chain, "nearest").unwrap().id, 80);
+
+        // 顺序反过来就应拿到 4K，优先顺序是用户排的，不能被"最高档"覆盖
+        let chain = vec![pref(120, "auto"), pref(80, "auto")];
+        assert_eq!(p.pick_video_chain(&chain, "nearest").unwrap().id, 120);
+    }
+
+    #[test]
+    fn video_chain_prefers_codec_inside_the_matched_tier() {
+        let p = play(vec![stream(80, "hev1.1.6"), stream(80, "avc1.640028")], vec![]);
+        let picked = p
+            .pick_video_chain(&[pref(80, "avc")], "nearest")
+            .unwrap();
+        assert_eq!(picked.id, 80);
+        assert!(picked.codecs.starts_with("avc"));
+    }
+
+    #[test]
+    fn video_chain_falls_back_or_fails() {
+        let p = play(vec![stream(32, "avc1"), stream(16, "avc1")], vec![]);
+        let chain = vec![pref(127, "auto")];
+        assert_eq!(
+            p.pick_video_chain(&chain, "nearest").unwrap().id,
+            32,
+            "全部没命中时回退到可用的最高档"
+        );
+        assert!(
+            p.pick_video_chain(&chain, "fail").is_none(),
+            "失败策略下不应退回任何档位"
+        );
+    }
+
+    #[test]
+    fn audio_chain_takes_the_first_available_kind() {
+        let p = play_with_special(
+            vec![stream(80, "avc1")],
+            vec![stream(30280, "mp4a")],
+            Some(vec![stream(30250, "ec-3")]),
+            Some(vec![stream(30251, "fLaC")]),
+        );
+
+        // 第 1 优先 Hi-Res → 命中 flac
+        assert_eq!(
+            p.pick_audio_chain(&["flac".to_string(), "auto".to_string()])
+                .unwrap()
+                .id,
+            30251
+        );
+        // 第 1 优先杜比 → 命中 dolby
+        assert_eq!(
+            p.pick_audio_chain(&["dolby".to_string(), "auto".to_string()])
+                .unwrap()
+                .id,
+            30250
+        );
+    }
+
+    #[test]
+    fn audio_chain_skips_missing_kinds_and_falls_back_to_normal() {
+        let p = play(vec![stream(80, "avc1")], vec![stream(30280, "mp4a")]);
+        // 无损不存在 → 落到普通音轨
+        assert_eq!(
+            p.pick_audio_chain(&["flac".to_string(), "normal".to_string()])
+                .unwrap()
+                .id,
+            30280
+        );
+        // 链上全是拿不到的 → 仍然退回普通音轨，不会没有音轨
+        assert_eq!(
+            p.pick_audio_chain(&["flac".to_string(), "dolby".to_string()])
+                .unwrap()
+                .id,
+            30280
+        );
+    }
+
+    #[test]
+    fn picks_requested_quality_and_prefers_avc() {        let p = play(
             vec![
                 stream(80, "avc1.640028"),
                 stream(80, "hev1.1.6"),

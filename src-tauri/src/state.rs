@@ -36,6 +36,18 @@ pub struct FfmpegStatus {
     pub info: String,
 }
 
+/// 一条画质优先项：目标档位 + 同档内的编码偏好（auto/avc/hevc/av1）。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct QualityPref {
+    pub qn: u32,
+    #[serde(default = "default_codec")]
+    pub codec: String,
+}
+
+fn default_codec() -> String {
+    "auto".to_string()
+}
+
 /// 一条命名模板预设：用户可把常用模板存成名字，随时选用。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NamingPreset {
@@ -102,9 +114,15 @@ pub struct Settings {
     /// 数据目录（日志等），留空用默认数据目录
     pub data_dir: String,
     /// 默认清晰度，0 表示自动取可用最高档
+    /// （旧字段：新装或迁移后由 `quality_prefs` 承担，仅为读旧配置保留）
     pub default_quality: u32,
     /// 默认音轨：normal / dolby / flac
+    /// （旧字段：新装或迁移后由 `audio_prefs` 承担，仅为读旧配置保留）
     pub default_audio: String,
+    /// 画质优先顺序：逐条尝试，命中即用；都没命中时按 `quality_fallback` 处理
+    pub quality_prefs: Vec<QualityPref>,
+    /// 音轨优先顺序：auto（最佳可用）/ flac / dolby / normal
+    pub audio_prefs: Vec<String>,
     /// 可选 HTTP 代理，留空即直连
     pub proxy: String,
     /// 外观：light / dark / system
@@ -143,6 +161,12 @@ impl Default for Settings {
             data_dir: String::new(),
             default_quality: 0,
             default_audio: "normal".to_string(),
+            // 默认与界面一致：第 1 优先画质 8K、编码不限；第 1 优先音质 最佳可用
+            quality_prefs: vec![QualityPref {
+                qn: 127,
+                codec: "auto".to_string(),
+            }],
+            audio_prefs: vec!["auto".to_string()],
             proxy: String::new(),
             theme: "system".to_string(),
         }
@@ -171,6 +195,26 @@ impl Settings {
                 "title_bvid" => "{title}_{bvid}".to_string(),
                 _ => "{title}".to_string(),
             };
+        }
+
+        // 旧的单值偏好迁进优先顺序列表。只在用户确实改过旧字段、且还没动过新列表时做，
+        // 否则会把用户在新界面上排好的顺序覆盖掉。
+        let default_prefs = Self::default().quality_prefs;
+        if self.quality_prefs == default_prefs
+            && (self.default_quality != 0 || self.codec_pref != "auto")
+        {
+            self.quality_prefs = vec![QualityPref {
+                qn: if self.default_quality == 0 {
+                    127
+                } else {
+                    self.default_quality
+                },
+                codec: self.codec_pref.clone(),
+            }];
+        }
+        let default_audio_prefs = Self::default().audio_prefs;
+        if self.audio_prefs == default_audio_prefs && self.default_audio != "normal" {
+            self.audio_prefs = vec![self.default_audio.clone()];
         }
     }
 
@@ -216,6 +260,36 @@ impl Settings {
         }
         if !matches!(self.default_audio.as_str(), "normal" | "dolby" | "flac") {
             self.default_audio = "normal".to_string();
+        }
+        // 优先顺序列表：不能为空（空列表等于没有偏好），条数与取值都收敛
+        if self.quality_prefs.is_empty() {
+            self.quality_prefs = vec![QualityPref {
+                qn: 127,
+                codec: "auto".to_string(),
+            }];
+        }
+        self.quality_prefs.truncate(12);
+        for pref in &mut self.quality_prefs {
+            if pref.qn != 0
+                && !matches!(
+                    pref.qn,
+                    6 | 16 | 32 | 64 | 74 | 80 | 100 | 112 | 116 | 120 | 125 | 126 | 127
+                )
+            {
+                pref.qn = 127;
+            }
+            if !matches!(pref.codec.as_str(), "auto" | "avc" | "hevc" | "av1") {
+                pref.codec = "auto".to_string();
+            }
+        }
+        if self.audio_prefs.is_empty() {
+            self.audio_prefs = vec!["auto".to_string()];
+        }
+        self.audio_prefs.truncate(12);
+        for kind in &mut self.audio_prefs {
+            if !matches!(kind.as_str(), "auto" | "flac" | "dolby" | "normal") {
+                *kind = "auto".to_string();
+            }
         }
         if !matches!(self.log_level.as_str(), "debug" | "info" | "warn" | "error") {
             self.log_level = "info".to_string();

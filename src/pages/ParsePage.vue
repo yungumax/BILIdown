@@ -106,13 +106,23 @@ async function pasteFromClipboard() {
 }
 
 /** 优先用设置里的默认清晰度；该视频拿不到时退回推荐档 */
+/** 默认清晰度：按设置里的优先顺序取第一条这视频真能拿到的档位 */
 function pickDefaultQuality(probe) {
-  const wanted = props.settings?.default_quality ?? 0;
-  if (wanted > 0) {
-    const match = probe.qualities.find((q) => q.qn === wanted && q.available);
-    if (match) return wanted;
+  const prefs = props.settings?.quality_prefs ?? [];
+  for (const pref of prefs) {
+    if (probe.qualities?.some((q) => q.qn === pref.qn && q.available)) return pref.qn;
   }
   return probe.recommended_quality;
+}
+
+/** 默认音轨：同样按优先顺序取第一条可用的 */
+function pickDefaultAudio(probe) {
+  const prefs = props.settings?.audio_prefs ?? [];
+  for (const kind of prefs) {
+    const hit = probe.audios?.find((a) => a.kind === kind);
+    if (hit?.available) return kind;
+  }
+  return "normal";
 }
 
 async function parse() {
@@ -142,7 +152,7 @@ async function parse() {
           error: "",
           probe,
           quality: pickDefaultQuality(probe),
-          audio: props.settings?.default_audio || "normal",
+          audio: pickDefaultAudio(probe),
         });
       } else {
         // 先完成全部处理，最后才 push —— 中途出错不会留下半成品条目
@@ -150,10 +160,7 @@ async function parse() {
           selected.value.add(`${probe.kind}:${item.bvid || `ep-${item.ep_id}`}`)
         );
         batchQuality.value = pickDefaultQuality(probe);
-        batchAudio.value =
-          props.settings?.default_audio && props.settings.default_audio !== "auto"
-            ? props.settings.default_audio
-            : "normal";
+        batchAudio.value = pickDefaultAudio(probe);
         selected.value = new Set(selected.value);
         collected.push({ input, ok: true, error: "", probe });
       }

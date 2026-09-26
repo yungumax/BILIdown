@@ -38,16 +38,11 @@ const activeCategory = computed(() =>
 /** 本地草稿：编辑期间不落盘，点「保存」才提交 */
 const draft = ref(null);
 const BUILTIN_PRESETS = [
-  { name: "默认", template: "{title}" },
-  { name: "标题_BV号", template: "{title}_{bvid}" },
-  { name: "标题_清晰度", template: "{title}_{quality}" },
-  { name: "标题_UP主", template: "{title}_{owner_name}" },
-  { name: "完整信息", template: "{title}_{quality}_{bvid}" },
   { name: "分P视频", template: "{title}/P{part_index} - {part_title}.{ext}" },
-  { name: "合集分集", template: "{collection_title}/{index} - {title}.{ext}" },
-  { name: "番剧分集", template: "{series_title}/第{episode_index}集 - {episode_title}.{ext}" },
-  { name: "UP主目录", template: "{owner_name}/{title}" },
-  { name: "带下载日期", template: "{title}_{date}" },
+  { name: "单文件", template: "{title}.{ext}" },
+  { name: "合集/列表", template: "{collection_title}/{index} - {title}.{ext}" },
+  { name: "番剧/课程", template: "{series_title}/第{episode_index}集 - {episode_title}.{ext}" },
+  { name: "直接保存到下载目录", template: "{title}_{quality}.{ext}" },
 ];
 
 const selectedPreset = ref("");
@@ -70,24 +65,26 @@ function beginDraft() {
 }
 beginDraft();
 
-const QUALITIES = [
-  { value: 0, label: "最优画质" },
-  { value: 127, label: "8K" },
-  { value: 126, label: "杜比视界" },
-  { value: 125, label: "HDR" },
-  { value: 120, label: "4K" },
-  { value: 116, label: "1080P60" },
-  { value: 112, label: "1080P+" },
-  { value: 80, label: "1080P" },
-  { value: 64, label: "720P" },
-  { value: 32, label: "480P" },
+// 优先顺序列表里的画质项：带上档位号，和 B 站文档里的 qn 对得上
+const QUALITY_PREFS = [
+  { value: 127, label: "8K / 127" },
+  { value: 126, label: "杜比视界 / 126" },
+  { value: 125, label: "HDR / 125" },
+  { value: 120, label: "4K / 120" },
+  { value: 116, label: "1080P60 / 116" },
+  { value: 112, label: "1080P+ / 112" },
+  { value: 80, label: "1080P / 80" },
+  { value: 74, label: "720P60 / 74" },
+  { value: 64, label: "720P / 64" },
+  { value: 32, label: "480P / 32" },
+  { value: 16, label: "360P / 16" },
 ];
 
-const AUDIOS = [
+const AUDIO_PREFS = [
   { value: "auto", label: "最佳可用" },
-  { value: "normal", label: "普通音轨" },
+  { value: "flac", label: "Hi-Res 无损" },
   { value: "dolby", label: "杜比全景声" },
-  { value: "flac", label: "Hi-Res 无损优先" },
+  { value: "normal", label: "普通音轨" },
 ];
 
 const CONTAINERS = [
@@ -96,14 +93,15 @@ const CONTAINERS = [
 ];
 
 const CODECS = [
-  { value: "auto", label: "自动" },
-  { value: "avc", label: "优先 AVC（兼容性最好）" },
-  { value: "hevc", label: "优先 HEVC（压缩率更高）" },
+  { value: "auto", label: "不限编码" },
+  { value: "avc", label: "优先 AVC" },
+  { value: "hevc", label: "优先 HEVC" },
+  { value: "av1", label: "优先 AV1" },
 ];
 
 const FALLBACKS = [
-  { value: "nearest", label: "选择接近的可用质量" },
-  { value: "fail", label: "任务失败并提示" },
+  { value: "nearest", label: "回退到最佳可用" },
+  { value: "fail", label: "直接失败（不下载）" },
 ];
 
 const RANGES = [
@@ -249,6 +247,38 @@ const parsePaceNote = computed(() => {
 
 function set(key, value) {
   if (draft.value) draft.value[key] = value;
+}
+
+/** 优先顺序列表：添加 / 上移 / 下移 / 删除 */
+function addQualityPref() {
+  if (!draft.value) return;
+  const prefs = draft.value.quality_prefs ?? [];
+  const last = prefs[prefs.length - 1];
+  draft.value.quality_prefs = [...prefs, { qn: last?.qn ?? 127, codec: "auto" }];
+}
+
+function addAudioPref() {
+  if (!draft.value) return;
+  const prefs = draft.value.audio_prefs ?? [];
+  draft.value.audio_prefs = [...prefs, "auto"];
+}
+
+function movePref(key, index, delta) {
+  if (!draft.value) return;
+  const list = [...(draft.value[key] ?? [])];
+  const target = index + delta;
+  if (target < 0 || target >= list.length) return;
+  [list[index], list[target]] = [list[target], list[index]];
+  draft.value[key] = list;
+}
+
+function removePref(key, index) {
+  if (!draft.value) return;
+  const list = [...(draft.value[key] ?? [])];
+  // 至少留一条：空列表等于没有偏好，后端也会补回默认值
+  if (list.length <= 1) return;
+  list.splice(index, 1);
+  draft.value[key] = list;
 }
 
 /** 选预设：内置或用户保存的，选中即填入模板 */
@@ -479,17 +509,19 @@ async function open(path) {
               </div>
             </div>
 
-            <div class="field">
-              <label>同时下载任务数</label>
-              <select v-model.number="draft.max_concurrent_tasks">
-                <option v-for="n in CONCURRENCY" :key="n" :value="n">{{ n }}</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>失败自动重试次数</label>
-              <select v-model.number="draft.retry_count">
-                <option v-for="n in RETRIES" :key="n" :value="n">{{ n }}</option>
-              </select>
+            <div class="grid2">
+              <div class="field">
+                <label>同时下载任务数</label>
+                <select v-model.number="draft.max_concurrent_tasks">
+                  <option v-for="n in CONCURRENCY" :key="n" :value="n">{{ n }}</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>失败自动重试次数</label>
+                <select v-model.number="draft.retry_count">
+                  <option v-for="n in RETRIES" :key="n" :value="n">{{ n }}</option>
+                </select>
+              </div>
             </div>
 
             <div class="field full">
@@ -587,25 +619,6 @@ async function open(path) {
 
           <!-- 媒体 -->
           <div v-else-if="active === 'media'" class="fields">
-            <div class="grid2">
-              <div class="field">
-                <label>视频清晰度</label>
-                <select v-model.number="draft.default_quality">
-                  <option v-for="item in QUALITIES" :key="item.value" :value="item.value">
-                    {{ item.label }}
-                  </option>
-                </select>
-              </div>
-              <div class="field">
-                <label>音频质量</label>
-                <select v-model="draft.default_audio">
-                  <option v-for="item in AUDIOS" :key="item.value" :value="item.value">
-                    {{ item.label }}
-                  </option>
-                </select>
-              </div>
-            </div>
-
             <div class="field full">
               <label>封装格式</label>
               <select v-model="draft.container">
@@ -619,34 +632,140 @@ async function open(path) {
             <div class="sub-card full">
               <div class="sub-head">
                 <span class="sub-title">画质优先顺序</span>
+                <span class="sub-note">从上到下匹配画质与编码。</span>
                 <span class="spacer"></span>
+                <button class="ghost" @click="addQualityPref">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M12 5.6v12.8M5.6 12h12.8"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                  添加画质
+                </button>
               </div>
-              <div class="field">
-                <label>视频编码偏好</label>
-                <select v-model="draft.codec_pref">
-                  <option v-for="item in CODECS" :key="item.value" :value="item.value">
-                    {{ item.label }}
-                  </option>
-                </select>
+
+              <div
+                v-for="(pref, index) in draft.quality_prefs"
+                :key="`q-${index}`"
+                class="pref-row"
+              >
+                <span class="pref-no num">{{ index + 1 }}</span>
+                <div class="field">
+                  <label>第 {{ index + 1 }} 优先画质</label>
+                  <select v-model.number="pref.qn">
+                    <option v-for="item in QUALITY_PREFS" :key="item.value" :value="item.value">
+                      {{ item.label }}
+                    </option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label>第 {{ index + 1 }} 优先编码</label>
+                  <select v-model="pref.codec">
+                    <option v-for="item in CODECS" :key="item.value" :value="item.value">
+                      {{ item.label }}
+                    </option>
+                  </select>
+                </div>
+                <div class="pref-acts">
+                  <button
+                    class="act"
+                    title="上移"
+                    :disabled="index === 0"
+                    @click="movePref('quality_prefs', index, -1)"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    class="act"
+                    title="下移"
+                    :disabled="index === draft.quality_prefs.length - 1"
+                    @click="movePref('quality_prefs', index, 1)"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    class="act"
+                    title="删除"
+                    :disabled="draft.quality_prefs.length === 1"
+                    @click="removePref('quality_prefs', index)"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
-              <p class="note">同一清晰度有多个编码时按此偏好选择；不会为编码牺牲清晰度。</p>
+              <p class="note">逐条尝试，命中即用；编码偏好在同档位内生效，不会为编码牺牲清晰度。</p>
             </div>
 
             <div class="sub-card full">
               <div class="sub-head">
                 <span class="sub-title">音频优先顺序</span>
+                <span class="sub-note">独立选择音轨，再与选中的视频合并。</span>
                 <span class="spacer"></span>
+                <button class="ghost" @click="addAudioPref">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M12 5.6v12.8M5.6 12h12.8"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                  添加音质
+                </button>
               </div>
-              <div class="field">
-                <label>音轨策略</label>
-                <select v-model="draft.default_audio">
-                  <option value="auto">自动（最佳可用）</option>
-                  <option value="flac">优先 Hi-Res 无损</option>
-                  <option value="dolby">优先杜比全景声</option>
-                  <option value="normal">仅普通音轨</option>
-                </select>
+
+              <div v-for="(kind, index) in draft.audio_prefs" :key="`a-${index}`" class="pref-row">
+                <span class="pref-no num">{{ index + 1 }}</span>
+                <div class="field">
+                  <label>第 {{ index + 1 }} 优先音质</label>
+                  <select v-model="draft.audio_prefs[index]">
+                    <option v-for="item in AUDIO_PREFS" :key="item.value" :value="item.value">
+                      {{ item.label }}
+                    </option>
+                  </select>
+                </div>
+                <div class="pref-acts">
+                  <button
+                    class="act"
+                    title="上移"
+                    :disabled="index === 0"
+                    @click="movePref('audio_prefs', index, -1)"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    class="act"
+                    title="下移"
+                    :disabled="index === draft.audio_prefs.length - 1"
+                    @click="movePref('audio_prefs', index, 1)"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    class="act"
+                    title="删除"
+                    :disabled="draft.audio_prefs.length === 1"
+                    @click="removePref('audio_prefs', index)"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
-              <p class="note">所选音轨不存在时自动退回普通音轨。</p>
+              <p class="note">链上都拿不到时退回普通音轨，不会出现没有音轨的任务。</p>
+            </div>
+
+            <div class="field full">
+              <label>所有偏好都不可用时</label>
+              <select v-model="draft.quality_fallback">
+                <option v-for="item in FALLBACKS" :key="item.value" :value="item.value">
+                  {{ item.label }}
+                </option>
+              </select>
             </div>
           </div>
 
@@ -770,25 +889,6 @@ async function open(path) {
 
           <!-- 编码与处理 -->
           <div v-else-if="active === 'encode'" class="fields">
-            <div class="grid2">
-              <div class="field">
-                <label>视频编码偏好</label>
-                <select v-model="draft.codec_pref">
-                  <option v-for="item in CODECS" :key="item.value" :value="item.value">
-                    {{ item.label }}
-                  </option>
-                </select>
-              </div>
-              <div class="field">
-                <label>目标质量不可用</label>
-                <select v-model="draft.quality_fallback">
-                  <option v-for="item in FALLBACKS" :key="item.value" :value="item.value">
-                    {{ item.label }}
-                  </option>
-                </select>
-              </div>
-            </div>
-
             <div class="field full">
               <label>单任务分段数</label>
               <select v-model.number="draft.chunk_concurrency">
@@ -1345,6 +1445,69 @@ input::placeholder {
 .sub-title {
   font-size: 12.5px;
   font-weight: 700;
+}
+
+.sub-note {
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+/* 优先顺序列表：一条 = 序号 + 取值 + 上移/下移/删除 */
+.pref-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 9px 10px;
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+}
+
+.pref-row + .pref-row {
+  margin-top: 7px;
+}
+
+.pref-no {
+  flex: none;
+  width: 18px;
+  padding-bottom: 9px;
+  font-size: 12px;
+  color: var(--faint);
+  text-align: center;
+}
+
+.pref-row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.pref-row .field + .field {
+  margin-left: 2px;
+}
+
+.pref-acts {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  padding-bottom: 2px;
+}
+
+.act {
+  width: 26px;
+  height: 30px;
+  font-size: 13px;
+  color: var(--muted);
+  border-radius: var(--radius-sm);
+}
+
+.act:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.act:disabled {
+  color: var(--line);
+  cursor: not-allowed;
 }
 
 /* 运行环境块 */

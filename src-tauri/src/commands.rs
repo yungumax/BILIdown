@@ -3,7 +3,7 @@
 use crate::state::{AppState, TaskEntry};
 use crate::types::*;
 use base64::Engine;
-use bili_core::api::{codec_name, quality_name, AudioKind};
+use bili_core::api::{codec_name, quality_name};
 use bili_core::download::{
     download_with_throttle, DownloadOptions, Progress, ProgressFn, Throttle,
 };
@@ -923,13 +923,32 @@ async fn run_download(
             client.playurl(&req.bvid, cid, req.quality).await?
         }
     };
-    let kind = AudioKind::parse(&req.audio).unwrap_or(AudioKind::Normal);
+    // 候选链：任务里明确选了档位就排在最前，其余按设置里的优先顺序接在后面。
+    // 逐条尝试，都没有时按「目标质量不可用」策略处理。
+    let mut chain: Vec<(u32, String)> = Vec::new();
+    if req.quality > 0 {
+        let codec = settings
+            .quality_prefs
+            .first()
+            .map(|pref| pref.codec.clone())
+            .unwrap_or_else(|| "auto".to_string());
+        chain.push((req.quality, codec));
+    }
+    for pref in &settings.quality_prefs {
+        if pref.qn != req.quality {
+            chain.push((pref.qn, pref.codec.clone()));
+        }
+    }
+    if chain.is_empty() {
+        chain.push((127, "auto".to_string()));
+    }
+
     let video = play
-        .pick_video(req.quality, &settings.codec_pref)
+        .pick_video_chain(&chain, &settings.quality_fallback)
         .ok_or(BiliError::QualityNotFound(req.quality))?;
 
     // 「目标质量不可用」策略：fail 时请求档位没拿到就直接失败
-    if settings.quality_fallback == "fail" && video.id < req.quality {
+    if settings.quality_fallback == "fail" && req.quality > 0 && video.id < req.quality {
         settings.log(
             "warn",
             &format!(
@@ -940,8 +959,12 @@ async fn run_download(
         return Err(BiliError::QualityNotFound(req.quality));
     }
 
+    let mut audio_chain = settings.audio_prefs.clone();
+    if audio_chain.is_empty() {
+        audio_chain = vec![req.audio.clone()];
+    }
     let audio = play
-        .pick_audio(kind)
+        .pick_audio_chain(&audio_chain)
         .ok_or_else(|| BiliError::Unavailable("未找到可用音轨".to_string()))?;
 
     let is_hevc = video.codecs.starts_with("hev") || video.codecs.starts_with("hvc");
