@@ -14,7 +14,7 @@ pub fn run() {
             commands::app_status,
             commands::app_settings,
             commands::update_settings,
-            commands::probe_video,
+            commands::probe_source,
             commands::start_download,
             commands::cancel_download,
             commands::login_qrcode,

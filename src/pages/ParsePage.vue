@@ -16,40 +16,69 @@ const done = ref(0);
 const total = ref(0);
 const items = ref([]);
 
-const okItems = computed(() => items.value.filter((item) => item.ok));
+const KIND_LABELS = {
+  video: "视频",
+  fav: "收藏夹",
+  collection: "合集",
+  space: "UP 空间",
+  bangumi: "番剧",
+  cheese: "课程",
+};
 
-const steps = computed(() => [
-  {
-    index: 1,
-    title: "解析来源",
-    hint: parsing.value ? `解析中 ${done.value}/${total.value}` : "输入链接",
-    state: items.value.length && !parsing.value ? "done" : "active",
-  },
-  {
-    index: 2,
-    title: "选择内容",
-    hint: items.value.length ? `已解析 ${okItems.value.length} 条` : "等待解析",
-    state: items.value.length && !parsing.value ? "active" : "idle",
-  },
-]);
+/** 批量来源里每条的勾选状态 */
+const selected = ref(new Set());
+const batchQuality = ref(80);
+const batchAudio = ref("normal");
+
+const okItems = computed(() => items.value.filter((item) => item.ok));
+const batchProbe = computed(() => {
+  const first = okItems.value.find((item) => item.probe?.kind !== "video");
+  return first ? first.probe : null;
+});
+const batchSelected = computed(() => {
+  const batch = batchProbe.value;
+  if (!batch) return [];
+  const keyOf = (entry) => `${batch.kind}:${entry.bvid || `ep-${entry.ep_id}`}`;
+  return batch.items.filter((entry) => selected.value.has(keyOf(entry))).map(keyOf);
+});
+const isBatch = computed(() => !!batchProbe.value);
+
+function itemKey(item) {
+  return item.probe ? `${item.probe.kind}:${item.bvid || `ep-${item.epId}`}` : item.input;
+}
+function hasKey(key) {
+  return okItems.value.some((item) => itemKey(item) === key);
+}
+
+const steps = computed(() => {
+  const batch = batchProbe.value;
+  return [
+    {
+      index: 1,
+      title: "解析来源",
+      hint: parsing.value ? `解析中 ${done.value}/${total.value}` : "输入链接",
+      state: items.value.length && !parsing.value ? "done" : "active",
+    },
+    {
+      index: 2,
+      title: "选择内容",
+      hint: items.value.length
+        ? isBatch.value
+          ? `已选中 ${batchSelected.value.length} / ${batch.loaded}`
+          : `已解析 ${okItems.value.length} 条`
+        : "等待解析",
+      state: items.value.length && !parsing.value ? "active" : "idle",
+    },
+  ];
+});
 
 const sources = [
   { label: "视频与分P" },
   { label: "多行批量" },
-  { label: "收藏夹与合集", pending: true },
-  { label: "UP 空间", pending: true },
-  { label: "番剧与课程", pending: true },
+  { label: "收藏夹与合集" },
+  { label: "UP 空间" },
+  { label: "番剧与课程" },
 ];
-
-/** 优先用设置里的默认清晰度；该视频拿不到时退回推荐档 */
-function pickDefaultQuality(probe) {
-  const wanted = props.settings?.default_quality ?? 0;
-  if (wanted > 0) {
-    const match = probe.qualities.find((q) => q.qn === wanted && q.available);
-    if (match) return wanted;
-  }
-  return probe.recommended_quality;
-}
 
 function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600);
@@ -76,6 +105,16 @@ async function pasteFromClipboard() {
   text.value = text.value.trim() ? `${text.value.trim()}\n${value}` : value;
 }
 
+/** 优先用设置里的默认清晰度；该视频拿不到时退回推荐档 */
+function pickDefaultQuality(probe) {
+  const wanted = props.settings?.default_quality ?? 0;
+  if (wanted > 0) {
+    const match = probe.qualities.find((q) => q.qn === wanted && q.available);
+    if (match) return wanted;
+  }
+  return probe.recommended_quality;
+}
+
 async function parse() {
   const inputs = lines();
   if (!inputs.length || parsing.value) return;
@@ -83,6 +122,7 @@ async function parse() {
   // 按解析节奏分批：批内并发、批间等待、每 N 条休息，降低触发风控的概率
   parsing.value = true;
   items.value = [];
+  selected.value = new Set();
   done.value = 0;
   total.value = inputs.length;
 
@@ -94,15 +134,29 @@ async function parse() {
 
   const probeOne = async (input) => {
     try {
-      const probe = await api.probeVideo(input);
-      collected.push({
-        input,
-        ok: true,
-        error: "",
-        probe,
-        quality: pickDefaultQuality(probe),
-        audio: props.settings?.default_audio || "normal",
-      });
+      const probe = await api.probeSource(input);
+      if (probe.kind === "video") {
+        collected.push({
+          input,
+          ok: true,
+          error: "",
+          probe,
+          quality: pickDefaultQuality(probe),
+          audio: props.settings?.default_audio || "normal",
+        });
+      } else {
+        collected.push({ input, ok: true, error: "", probe });
+        // 批量来源默认全选
+        probe.items.forEach((item) =>
+          selected.value.add(`${probe.kind}:${item.bvid || `ep-${item.ep_id}`}`)
+        );
+        batchQuality.value = pickDefaultQuality(probe);
+        batchAudio.value =
+          props.settings?.default_audio && props.settings.default_audio !== "auto"
+            ? props.settings.default_audio
+            : "normal";
+        selected.value = new Set(selected.value);
+      }
     } catch (error) {
       collected.push({ input, ok: false, error: String(error) });
     }
@@ -128,31 +182,90 @@ async function parse() {
   }
 }
 
-async function startAll() {
-  const ready = okItems.value;
-  if (!ready.length) return;
+function toggleItem(key) {
+  const next = new Set(selected.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  selected.value = next;
+}
 
+function selectAll() {
+  const next = new Set();
+  okItems.value.forEach((item) => {
+    if (item.probe.kind !== "video") {
+      item.probe.items.forEach((entry) =>
+        next.add(`${item.probe.kind}:${entry.bvid || `ep-${entry.ep_id}`}`)
+      );
+    }
+  });
+  selected.value = next;
+}
+
+function selectNone() {
+  selected.value = new Set();
+}
+
+async function startSingle(item) {
+  try {
+    await api.startDownload({
+      bvid: item.probe.bvid,
+      cid: item.probe.cid,
+      title: item.probe.title,
+      owner: item.probe.owner,
+      source: "video",
+      quality: item.quality ?? item.probe.recommended_quality,
+      audio: item.audio ?? "normal",
+      cover: item.probe.cover,
+    });
+    return true;
+  } catch (error) {
+    emit("toast", String(error));
+    return false;
+  }
+}
+
+async function startBatch(batch) {
+  const source = batch.kind;
   let started = 0;
-  for (const item of ready) {
+  for (const entry of batch.items) {
+    const key = `${batch.kind}:${entry.bvid || `ep-${entry.ep_id}`}`;
+    if (!selected.value.has(key)) continue;
     try {
       await api.startDownload({
-        bvid: item.probe.bvid,
-        cid: item.probe.cid,
-        title: item.probe.title,
-        owner: item.probe.owner,
-        quality: item.quality ?? item.probe.recommended_quality,
-        audio: item.audio ?? "normal",
-        cover: item.probe.cover,
+        bvid: entry.bvid,
+        cid: entry.cid,
+        ep_id: entry.ep_id,
+        source,
+        title: entry.title,
+        owner: batch.owner,
+        quality: batchQuality.value,
+        audio: batchAudio.value,
+        cover: "",
       });
       started += 1;
     } catch (error) {
-      emit("toast", String(error));
+      emit("toast", `${entry.title}: ${error}`);
     }
+  }
+  return started;
+}
+
+async function startAll() {
+  let started = 0;
+
+  for (const item of okItems.value) {
+    if (item.probe.kind === "video") {
+      if (await startSingle(item)) started += 1;
+    }
+  }
+  if (batchProbe.value) {
+    started += await startBatch(batchProbe.value);
   }
 
   if (started) {
     emit("toast", `已加入 ${started} 个下载任务`);
     items.value = [];
+    selected.value = new Set();
     text.value = "";
     emit("goto", "transfer");
   }
@@ -165,21 +278,13 @@ async function startAll() {
 
     <section class="card">
       <h1>解析链接</h1>
-      <p class="lead">粘贴一个或多个 Bilibili 来源，解析后再选择要下载的视频与清晰度。</p>
+      <p class="lead">粘贴一个或多个 Bilibili 来源，解析后再选择要下载的内容与清晰度。</p>
 
       <div class="tabs" role="tablist">
-        <button
-          :class="{ active: mode === 'batch' }"
-          role="tab"
-          @click="mode = 'batch'"
-        >
+        <button :class="{ active: mode === 'batch' }" role="tab" @click="mode = 'batch'">
           批量解析
         </button>
-        <button
-          :class="{ active: mode === 'single' }"
-          role="tab"
-          @click="mode = 'single'"
-        >
+        <button :class="{ active: mode === 'single' }" role="tab" @click="mode = 'single'">
           单个视频
         </button>
       </div>
@@ -189,7 +294,7 @@ async function startAll() {
         v-model="text"
         rows="7"
         spellcheck="false"
-        placeholder="https://www.bilibili.com/video/BV1Vkag6TExf&#10;https://space.bilibili.com/..."
+        placeholder="https://www.bilibili.com/video/BV1Vkag6TExf&#10;https://space.bilibili.com/xxx/favlist?fid=xxx&#10;https://space.bilibili.com/xxx/lists/xxx&#10;https://space.bilibili.com/xxx&#10;https://www.bilibili.com/bangumi/play/ssxxx"
         @keydown.ctrl.enter="parse"
         @keydown.meta.enter="parse"
       ></textarea>
@@ -202,7 +307,10 @@ async function startAll() {
         @keydown.enter="parse"
       />
 
-      <p class="hint">每行一个来源；支持 BV 号、av 号、完整链接与 b23.tv 短链。</p>
+      <p class="hint">
+        每行一个来源；支持 BV 号、av 号、完整链接、b23.tv 短链，以及收藏夹 / 合集 / UP
+        空间 / 番剧 / 课程链接。
+      </p>
 
       <div class="actions">
         <button class="ghost" @click="pasteFromClipboard">
@@ -229,25 +337,15 @@ async function startAll() {
         </button>
         <span class="spacer"></span>
         <span class="kbd">Ctrl + Enter</span>
-        <button
-          class="primary"
-          :disabled="parsing || !text.trim()"
-          @click="parse"
-        >
+        <button class="primary" :disabled="parsing || !text.trim()" @click="parse">
           {{ parsing ? `解析中 ${done}/${total}` : "开始解析" }}
         </button>
       </div>
 
       <div class="sources">
         <span class="sources-label">支持来源</span>
-        <span
-          v-for="source in sources"
-          :key="source.label"
-          class="source"
-          :class="{ pending: source.pending }"
-        >
+        <span v-for="source in sources" :key="source.label" class="source">
           {{ source.label }}
-          <em v-if="source.pending">待支持</em>
         </span>
       </div>
     </section>
@@ -255,7 +353,7 @@ async function startAll() {
     <section v-if="items.length" class="card results">
       <header class="results-head">
         <h2>选择内容</h2>
-        <span class="count num">{{ okItems.length }} / {{ items.length }}</span>
+        <span class="count num">{{ batchSelected.length || okItems.length }}</span>
         <span class="spacer"></span>
         <button class="ghost" @click="items = []">清空</button>
         <button class="primary" :disabled="!okItems.length" @click="startAll">
@@ -270,7 +368,7 @@ async function startAll() {
           class="item"
           :class="{ failed: !item.ok }"
         >
-          <template v-if="item.ok">
+          <template v-if="item.ok && item.probe.kind === 'video'">
             <div class="thumb">
               <img v-if="item.probe.cover" :src="item.probe.cover" alt="" />
               <svg v-else class="thumb-placeholder" viewBox="0 0 24 24" aria-hidden="true">
@@ -323,6 +421,78 @@ async function startAll() {
               </select>
             </label>
             <button class="remove" title="移除" @click="items.splice(index, 1)">✕</button>
+          </template>
+
+          <template v-else-if="item.ok">
+            <!-- 批量来源：收藏夹 / 合集 / UP 空间 / 番剧 / 课程 -->
+            <div class="batch">
+              <div class="batch-head">
+                <span class="kind">{{ KIND_LABELS[item.probe.kind] }}</span>
+                <div class="meta">
+                  <p class="title">{{ item.probe.title }}</p>
+                  <p class="sub">
+                    <span v-if="item.probe.owner">{{ item.probe.owner }}</span>
+                    <span class="num">
+                      {{ item.probe.loaded }} 条{{ item.probe.note ? ` · ${item.probe.note}` : "" }}
+                    </span>
+                  </p>
+                  <p v-if="item.probe.note" class="note">{{ item.probe.note }}</p>
+                </div>
+                <label class="field">
+                  <span>清晰度（应用到全部）</span>
+                  <select v-model.number="batchQuality">
+                    <option
+                      v-for="quality in item.probe.qualities"
+                      :key="quality.qn"
+                      :value="quality.qn"
+                      :disabled="!quality.available"
+                    >
+                      {{ quality.label }}{{ quality.hint ? `（${quality.hint}）` : "" }}
+                    </option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>音轨</span>
+                  <select v-model="batchAudio">
+                    <option
+                      v-for="audio in item.probe.audios"
+                      :key="audio.kind"
+                      :value="audio.kind"
+                      :disabled="!audio.available"
+                    >
+                      {{ audio.label }}{{ audio.available ? "" : "（不可用）" }}
+                    </option>
+                  </select>
+                </label>
+                <button class="remove" title="移除" @click="items.splice(index, 1)">✕</button>
+              </div>
+
+              <div class="batch-tools">
+                <button class="mini" @click="selectAll">全选</button>
+                <button class="mini" @click="selectNone">全不选</button>
+                <span class="hint num">
+                  已选 {{ batchSelected.length }} / {{ item.probe.loaded }}
+                </span>
+              </div>
+
+              <ul class="batch-list">
+                <li
+                  v-for="(entry, entryIndex) in item.probe.items"
+                  :key="entry.bvid || entry.ep_id"
+                >
+                  <label class="check">
+                    <input
+                      type="checkbox"
+                      :checked="selected.has(`${item.probe.kind}:${entry.bvid || `ep-${entry.ep_id}`}`)"
+                      @change="toggleItem(`${item.probe.kind}:${entry.bvid || `ep-${entry.ep_id}`}`)"
+                    />
+                    <span class="idx num">{{ entryIndex + 1 }}</span>
+                    <span class="entry-title" :title="entry.title">{{ entry.title }}</span>
+                    <span class="entry-dur num">{{ formatDuration(entry.duration) }}</span>
+                  </label>
+                </li>
+              </ul>
+            </div>
           </template>
 
           <template v-else>
@@ -469,7 +639,7 @@ input:focus {
 }
 
 .ghost:hover {
-  border-color: #ded6da;
+  border-color: var(--accent-line);
   background: var(--raised);
 }
 
@@ -500,19 +670,6 @@ input:focus {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-}
-
-.source.pending {
-  color: var(--faint);
-}
-
-.source em {
-  padding: 0 5px;
-  font-size: 10.5px;
-  font-style: normal;
-  color: var(--faint);
-  background: var(--raised);
-  border-radius: 4px;
 }
 
 /* 解析结果 */
@@ -573,17 +730,17 @@ h2 {
   background: var(--thumb);
 }
 
-.thumb-placeholder {
-  width: 24px;
-  height: 24px;
-  color: var(--faint);
-}
-
 .thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.thumb-placeholder {
+  width: 24px;
+  height: 24px;
+  color: var(--faint);
 }
 
 .meta {
@@ -639,7 +796,7 @@ h2 {
 select {
   min-width: 158px;
   padding: 7px 9px;
-  background: #fff;
+  background: var(--field);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
 }
@@ -674,5 +831,105 @@ option:disabled {
   color: var(--accent-dark);
   background: var(--accent-soft);
   border-radius: var(--radius-sm);
+}
+
+/* 批量来源卡片 */
+.batch {
+  flex: 1;
+  min-width: 0;
+}
+
+.batch-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.kind {
+  flex: none;
+  padding: 2px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  border-radius: 999px;
+}
+
+.batch-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 6px;
+}
+
+.mini {
+  padding: 3px 10px;
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.mini:hover {
+  color: var(--text);
+  border-color: var(--accent-line);
+}
+
+.batch-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.batch-list li + li {
+  border-top: 1px solid var(--line-soft);
+}
+
+.batch-list .check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 11px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.batch-list .check:hover {
+  background: var(--raised);
+}
+
+.batch-list input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  flex: none;
+}
+
+.idx {
+  flex: none;
+  width: 26px;
+  color: var(--faint);
+  font-size: 11.5px;
+  text-align: right;
+}
+
+.entry-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entry-dur {
+  flex: none;
+  color: var(--faint);
+  font-size: 11.5px;
 }
 </style>

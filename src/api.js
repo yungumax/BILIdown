@@ -26,9 +26,9 @@ export async function updateSettings(settings) {
   return invoke("update_settings", { settings });
 }
 
-export async function probeVideo(input) {
+export async function probeSource(input) {
   if (!hasTauri) return mock.probe(input);
-  return invoke("probe_video", { input });
+  return invoke("probe_source", { input });
 }
 
 export async function startDownload(req) {
@@ -241,7 +241,69 @@ const mock = (() => {
     };
   }
 
-  const probe = async (input) => makeProbe("BV1Vkag6TExf", "今日份缇宝", "以尘动画");
+  const probe = async (input) => {
+    const lower = (input || "").toLowerCase();
+    const qualities = [
+      { qn: 116, label: "高清 1080P60", available: true, hint: "" },
+      { qn: 112, label: "高清 1080P+", available: true, hint: "" },
+      { qn: 80, label: "高清 1080P", available: true, hint: "" },
+      { qn: 64, label: "高清 720P", available: true, hint: "" },
+      { qn: 32, label: "清晰 480P", available: true, hint: "" },
+      { qn: 120, label: "超清 4K", available: false, hint: "需大会员" },
+    ];
+    const audios = [
+      { kind: "normal", label: "普通音轨 224 kbps", available: true },
+      { kind: "dolby", label: "杜比全景声", available: false },
+      { kind: "flac", label: "Hi-Res 无损", available: true },
+    ];
+
+    if (lower.includes("favlist")) {
+      return {
+        kind: "fav", title: "默认收藏夹", owner: "术缕", cover: "", note: "收藏夹共 6 条，已加载前 6 条",
+        bvid: "", cid: 0, duration: 0, page_count: 1, total: 6, loaded: 6,
+        qualities, audios, recommended_quality: 80, best_quality: 116,
+        items: Array.from({ length: 6 }, (_, i) => ({
+          bvid: `BV1Vkag6TEx${i}`, cid: 42178774115 + i, ep_id: null,
+          title: `示例视频 ${i + 1}`, duration: 18 + i * 7,
+        })),
+      };
+    }
+    if (lower.includes("space") || lower.includes("lists")) {
+      return {
+        kind: "collection", title: "示例合集", owner: "示例UP主", cover: "", note: "",
+        bvid: "", cid: 0, duration: 0, page_count: 1, total: 12, loaded: 12,
+        qualities, audios, recommended_quality: 80, best_quality: 116,
+        items: Array.from({ length: 12 }, (_, i) => ({
+          bvid: `BV1Colle12ab${i}`, cid: 42178774115 + i, ep_id: null,
+          title: `合集第 ${i + 1} 话`, duration: 120 + i * 30,
+        })),
+      };
+    }
+    if (lower.includes("bangumi")) {
+      return {
+        kind: "bangumi", title: "示例番剧", owner: "", cover: "", note: "",
+        bvid: "", cid: 0, duration: 0, page_count: 1, total: 12, loaded: 12,
+        qualities, audios, recommended_quality: 80, best_quality: 116,
+        items: Array.from({ length: 12 }, (_, i) => ({
+          bvid: `BV1Ep2156ab${i}`, cid: 42178774115 + i, ep_id: 219026 + i,
+          title: `第 ${i + 1}话 示例剧集`, duration: 1420,
+        })),
+      };
+    }
+    if (lower.includes("cheese")) {
+      return {
+        kind: "cheese", title: "示例课程", owner: "", cover: "",
+        note: "付费课程需要已购买并登录才能下载",
+        bvid: "", cid: 0, duration: 0, page_count: 1, total: 8, loaded: 8,
+        qualities, audios, recommended_quality: 80, best_quality: 80,
+        items: Array.from({ length: 8 }, (_, i) => ({
+          bvid: "", cid: 42178774115 + i, ep_id: 90001 + i,
+          title: `第 ${i + 1} 节：示例课时`, duration: 900,
+        })),
+      };
+    }
+    return makeProbe("BV1Vkag6TExf", "今日份缇宝", "以尘动画");
+  };
 
   function emit(task) {
     listeners.forEach((fn) => fn({ ...task }));

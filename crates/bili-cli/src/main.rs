@@ -142,9 +142,25 @@ async fn main() -> Result<()> {
     };
 
     let target = parse_target(&raw_input)?;
+
+    // 批量来源（收藏夹/合集/空间/番剧/课程）在命令行里逐条走完整下载流程
+    match target {
+        Target::FavList(_) | Target::Collection { .. } | Target::Space(_) => {
+            bail!("批量来源请使用桌面端：收藏夹、合集与 UP 空间支持逐条选择清晰度后批量下载")
+        }
+        Target::Bangumi { .. } => {
+            bail!("番剧请使用桌面端下载（支持逐集选择清晰度）")
+        }
+        Target::Cheese(_) => {
+            bail!("课程请使用桌面端下载（支持逐课时选择清晰度）")
+        }
+        _ => {}
+    }
+
     let info: VideoInfo = match &target {
         Target::Bvid(bvid) => client.video_info(bvid).await?,
         Target::Aid(aid) => client.video_info_by_aid(*aid).await?,
+        _ => unreachable!("上面已拦截其余类型"),
     };
 
     println!("标题   : {}", info.title);

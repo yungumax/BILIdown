@@ -41,24 +41,45 @@ pub struct AudioOption {
     pub available: bool,
 }
 
-/// 解析结果，驱动预览卡片。
+/// 批量来源里的一条可下载视频（番剧/课程条目可能没有 bvid，用 ep_id 标识）。
 #[derive(Debug, Clone, Serialize)]
-pub struct ProbeResult {
+pub struct BatchVideo {
     pub bvid: String,
     pub cid: u64,
+    pub ep_id: Option<u64>,
     pub title: String,
-    pub owner: String,
     /// 秒
     pub duration: u64,
-    /// 封面 data URL（已按缩略图尺寸请求），失败时为空串
+}
+
+/// 统一的解析结果：
+/// - kind=video：单视频，bvid/cid/cover/duration 有效，items 为空
+/// - kind=fav/collection/space：普通视频批量
+/// - kind=bangumi/cheese：剧集批量
+#[derive(Debug, Clone, Serialize)]
+pub struct ProbeSource {
+    pub kind: String,
+    pub title: String,
+    pub owner: String,
+    /// 封面 data URL（仅单视频）
     pub cover: String,
-    pub page_count: usize,
-    /// 需要提示给用户的说明，例如分 P 只处理 P1
     pub note: String,
+    /// 单视频：BV 号
+    pub bvid: String,
+    pub cid: u64,
+    /// 单视频时长（秒）
+    pub duration: u64,
+    /// 多 P 视频的分 P 数
+    pub page_count: usize,
+    /// 源内总条数（可能因分页上限被截断）
+    pub total: usize,
+    /// 实际加载条数
+    pub loaded: usize,
     pub qualities: Vec<QualityOption>,
     pub audios: Vec<AudioOption>,
     pub recommended_quality: u32,
     pub best_quality: u32,
+    pub items: Vec<BatchVideo>,
 }
 
 /// 前端发起的下载请求。
@@ -67,6 +88,12 @@ pub struct DownloadRequest {
     pub bvid: String,
     pub cid: u64,
     pub title: String,
+    /// 来源：video（默认）/ bangumi / cheese
+    #[serde(default)]
+    pub source: String,
+    /// 番剧 ep_id / 课程 ep_id
+    #[serde(default)]
+    pub ep_id: Option<u64>,
     /// UP 主名，用于命名模板的 {owner}
     #[serde(default)]
     pub owner: String,
@@ -115,6 +142,8 @@ pub struct TaskUpdate {
     pub audio_total: u64,
     #[serde(skip)]
     pub bvid: String,
+    #[serde(skip)]
+    pub ep_id: Option<u64>,
 }
 
 impl TaskUpdate {
@@ -137,6 +166,7 @@ impl TaskUpdate {
             audio_bytes: 0,
             audio_total: 0,
             bvid: req.bvid.clone(),
+            ep_id: req.ep_id,
         }
     }
 

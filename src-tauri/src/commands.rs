@@ -71,7 +71,10 @@ pub async fn app_status(state: State<'_, AppState>) -> Result<AppStatus, String>
 }
 
 #[tauri::command]
-pub async fn probe_video(state: State<'_, AppState>, input: String) -> Result<ProbeResult, String> {
+pub async fn probe_source(
+    state: State<'_, AppState>,
+    input: String,
+) -> Result<ProbeSource, String> {
     let client = state.client();
     probe_one(&client, &input).await
 }
@@ -115,8 +118,13 @@ async fn collect_settings(state: &AppState) -> AppSettings {
     }
 }
 
-/// 解析一条来源：短链展开 → 识别目标 → 取稿件信息与可用清晰度。
-async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeResult, String> {
+/// 分页拉取上限，避免超大收藏夹一次解析上千条。
+const FAV_MAX_ITEMS: usize = 500;
+const COLLECTION_MAX_ITEMS: usize = 500;
+const SPACE_MAX_ITEMS: usize = 300;
+
+/// 解析一条来源：短链展开 → 识别目标 → 单视频取详情，批量来源逐页拉清单。
+async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, String> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return Err("来源为空".to_string());
@@ -129,22 +137,398 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeResult, Stri
     };
 
     let target = parse_target(&resolved).map_err(describe)?;
-    let info = match target {
-        Target::Bvid(bvid) => client.video_info(&bvid).await,
-        Target::Aid(aid) => client.video_info_by_aid(aid).await,
-    }
-    .map_err(describe)?;
 
-    // 用最高档请求，一次拿到「内容提供哪些清晰度」和「账号实际能拿到哪些」
+    match target {
+        // ---------- 单视频 ----------
+        Target::Bvid(bvid) => probe_video_bvid(client, &bvid).await,
+        Target::Aid(aid) => {
+            let info = client.video_info_by_aid(aid).await.map_err(describe)?;
+            probe_video_bvid(client, &info.bvid).await
+        }
+
+        // ---------- 收藏夹 ----------
+        Target::FavList(fid) => {
+            let mut items: Vec<BatchVideo> = Vec::new();
+            let mut title = String::new();
+            let mut owner = String::new();
+            let mut total = 0usize;
+
+            for page in 1.. {
+                let page_data = client.fav_list(fid, page).await.map_err(describe)?;
+                if title.is_empty() {
+                    title = page_data.info.title.clone();
+                    owner = page_data.info.upper_name.clone();
+                    total = page_data.info.media_count as usize;
+                }
+                if page_data.medias.is_empty() {
+                    break;
+                }
+                for media in &page_data.medias {
+                    items.push(BatchVideo {
+                        bvid: media.bvid.clone(),
+                        cid: media.cid,
+                        ep_id: None,
+                        title: media.title.clone(),
+                        duration: media.duration,
+                    });
+                }
+                if items.len() >= FAV_MAX_ITEMS || items.len() >= total {
+                    break;
+                }
+            }
+
+            if items.is_empty() {
+                return Err("收藏夹为空或不可访问".to_string());
+            }
+
+            let (qualities, audios, recommended_quality, best_quality) =
+                probe_media_options(client, &items[0], "video").await;
+            let loaded = items.len();
+            let note = if total > loaded {
+                format!("收藏夹共 {total} 条，已加载前 {loaded} 条")
+            } else {
+                String::new()
+            };
+
+            Ok(ProbeSource {
+                kind: "fav".to_string(),
+                title,
+                owner,
+                cover: String::new(),
+                note,
+                bvid: String::new(),
+                cid: 0,
+                duration: 0,
+                page_count: 1,
+                total,
+                loaded,
+                qualities,
+                audios,
+                recommended_quality,
+                best_quality,
+                items,
+            })
+        }
+
+        // ---------- 合集 ----------
+        Target::Collection { mid, sid } => {
+            let mut items: Vec<BatchVideo> = Vec::new();
+            let mut title = String::new();
+            let mut owner = String::new();
+            let mut total = 0usize;
+
+            for page in 1.. {
+                let page_data = client
+                    .seasons_archives(mid, sid, page)
+                    .await
+                    .map_err(describe)?;
+                if title.is_empty() {
+                    title = page_data.meta.name.clone();
+                    total = page_data.meta.total as usize;
+                    owner = page_data
+                        .archives
+                        .first()
+                        .map(|a| a.owner.name.clone())
+                        .unwrap_or_default();
+                }
+                if page_data.archives.is_empty() {
+                    break;
+                }
+                for archive in &page_data.archives {
+                    items.push(BatchVideo {
+                        bvid: archive.bvid.clone(),
+                        cid: archive.cid,
+                        ep_id: None,
+                        title: archive.title.clone(),
+                        duration: archive.duration,
+                    });
+                }
+                if items.len() >= COLLECTION_MAX_ITEMS || items.len() >= total {
+                    break;
+                }
+            }
+
+            if items.is_empty() {
+                return Err("合集为空或不可访问".to_string());
+            }
+
+            let (qualities, audios, recommended_quality, best_quality) =
+                probe_media_options(client, &items[0], "video").await;
+            let loaded = items.len();
+            let note = if total > loaded {
+                format!("合集共 {total} 条，已加载前 {loaded} 条")
+            } else {
+                String::new()
+            };
+
+            Ok(ProbeSource {
+                kind: "collection".to_string(),
+                title,
+                owner,
+                cover: String::new(),
+                note,
+                bvid: String::new(),
+                cid: 0,
+                duration: 0,
+                page_count: 1,
+                total,
+                loaded,
+                qualities,
+                audios,
+                recommended_quality,
+                best_quality,
+                items,
+            })
+        }
+
+        // ---------- UP 空间 ----------
+        Target::Space(mid) => {
+            let mut items: Vec<BatchVideo> = Vec::new();
+            let mut owner = String::new();
+            let mut total = 0usize;
+
+            for page in 1.. {
+                let page_data = client.space_archives(mid, page).await.map_err(describe)?;
+                if total == 0 {
+                    total = page_data.page.count as usize;
+                }
+                let Some(list) = page_data.list.as_ref() else {
+                    break;
+                };
+                if list.vlist.is_empty() {
+                    break;
+                }
+                if owner.is_empty() {
+                    owner = list
+                        .vlist
+                        .first()
+                        .map(|v| v.author.clone())
+                        .unwrap_or_default();
+                }
+                for video in &list.vlist {
+                    items.push(BatchVideo {
+                        bvid: video.bvid.clone(),
+                        cid: 0,
+                        ep_id: None,
+                        title: video.title.clone(),
+                        duration: parse_mmss(&video.length),
+                    });
+                }
+                if items.len() >= SPACE_MAX_ITEMS || items.len() >= total {
+                    break;
+                }
+            }
+
+            if items.is_empty() {
+                return Err("该 UP 主没有可访问的投稿，或触发了风控".to_string());
+            }
+
+            let (qualities, audios, recommended_quality, best_quality) =
+                probe_media_options(client, &items[0], "video").await;
+            let loaded = items.len();
+            let note = if total > loaded {
+                format!("共 {total} 条投稿，已加载前 {loaded} 条")
+            } else {
+                String::new()
+            };
+
+            Ok(ProbeSource {
+                kind: "space".to_string(),
+                title: format!("{owner} 的投稿"),
+                owner,
+                cover: String::new(),
+                note,
+                bvid: String::new(),
+                cid: 0,
+                duration: 0,
+                page_count: 1,
+                total,
+                loaded,
+                qualities,
+                audios,
+                recommended_quality,
+                best_quality,
+                items,
+            })
+        }
+
+        // ---------- 番剧 ----------
+        Target::Bangumi { season_id, ep_id } => {
+            let season = client
+                .pgc_season(season_id, ep_id)
+                .await
+                .map_err(describe)?;
+            if season.episodes.is_empty() {
+                return Err("该番剧没有可访问的剧集".to_string());
+            }
+
+            let items: Vec<BatchVideo> = season
+                .episodes
+                .iter()
+                .map(|episode| BatchVideo {
+                    bvid: episode.bvid.clone(),
+                    cid: episode.cid,
+                    ep_id: (episode.id > 0).then_some(episode.id),
+                    title: if episode.long_title.is_empty() {
+                        episode.title.clone()
+                    } else {
+                        format!("{} {}", episode.title, episode.long_title)
+                    },
+                    duration: episode.duration / 1000,
+                })
+                .collect();
+
+            let (qualities, audios, recommended_quality, best_quality) =
+                probe_media_options(client, &items[0], "bangumi").await;
+
+            Ok(ProbeSource {
+                kind: "bangumi".to_string(),
+                title: season.title,
+                owner: String::new(),
+                cover: String::new(),
+                note: String::new(),
+                bvid: String::new(),
+                cid: 0,
+                duration: 0,
+                page_count: 1,
+                total: items.len(),
+                loaded: items.len(),
+                qualities,
+                audios,
+                recommended_quality,
+                best_quality,
+                items,
+            })
+        }
+
+        // ---------- 课程 ----------
+        Target::Cheese(season_id) => {
+            let season = client.cheese_season(season_id).await.map_err(describe)?;
+            // 课程 episodes 自带 cid 与秒级时长
+            let episodes: Vec<_> = season.episodes.iter().collect();
+            if episodes.is_empty() {
+                return Err("该课程没有可访问的课时".to_string());
+            }
+            let items: Vec<BatchVideo> = episodes
+                .iter()
+                .map(|episode| BatchVideo {
+                    bvid: String::new(),
+                    cid: episode.cid,
+                    ep_id: (episode.id > 0).then_some(episode.id),
+                    title: episode.title.clone(),
+                    duration: episode.duration,
+                })
+                .collect();
+
+            let (qualities, audios, recommended_quality, best_quality) =
+                probe_media_options(client, &items[0], "cheese").await;
+
+            Ok(ProbeSource {
+                kind: "cheese".to_string(),
+                title: season.title,
+                owner: String::new(),
+                cover: String::new(),
+                note: "付费课程需要已购买并登录才能下载".to_string(),
+                bvid: String::new(),
+                cid: 0,
+                duration: 0,
+                page_count: 1,
+                total: items.len(),
+                loaded: items.len(),
+                qualities,
+                audios,
+                recommended_quality,
+                best_quality,
+                items,
+            })
+        }
+    }
+}
+
+/// 单视频解析：稿件信息 + playurl 可用档位，包装成统一的 ProbeSource。
+async fn probe_video_bvid(client: &BiliClient, bvid: &str) -> Result<ProbeSource, String> {
+    let info = client.video_info(bvid).await.map_err(describe)?;
+
     let play = client
         .playurl(&info.bvid, info.cid, 127)
         .await
         .map_err(describe)?;
-    let dash = play
-        .dash
-        .as_ref()
-        .ok_or_else(|| "该内容未返回 DASH 流（番剧/课程等暂不支持）".to_string())?;
+    let (qualities, audios, recommended_quality, best_quality) = media_options(&play);
 
+    let note = if info.pages.len() > 1 {
+        format!(
+            "该视频有 {} 个分 P，当前版本只下载 P1（{}）",
+            info.pages.len(),
+            info.pages.first().map(|p| p.part.as_str()).unwrap_or("")
+        )
+    } else {
+        String::new()
+    };
+
+    Ok(ProbeSource {
+        kind: "video".to_string(),
+        title: info.title.clone(),
+        owner: info.owner.name.clone(),
+        cover: cover_data_url(client, &info.pic).await,
+        note,
+        bvid: info.bvid.clone(),
+        cid: info.cid,
+        duration: info.duration,
+        page_count: info.pages.len(),
+        total: 1,
+        loaded: 1,
+        qualities,
+        audios,
+        recommended_quality,
+        best_quality,
+        items: Vec::new(),
+    })
+}
+
+/// 批量来源的清晰度/音轨探测：用第一条内容按对应来源取 playurl。
+async fn probe_media_options(
+    client: &BiliClient,
+    sample: &BatchVideo,
+    source: &str,
+) -> (Vec<QualityOption>, Vec<AudioOption>, u32, u32) {
+    let play = match source {
+        "bangumi" => {
+            client
+                .pgc_playurl(&sample.bvid, sample.cid, sample.ep_id, 127)
+                .await
+        }
+        "cheese" => match sample.ep_id {
+            Some(ep_id) => client.cheese_playurl(ep_id, sample.cid, 127).await,
+            None => Err(BiliError::Unavailable("缺少课程 ep_id".into())),
+        },
+        // 普通视频；空间投稿没有 cid，先按 bvid 补查
+        _ => {
+            let cid = if sample.cid > 0 {
+                sample.cid
+            } else {
+                client
+                    .video_info(&sample.bvid)
+                    .await
+                    .map(|info| info.cid)
+                    .unwrap_or(0)
+            };
+            client.playurl(&sample.bvid, cid, 127).await
+        }
+    };
+
+    match play {
+        Ok(play) => media_options(&play),
+        Err(_) => fallback_media_options(),
+    }
+}
+
+/// 从 playurl 提炼可选清晰度与音轨。
+fn media_options(
+    play: &bili_core::api::PlayUrlData,
+) -> (Vec<QualityOption>, Vec<AudioOption>, u32, u32) {
+    let Some(dash) = play.dash.as_ref() else {
+        return fallback_media_options();
+    };
     let obtainable: Vec<u32> = dash.video.iter().map(|s| s.id).collect();
     let mut qualities: Vec<QualityOption> = play
         .accept_quality
@@ -168,7 +552,6 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeResult, Stri
             })
             .collect();
     }
-    // 从高到低排列，界面下拉里高分档在前
     qualities.sort_by_key(|q| std::cmp::Reverse(q.qn));
 
     let best_quality = obtainable.iter().copied().max().unwrap_or(0);
@@ -203,30 +586,52 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeResult, Stri
         },
     ];
 
-    let note = if info.pages.len() > 1 {
-        format!(
-            "该视频有 {} 个分 P，当前版本只下载 P1（{}）",
-            info.pages.len(),
-            info.pages.first().map(|p| p.part.as_str()).unwrap_or("")
-        )
-    } else {
-        String::new()
-    };
+    (qualities, audios, recommended_quality, best_quality)
+}
 
-    Ok(ProbeResult {
-        bvid: info.bvid.clone(),
-        cid: info.cid,
-        title: info.title.clone(),
-        owner: info.owner.name.clone(),
-        duration: info.duration,
-        cover: cover_data_url(client, &info.pic).await,
-        page_count: info.pages.len(),
-        note,
-        qualities,
-        audios,
-        recommended_quality,
-        best_quality,
-    })
+/// playurl 探测失败时给一个保守的默认档位表。
+fn fallback_media_options() -> (Vec<QualityOption>, Vec<AudioOption>, u32, u32) {
+    let qualities = vec![
+        QualityOption {
+            qn: 80,
+            label: "高清 1080P".to_string(),
+            available: false,
+            hint: "需登录".to_string(),
+        },
+        QualityOption {
+            qn: 64,
+            label: "高清 720P".to_string(),
+            available: false,
+            hint: "需登录".to_string(),
+        },
+        QualityOption {
+            qn: 32,
+            label: "清晰 480P".to_string(),
+            available: true,
+            hint: String::new(),
+        },
+        QualityOption {
+            qn: 16,
+            label: "流畅 360P".to_string(),
+            available: true,
+            hint: String::new(),
+        },
+    ];
+    let audios = vec![AudioOption {
+        kind: "normal".to_string(),
+        label: "普通音轨".to_string(),
+        available: true,
+    }];
+    (qualities, audios, 32, 32)
+}
+
+/// UP 空间的 "mm:ss" 时长转秒。
+fn parse_mmss(length: &str) -> u64 {
+    let mut seconds = 0u64;
+    for part in length.split(':') {
+        seconds = seconds * 60 + part.trim().parse::<u64>().unwrap_or(0);
+    }
+    seconds
 }
 
 fn quality_hint(qn: u32, available: bool) -> String {
@@ -354,7 +759,28 @@ async fn run_download(
         t.message = "获取播放地址".to_string();
     });
 
-    let play = client.playurl(&req.bvid, req.cid, req.quality).await?;
+    let play = match req.source.as_str() {
+        "bangumi" => {
+            client
+                .pgc_playurl(&req.bvid, req.cid, req.ep_id, req.quality)
+                .await?
+        }
+        "cheese" => {
+            let ep_id = req
+                .ep_id
+                .ok_or_else(|| BiliError::Unavailable("缺少课程 ep_id".to_string()))?;
+            client.cheese_playurl(ep_id, req.cid, req.quality).await?
+        }
+        // 普通视频；空间投稿没有 cid，先按 bvid 补查
+        _ => {
+            let cid = if req.cid > 0 {
+                req.cid
+            } else {
+                client.video_info(&req.bvid).await?.cid
+            };
+            client.playurl(&req.bvid, cid, req.quality).await?
+        }
+    };
     let kind = AudioKind::parse(&req.audio).unwrap_or(AudioKind::Normal);
     let video = play
         .pick_video(req.quality, &settings.codec_pref)
@@ -415,7 +841,12 @@ async fn run_download(
         }
     };
 
-    let work_dir = output_dir.join(".bilitmp").join(&req.bvid);
+    let work_key = if req.bvid.is_empty() {
+        format!("ep-{}", req.ep_id.unwrap_or(0))
+    } else {
+        req.bvid.clone()
+    };
+    let work_dir = output_dir.join(".bilitmp").join(work_key);
     tokio::fs::create_dir_all(&work_dir).await?;
     let video_path = work_dir.join("video.m4s");
     let audio_path = work_dir.join("audio.m4s");
@@ -599,18 +1030,15 @@ pub fn cancel_download(
     state: State<'_, AppState>,
     task_id: String,
 ) -> Result<(), String> {
-    let (snapshot, bvid, abort) = {
+    let (snapshot, bvid, ep_id, abort) = {
         let tasks = state.tasks.lock().unwrap_or_else(|e| e.into_inner());
         let Some(entry) = tasks.get(&task_id) else {
             return Err("任务不存在".to_string());
         };
-        let bvid = entry
-            .snapshot
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .bvid
-            .clone();
-        (entry.snapshot.clone(), bvid, entry.abort.clone())
+        let snapshot = entry.snapshot.lock().unwrap_or_else(|e| e.into_inner());
+        let bvid = snapshot.bvid.clone();
+        let ep_id = snapshot.ep_id;
+        (entry.snapshot.clone(), bvid, ep_id, entry.abort.clone())
     };
 
     // 先落状态再中止：任务被 abort 后不会再有后续写入，取消态会保留下来
@@ -624,8 +1052,13 @@ pub fn cancel_download(
         handle.abort();
     }
 
-    // 中止后清理它的临时分轨文件
-    std::fs::remove_dir_all(state.output_dir().join(".bilitmp").join(&bvid)).ok();
+    // 中止后清理它的临时分轨文件（key 与 run_download 保持一致）
+    let work_key = if bvid.is_empty() {
+        format!("ep-{}", ep_id.unwrap_or(0))
+    } else {
+        bvid
+    };
+    std::fs::remove_dir_all(state.output_dir().join(".bilitmp").join(work_key)).ok();
     Ok(())
 }
 
@@ -902,4 +1335,93 @@ fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     left.resize(len, 0);
     right.resize(len, 0);
     left.cmp(&right)
+}
+
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+
+    fn client() -> BiliClient {
+        let client = BiliClient::new().expect("客户端");
+        if let Some(cookies) =
+            bili_core::login::Cookies::load(&bili_core::login::default_cookie_path()).expect("凭据")
+        {
+            client.set_cookies(&cookies).expect("装载");
+        }
+        client
+    }
+
+    /// 实测收藏夹解析。cargo test -p bilidown -- --ignored --nocapture live_probe_fav
+    #[tokio::test]
+    #[ignore = "需要网络与登录态"]
+    async fn live_probe_fav() {
+        let client = client();
+        let probe = probe_one(
+            &client,
+            "https://space.bilibili.com/1858731/favlist?fid=52568231",
+        )
+        .await
+        .expect("解析成功");
+        assert_eq!(probe.kind, "fav");
+        assert!(probe.loaded > 0, "应加载到视频");
+        println!(
+            "fav: {} loaded={} total={} 首条={:?}",
+            probe.title, probe.loaded, probe.total, probe.items[0].title
+        );
+    }
+
+    /// 实测 UP 空间解析。
+    #[tokio::test]
+    #[ignore = "需要网络与登录态"]
+    async fn live_probe_space() {
+        let client = client();
+        let probe = probe_one(&client, "https://space.bilibili.com/1858731")
+            .await
+            .expect("解析成功");
+        assert_eq!(probe.kind, "space");
+        assert!(probe.loaded > 0);
+        println!(
+            "space: {} loaded={} 首条={:?}",
+            probe.title, probe.loaded, probe.items[0].title
+        );
+    }
+
+    /// 实测番剧解析（鲁邦三世 第六季）。
+    #[tokio::test]
+    #[ignore = "需要网络"]
+    async fn live_probe_bangumi() {
+        let client = client();
+        let probe = probe_one(&client, "https://www.bilibili.com/bangumi/play/ss39468")
+            .await
+            .expect("解析成功");
+        assert_eq!(probe.kind, "bangumi");
+        assert!(probe.loaded > 0);
+        println!(
+            "bangumi: {} loaded={} 清晰度 {:?} 首条={:?}",
+            probe.title,
+            probe.loaded,
+            probe
+                .qualities
+                .iter()
+                .map(|q| (q.qn, q.available))
+                .collect::<Vec<_>>(),
+            probe.items[0].title
+        );
+    }
+
+    /// 实测课程解析（公开测试课程 season_id=1）。
+    #[tokio::test]
+    #[ignore = "需要网络"]
+    async fn live_probe_cheese() {
+        let client = client();
+        let probe = probe_one(&client, "https://www.bilibili.com/cheese/play/ss1")
+            .await
+            .expect("解析成功");
+        assert_eq!(probe.kind, "cheese");
+        assert!(probe.loaded > 0);
+        println!(
+            "cheese: {} loaded={} 首条={:?}",
+            probe.title, probe.loaded, probe.items[0].title
+        );
+    }
 }

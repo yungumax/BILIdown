@@ -196,6 +196,48 @@ impl BiliClient {
         self.fetch_json_inner(url, true).await
     }
 
+    /// pgc（番剧）系接口的信封不同：载荷在 `result` 字段而非 `data`。
+    pub async fn fetch_pgc_json<T: DeserializeOwned>(&self, url: &str) -> Result<T> {
+        let resp = self.http.get(url).send().await?;
+        let status = resp.status();
+        let text = resp.text().await?;
+
+        if !status.is_success() {
+            return Err(BiliError::Unavailable(format!(
+                "HTTP {status}: {}",
+                truncate(&text, 200)
+            )));
+        }
+
+        let value: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| BiliError::Decode(format!("{e}；响应片段: {}", truncate(&text, 300))))?;
+
+        let code = value.get("code").and_then(|v| v.as_i64()).unwrap_or(-1);
+        if code != 0 {
+            let message = value
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            return Err(BiliError::Api {
+                code: code as i32,
+                message: format!(
+                    "{} ；请求 {}",
+                    explain_code(code as i32, &message),
+                    truncate(url, 160)
+                ),
+            });
+        }
+
+        serde_json::from_value::<T>(
+            value
+                .get("result")
+                .cloned()
+                .ok_or_else(|| BiliError::Decode("接口返回 code=0 但缺少 result 字段".into()))?,
+        )
+        .map_err(|e| BiliError::Decode(format!("{e}")))
+    }
+
     async fn fetch_json_inner<T: DeserializeOwned>(&self, url: &str, lenient: bool) -> Result<T> {
         let resp = self.http.get(url).send().await?;
         let status = resp.status();

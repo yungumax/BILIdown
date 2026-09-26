@@ -1,12 +1,20 @@
 //! B 站业务接口与数据结构。
 
 use crate::client::BiliClient;
-use crate::error::Result;
+use crate::error::{BiliError, Result};
 use serde::{Deserialize, Deserializer};
 
 const API_NAV: &str = "https://api.bilibili.com/x/web-interface/nav";
 const API_VIEW: &str = "https://api.bilibili.com/x/web-interface/view";
 const API_PLAYURL: &str = "https://api.bilibili.com/x/player/wbi/playurl";
+const API_FAV_LIST: &str = "https://api.bilibili.com/x/v3/fav/resource/list";
+const API_SEASONS_ARCHIVES: &str =
+    "https://api.bilibili.com/x/polymer/web-space/seasons_archives_list";
+const API_SPACE_ARC: &str = "https://api.bilibili.com/x/space/wbi/arc/search";
+const API_PGC_SEASON: &str = "https://api.bilibili.com/pgc/view/web/season";
+const API_PGC_PLAYURL: &str = "https://api.bilibili.com/pgc/player/web/playurl";
+const API_PUGV_SEASON: &str = "https://api.bilibili.com/pugv/view/web/season";
+const API_PUGV_PLAYURL: &str = "https://api.bilibili.com/pugv/player/web/playurl";
 
 // 该接口在不同登录状态/不同版本下，字段类型会变（缺失、null、字符串、对象都出现过），
 // 下面两个适配器把「缺失或 null」统一收敛成安全默认值，避免整份响应解析失败。
@@ -18,6 +26,14 @@ where
     T: Deserialize<'de>,
 {
     Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+/// 缺失或 null 一律读成 0。
+pub(crate) fn u64_or_null<'de, D>(deserializer: D) -> std::result::Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<u64>::deserialize(deserializer)?.unwrap_or(0))
 }
 
 /// 缺失或 null 一律读成空字符串。
@@ -288,6 +304,158 @@ pub struct Durl {
     pub size: u64,
 }
 
+// ---------- 批量来源的数据结构 ----------
+
+/// 收藏夹分页。`medias` 自带 cid，下载时无需再查稿件信息。
+#[derive(Debug, Clone, Deserialize)]
+pub struct FavPage {
+    #[serde(default)]
+    pub info: FavInfo,
+    #[serde(default, deserialize_with = "vec_or_null")]
+    pub medias: Vec<FavMedia>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct FavInfo {
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub title: String,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub upper_name: String,
+    #[serde(default)]
+    pub media_count: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FavMedia {
+    pub bvid: String,
+    /// 实测部分条目的 cid 为 null，容错为 0（下载时按 bvid 补查）
+    #[serde(default, deserialize_with = "u64_or_null")]
+    pub cid: u64,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub title: String,
+    /// 秒
+    #[serde(default)]
+    pub duration: u64,
+    #[serde(default)]
+    pub upper: FavUpper,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct FavUpper {
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub name: String,
+}
+
+/// 合集分页。
+#[derive(Debug, Clone, Deserialize)]
+pub struct SeasonArchivesPage {
+    #[serde(default)]
+    pub meta: SeasonMeta,
+    #[serde(default, rename = "archives", deserialize_with = "vec_or_null")]
+    pub archives: Vec<SeasonArchive>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SeasonMeta {
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub name: String,
+    #[serde(default)]
+    pub total: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SeasonArchive {
+    pub bvid: String,
+    #[serde(default)]
+    pub cid: u64,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub title: String,
+    /// 秒
+    #[serde(default)]
+    pub duration: u64,
+    #[serde(default)]
+    pub owner: Owner,
+}
+
+/// UP 空间投稿分页。`vlist` 不含 cid，下载时按 bvid 补查。
+#[derive(Debug, Clone, Deserialize)]
+pub struct SpaceArcPage {
+    #[serde(default)]
+    pub page: SpacePageInfo,
+    #[serde(default, rename = "list")]
+    pub list: Option<SpaceArcList>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SpacePageInfo {
+    #[serde(default)]
+    pub count: u32,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SpaceArcList {
+    #[serde(default, rename = "vlist", deserialize_with = "vec_or_null")]
+    pub vlist: Vec<SpaceVideo>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SpaceVideo {
+    pub bvid: String,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub title: String,
+    /// "mm:ss" 文本
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub length: String,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub author: String,
+}
+
+/// 番剧剧集信息。episodes 的 duration 为毫秒。
+#[derive(Debug, Clone, Deserialize)]
+pub struct PgcSeason {
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub title: String,
+    #[serde(default, deserialize_with = "vec_or_null")]
+    pub episodes: Vec<PgcEpisode>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PgcEpisode {
+    pub bvid: String,
+    #[serde(default)]
+    pub cid: u64,
+    #[serde(default)]
+    pub id: u64,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub long_title: String,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub title: String,
+    #[serde(default)]
+    pub duration: u64,
+}
+
+/// 课程信息。
+#[derive(Debug, Clone, Deserialize)]
+pub struct PugvSeason {
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub title: String,
+    #[serde(default, deserialize_with = "vec_or_null")]
+    pub episodes: Vec<PugvEpisode>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PugvEpisode {
+    #[serde(default)]
+    pub id: u64,
+    #[serde(default)]
+    pub cid: u64,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub title: String,
+    /// 秒（与番剧的毫秒不同）
+    #[serde(default)]
+    pub duration: u64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AudioKind {
     Normal,
@@ -373,6 +541,113 @@ impl BiliClient {
         )
         .await
     }
+
+    // ---------- 批量来源：收藏夹 / 合集 / UP 空间 ----------
+
+    /// 收藏夹内容（一页 20 条）。`media_id` 即链接里的 fid。
+    pub async fn fav_list(&self, media_id: u64, page: u32) -> Result<FavPage> {
+        let url = format!(
+            "{API_FAV_LIST}?media_id={media_id}&pn={page}&ps=20&order=mtime&type=2&tid=0&platform=web"
+        );
+        self.fetch_json(&url).await
+    }
+
+    /// UP 主合集内容（一页最多 100 条）。
+    pub async fn seasons_archives(
+        &self,
+        mid: u64,
+        season_id: u64,
+        page: u32,
+    ) -> Result<SeasonArchivesPage> {
+        let url = format!(
+            "{API_SEASONS_ARCHIVES}?mid={mid}&season_id={season_id}&page_num={page}&page_size=100"
+        );
+        self.fetch_json(&url).await
+    }
+
+    /// UP 主投稿列表（一页 30 条，需 wbi 签名）。
+    pub async fn space_archives(&self, mid: u64, page: u32) -> Result<SpaceArcPage> {
+        let url = self
+            .signed_url(
+                API_SPACE_ARC,
+                vec![
+                    ("mid", mid.to_string()),
+                    ("pn", page.to_string()),
+                    ("ps", "30".to_string()),
+                    ("order", "pubdate".to_string()),
+                    ("platform", "web".to_string()),
+                ],
+            )
+            .await?;
+        self.fetch_json(&url).await
+    }
+
+    // ---------- 番剧 ----------
+
+    /// 番剧剧集信息：按 season_id 或 ep_id 查询均可。
+    pub async fn pgc_season(
+        &self,
+        season_id: Option<u64>,
+        ep_id: Option<u64>,
+    ) -> Result<PgcSeason> {
+        let query = match (season_id, ep_id) {
+            (Some(id), _) => format!("season_id={id}"),
+            (None, Some(ep)) => format!("ep_id={ep}"),
+            (None, None) => return Err(BiliError::InvalidInput("缺少番剧 id".into())),
+        };
+        self.fetch_pgc_json(&format!("{API_PGC_SEASON}?{query}"))
+            .await
+    }
+
+    /// 番剧播放地址（免费内容可直接取，付费内容需有效登录态）。
+    pub async fn pgc_playurl(
+        &self,
+        bvid: &str,
+        cid: u64,
+        ep_id: Option<u64>,
+        qn: u32,
+    ) -> Result<PlayUrlData> {
+        let mut params = vec![
+            ("cid", cid.to_string()),
+            ("qn", qn.to_string()),
+            ("fnval", "4048".to_string()),
+            ("fourk", "1".to_string()),
+            ("platform", "pc".to_string()),
+        ];
+        if let Some(ep) = ep_id {
+            params.push(("ep_id", ep.to_string()));
+        }
+        if !bvid.is_empty() {
+            params.push(("bvid", bvid.to_string()));
+        }
+        let url = format!("{API_PGC_PLAYURL}?{}", encode_query(&params));
+        self.fetch_pgc_json(&url).await
+    }
+
+    // ---------- 课程 ----------
+
+    /// 课程信息（含每集时长等元数据）。
+    pub async fn cheese_season(&self, season_id: u64) -> Result<PugvSeason> {
+        self.fetch_json(&format!("{API_PUGV_SEASON}?season_id={season_id}"))
+            .await
+    }
+
+    /// 课程播放地址。
+    pub async fn cheese_playurl(&self, ep_id: u64, cid: u64, qn: u32) -> Result<PlayUrlData> {
+        let url = format!(
+            "{API_PUGV_PLAYURL}?ep_id={ep_id}&cid={cid}&qn={qn}&fnval=4048&fourk=1&platform=pc"
+        );
+        self.fetch_json(&url).await
+    }
+}
+
+/// 简单查询串编码（本组接口的参数都是数字/固定枚举，无需完整百分号编码）。
+fn encode_query(params: &[(&str, String)]) -> String {
+    params
+        .iter()
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect::<Vec<_>>()
+        .join("&")
 }
 
 #[cfg(test)]
