@@ -1,0 +1,21 @@
+# Node / 前端
+node_modules/
+dist/
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/binaries/
+src-tauri/gen/
+
+# ffmpeg 大文件不入库（由脚本/CI 下载放置）
+*.exe
+
+# 本地工具状态
+.video_agent/
+
+# 系统与编辑器
+Thumbs.db
+.DS_Store
+*.local
+.idea/
+.vscode/
