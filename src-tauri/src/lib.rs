@@ -29,6 +29,12 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
+        // 兜底：页面加载完成即显示窗口（正常路径是前端挂载后主动调用）
+        .on_page_load(|window, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                let _ = window.show();
+            }
+        })
         .setup(move |app| {
             // 初始化脚本在页面任何脚本执行前运行：跟随系统时直接写 "system"，
             // 由 CSS 的 prefers-color-scheme media query 在首帧完成配色。
