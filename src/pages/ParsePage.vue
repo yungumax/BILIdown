@@ -248,6 +248,9 @@ const activeSource = computed(() => {
   return list.find((item) => item.input === batchInput.value) || list[0] || null;
 });
 
+/** 选择页要占满高度：顶部工具条与底部统计固定，只有表体滚动 */
+const isSelectView = computed(() => view.value === "select" && !!activeSource.value);
+
 /** 当前来源是批量清单（单视频没有表格与页码） */
 const activeIsBatch = computed(() => !!activeSource.value && activeSource.value.probe.kind !== "video");
 
@@ -441,7 +444,7 @@ async function startSingle(item) {
 </script>
 
 <template>
-  <div>
+  <div :class="{ 'fill-height': isSelectView }">
     <StepHeader :steps="steps" />
 
     <!-- 选择内容：解析后的独立一页 -->
@@ -588,7 +591,6 @@ async function startSingle(item) {
         <template v-if="activeIsBatch">
           <span class="num faint">已选 {{ selectedCount }} 项，共 {{ loadedCount }} 项</span>
           <button class="mini" @click="toggleAllLoaded(true)">全选已加载</button>
-          <button class="mini" @click="selectNone">全不选</button>
         </template>
       </footer>
     </section>
@@ -932,6 +934,25 @@ input:focus {
   flex: none;
   width: 132px;
   height: 84px;
+}
+
+/* 选择页占满可用高度：顶部工具条与底部统计不随滚动移动 */
+.fill-height {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.fill-height .select-page {
+  flex: 1;
+  min-height: 0;
+}
+
+.fill-height .video-detail {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* 选择内容页：解析结果独立成一页，表格 + 分批加载 */

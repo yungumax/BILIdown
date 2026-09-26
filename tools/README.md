@@ -142,3 +142,9 @@ cargo test -p bilidown -- --ignored --nocapture live_incremental_loading
 切到收藏夹时换成表格，切回来又变详情。
 
 `test-select-page.mjs` 覆盖批量来源那条路径（表格、分批加载、勾选、下载所选）。
+
+## 「选择内容」页的滚动行为
+
+`test-scroll.mjs` 断言：外层内容区不可滚（scrollHeight == clientHeight）、表体可滚、
+滚表体后顶部工具条与底部统计的位置不变。曾经的问题是整页在滚——工具条和底部
+统计会跟着走，现在只有中间的表体滚。
