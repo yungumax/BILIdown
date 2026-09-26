@@ -16,8 +16,13 @@ export async function appStatus() {
   return invoke("app_status");
 }
 
+export async function appSettings() {
+  if (!hasTauri) return mock.settings();
+  return invoke("app_settings");
+}
+
 export async function probeVideo(input) {
-  if (!hasTauri) return mock.probe();
+  if (!hasTauri) return mock.probe(input);
   return invoke("probe_video", { input });
 }
 
@@ -42,7 +47,7 @@ export async function loginPoll(qrcodeKey) {
 }
 
 export async function logout() {
-  if (!hasTauri) return { logged_in: false, uname: "", mid: 0, vip: false, vip_label: "" };
+  if (!hasTauri) return emptyLogin();
   return invoke("logout");
 }
 
@@ -66,6 +71,47 @@ export async function onTaskUpdate(handler) {
   return listen(TASK_EVENT, (event) => handler(event.payload));
 }
 
+export async function readClipboard() {
+  if (!hasTauri) return "";
+  try {
+    return await navigator.clipboard.readText();
+  } catch {
+    return "";
+  }
+}
+
+// ---- 窗口控制（自定义标题栏用）----
+
+async function windowApi() {
+  if (!hasTauri) return null;
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  return getCurrentWindow();
+}
+
+export async function minimizeWindow() {
+  const win = await windowApi();
+  await win?.minimize();
+}
+
+export async function toggleMaximizeWindow() {
+  const win = await windowApi();
+  await win?.toggleMaximize();
+}
+
+export async function closeWindow() {
+  const win = await windowApi();
+  await win?.close();
+}
+
+export async function startWindowDrag() {
+  const win = await windowApi();
+  await win?.startDragging();
+}
+
+function emptyLogin() {
+  return { logged_in: false, uname: "", mid: 0, vip: false, vip_label: "" };
+}
+
 // 仅浏览器预览用的假数据
 const mock = (() => {
   const listeners = new Set();
@@ -78,61 +124,69 @@ const mock = (() => {
     cookies_path: "D:\\Zcode\\_data\\bilidown\\cookies.json",
   });
 
-  const probe = () => ({
-    bvid: "BV1Vkag6TExf",
-    cid: 42178774115,
-    title: "今日份缇宝",
-    owner: "以尘动画",
-    duration: 18,
-    cover: "",
-    page_count: 1,
-    note: "",
-    recommended_quality: 80,
-    best_quality: 116,
-    qualities: [
-      { qn: 116, label: "高清 1080P60", available: true, hint: "" },
-      { qn: 112, label: "高清 1080P+", available: true, hint: "" },
-      { qn: 80, label: "高清 1080P", available: true, hint: "" },
-      { qn: 64, label: "高清 720P", available: true, hint: "" },
-      { qn: 32, label: "清晰 480P", available: true, hint: "" },
-      { qn: 120, label: "超清 4K", available: false, hint: "需大会员" },
-    ],
-    audios: [
-      { kind: "normal", label: "普通音轨 224 kbps", available: true },
-      { kind: "dolby", label: "杜比全景声", available: false },
-      { kind: "flac", label: "Hi-Res 无损", available: true },
-    ],
+  const settings = () => ({
+    output_dir: "D:\\Zcode\\_data\\bilidown\\downloads",
+    cookies_path: "D:\\Zcode\\_data\\bilidown\\cookies.json",
+    cookies_saved: true,
+    ffmpeg_ok: true,
+    ffmpeg_info: "ffmpeg version 6.1.1-essentials_build-www.gyan.dev",
+    version: "0.1.0",
   });
+
+  function makeProbe(bvid, title, owner) {
+    return {
+      bvid,
+      cid: 42178774115,
+      title,
+      owner,
+      duration: 18,
+      cover: "",
+      page_count: 1,
+      note: "",
+      recommended_quality: 80,
+      best_quality: 116,
+      qualities: [
+        { qn: 116, label: "高清 1080P60", available: true, hint: "" },
+        { qn: 112, label: "高清 1080P+", available: true, hint: "" },
+        { qn: 80, label: "高清 1080P", available: true, hint: "" },
+        { qn: 64, label: "高清 720P", available: true, hint: "" },
+        { qn: 32, label: "清晰 480P", available: true, hint: "" },
+        { qn: 120, label: "超清 4K", available: false, hint: "需大会员" },
+      ],
+      audios: [
+        { kind: "normal", label: "普通音轨 224 kbps", available: true },
+        { kind: "dolby", label: "杜比全景声", available: false },
+        { kind: "flac", label: "Hi-Res 无损", available: true },
+      ],
+    };
+  }
+
+  const probe = async (input) => makeProbe("BV1Vkag6TExf", "今日份缇宝", "以尘动画");
 
   function emit(task) {
     listeners.forEach((fn) => fn({ ...task }));
-  }
-
-  function baseTask(id, title, quality) {
-    return {
-      id,
-      title,
-      quality_label: quality,
-      status: "queued",
-      video_pct: 0,
-      audio_pct: 0,
-      downloaded: 0,
-      total: 0,
-      speed_bps: 0,
-      output_path: "",
-      message: "排队中",
-      cover: "",
-    };
   }
 
   let counter = 0;
 
   const start = async (req) => {
     const id = `mock-${++counter}`;
-    const task = baseTask(id, req.title, "1080P60 AVC");
+    const task = {
+      id,
+      title: req.title,
+      quality_label: "1080P60 AVC",
+      status: "queued",
+      video_pct: 0,
+      audio_pct: 0,
+      downloaded: 0,
+      total: 17.2 * 1024 * 1024,
+      speed_bps: 0,
+      output_path: "",
+      message: "排队中",
+      cover: "",
+    };
     const videoTotal = 16.7 * 1024 * 1024;
     const audioTotal = 0.5 * 1024 * 1024;
-    task.total = videoTotal + audioTotal;
     emit(task);
 
     const state = { video: 0, audio: 0, phase: 0 };
@@ -193,8 +247,8 @@ const mock = (() => {
   let polls = 0;
   const poll = async () => {
     polls += 1;
-    if (polls < 3) return { state: "pending", login: {} };
-    if (polls === 3) return { state: "scanned", login: {} };
+    if (polls < 3) return { state: "pending", login: emptyLogin() };
+    if (polls === 3) return { state: "scanned", login: emptyLogin() };
     return { state: "confirmed", login: status().login };
   };
 
@@ -203,5 +257,5 @@ const mock = (() => {
     return () => listeners.delete(handler);
   };
 
-  return { status, probe, start, cancel, qrcode, poll, onUpdate };
+  return { status, settings, probe, start, cancel, qrcode, poll, onUpdate };
 })();

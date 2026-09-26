@@ -71,14 +71,48 @@ pub async fn app_status(state: State<'_, AppState>) -> Result<AppStatus, String>
 #[tauri::command]
 pub async fn probe_video(state: State<'_, AppState>, input: String) -> Result<ProbeResult, String> {
     let client = state.client();
+    probe_one(&client, &input).await
+}
 
-    let input = if is_short_link(&input) {
-        client.resolve_redirect(&input).await.map_err(describe)?
-    } else {
-        input
+/// 设置页需要的运行环境信息。
+#[tauri::command]
+pub async fn app_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
+    let cookies_path = state.cookies_path();
+    let (ffmpeg_ok, ffmpeg_info) = match ffmpeg::find_ffmpeg(None) {
+        Some(path) => match ffmpeg::probe_version(&path).await {
+            Ok(version) => (true, version),
+            Err(e) => (false, e.to_string()),
+        },
+        None => (
+            false,
+            "未找到 ffmpeg：请安装到 PATH，或放到程序目录下".to_string(),
+        ),
     };
 
-    let target = parse_target(&input).map_err(describe)?;
+    Ok(AppSettings {
+        output_dir: state.output_dir().to_string_lossy().to_string(),
+        cookies_saved: cookies_path.exists(),
+        cookies_path: cookies_path.to_string_lossy().to_string(),
+        ffmpeg_ok,
+        ffmpeg_info,
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    })
+}
+
+/// 解析一条来源：短链展开 → 识别目标 → 取稿件信息与可用清晰度。
+async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeResult, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Err("来源为空".to_string());
+    }
+
+    let resolved = if is_short_link(trimmed) {
+        client.resolve_redirect(trimmed).await.map_err(describe)?
+    } else {
+        trimmed.to_string()
+    };
+
+    let target = parse_target(&resolved).map_err(describe)?;
     let info = match target {
         Target::Bvid(bvid) => client.video_info(&bvid).await,
         Target::Aid(aid) => client.video_info_by_aid(aid).await,
@@ -169,7 +203,7 @@ pub async fn probe_video(state: State<'_, AppState>, input: String) -> Result<Pr
         title: info.title.clone(),
         owner: info.owner.name.clone(),
         duration: info.duration,
-        cover: cover_data_url(&client, &info.pic).await,
+        cover: cover_data_url(client, &info.pic).await,
         page_count: info.pages.len(),
         note,
         qualities,

@@ -1,25 +1,38 @@
 <script setup>
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import * as api from "./api";
-import PreviewCard from "./components/PreviewCard.vue";
-import TaskList from "./components/TaskList.vue";
+import TitleBar from "./components/TitleBar.vue";
+import Sidebar from "./components/Sidebar.vue";
 import LoginDialog from "./components/LoginDialog.vue";
+import ParsePage from "./pages/ParsePage.vue";
+import TransferPage from "./pages/TransferPage.vue";
+import SettingsPage from "./pages/SettingsPage.vue";
+import AboutPage from "./pages/AboutPage.vue";
+import LibraryPage from "./pages/LibraryPage.vue";
 
-const input = ref("");
-const probing = ref(false);
-const errorText = ref("");
-const probe = ref(null);
-const tasks = ref([]);
+const RUNNING = ["queued", "downloading", "merging"];
+
+const page = ref("parse");
 const login = ref({ logged_in: false, uname: "", mid: 0, vip: false, vip_label: "" });
-const outputDir = ref("");
 const version = ref("");
-
+const outputDir = ref("");
+const tasks = ref([]);
+const toastText = ref("");
 const showLogin = ref(false);
 const qr = ref(null);
 const loginState = ref("loading");
 
 let unlistenTask = null;
 let pollTimer = null;
+let toastTimer = null;
+
+const queue = computed(() => {
+  const running = tasks.value.filter((task) => RUNNING.includes(task.status));
+  return {
+    active: running.length,
+    speed: running.reduce((sum, task) => sum + (task.speed_bps || 0), 0),
+  };
+});
 
 onMounted(async () => {
   try {
@@ -27,87 +40,55 @@ onMounted(async () => {
     login.value = status.login;
     outputDir.value = status.output_dir;
     version.value = status.version;
-  } catch (e) {
-    errorText.value = String(e);
+  } catch (error) {
+    showToast(String(error));
   }
 
   unlistenTask = await api.onTaskUpdate((task) => {
     const index = tasks.value.findIndex((item) => item.id === task.id);
-    if (index === -1) {
-      tasks.value.unshift(task);
-    } else {
-      tasks.value[index] = task;
-    }
+    if (index === -1) tasks.value.unshift(task);
+    else tasks.value[index] = task;
   });
 });
 
 onUnmounted(() => {
   if (unlistenTask) unlistenTask();
   stopPolling();
+  clearTimeout(toastTimer);
 });
 
-async function runProbe() {
-  const value = input.value.trim();
-  if (!value || probing.value) return;
-  probing.value = true;
-  errorText.value = "";
-  try {
-    probe.value = await api.probeVideo(value);
-  } catch (e) {
-    probe.value = null;
-    errorText.value = String(e);
-  } finally {
-    probing.value = false;
-  }
-}
-
-async function startDownload({ quality, audio }) {
-  if (!probe.value) return;
-  errorText.value = "";
-  try {
-    await api.startDownload({
-      bvid: probe.value.bvid,
-      cid: probe.value.cid,
-      title: probe.value.title,
-      quality,
-      audio,
-      cover: probe.value.cover,
-    });
-    probe.value = null;
-    input.value = "";
-  } catch (e) {
-    errorText.value = String(e);
-  }
+function showToast(text) {
+  if (!text) return;
+  toastText.value = text;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (toastText.value = ""), 3600);
 }
 
 async function cancelTask(taskId) {
   try {
     await api.cancelDownload(taskId);
-  } catch (e) {
-    errorText.value = String(e);
+  } catch (error) {
+    showToast(String(error));
   }
 }
 
 async function openPath(path) {
   try {
     await api.openPath(path);
-  } catch (e) {
-    errorText.value = String(e);
-  }
-}
-
-async function pickOutputDir() {
-  try {
-    outputDir.value = await api.chooseOutputDir();
-  } catch (e) {
-    errorText.value = String(e);
+  } catch (error) {
+    showToast(String(error));
   }
 }
 
 function clearFinished() {
-  tasks.value = tasks.value.filter((t) =>
-    ["queued", "downloading", "merging"].includes(t.status)
-  );
+  tasks.value = tasks.value.filter((task) => RUNNING.includes(task.status));
+}
+
+function applyOutputDir(dir) {
+  if (dir) {
+    outputDir.value = dir;
+    showToast("保存位置已更新");
+  }
 }
 
 function openLogin() {
@@ -126,9 +107,9 @@ async function refreshQr() {
     qr.value = await api.loginQrcode();
     loginState.value = "pending";
     startPolling();
-  } catch (e) {
+  } catch (error) {
     loginState.value = "error";
-    errorText.value = String(e);
+    showToast(String(error));
   }
 }
 
@@ -142,13 +123,14 @@ function startPolling() {
       if (result.state === "confirmed") {
         login.value = result.login;
         stopPolling();
-        setTimeout(() => (showLogin.value = false), 1000);
+        showToast(`已登录：${result.login.uname}`);
+        setTimeout(() => (showLogin.value = false), 1100);
       } else if (result.state === "expired") {
         stopPolling();
       }
-    } catch (e) {
+    } catch (error) {
       loginState.value = "error";
-      errorText.value = String(e);
+      showToast(String(error));
       stopPolling();
     }
   }, 2000);
@@ -168,93 +150,56 @@ async function doLogout() {
   try {
     login.value = await api.logout();
     showLogin.value = false;
-  } catch (e) {
-    errorText.value = String(e);
+    showToast("已退出登录");
+  } catch (error) {
+    showToast(String(error));
   }
 }
 </script>
 
 <template>
   <div class="app">
-    <header class="topbar">
-      <div class="brand">
-        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
-          <rect width="24" height="24" rx="6" fill="#fb7299" />
-          <path
-            d="M12 5.8v6.6"
-            stroke="#fff"
-            stroke-width="2.1"
-            stroke-linecap="round"
-          />
-          <path
-            d="M8.5 10.2 12 13.7l3.5-3.5"
-            fill="none"
-            stroke="#fff"
-            stroke-width="2.1"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-          <path d="M7.6 17.4h8.8" stroke="#fff" stroke-width="2.1" stroke-linecap="round" />
-        </svg>
-        <span class="name">BILIdown</span>
-      </div>
+    <TitleBar :login="login" :version="version" @login="openLogin" />
 
-      <button
-        class="login-chip"
-        :class="{ on: login.logged_in }"
-        @click="openLogin"
-      >
-        <template v-if="login.logged_in">
-          <span class="dot"></span>
-          <span>{{ login.uname }}</span>
-          <span v-if="login.vip" class="vip">{{ login.vip_label || "大会员" }}</span>
-        </template>
-        <template v-else>
-          <span class="dot off"></span>
-          <span>未登录 · 点此扫码</span>
-        </template>
-      </button>
-    </header>
+    <div class="body">
+      <Sidebar
+        :current="page"
+        :login="login"
+        :queue="queue"
+        @navigate="page = $event"
+      />
 
-    <section class="intake">
-      <form class="intake-form" @submit.prevent="runProbe">
-        <input
-          v-model="input"
-          :disabled="probing"
-          placeholder="粘贴视频链接、BV 号或 av 号"
-          spellcheck="false"
-          autocomplete="off"
+      <main class="content">
+        <ParsePage
+          v-if="page === 'parse'"
+          :login="login"
+          @toast="showToast"
+          @goto="page = $event"
         />
-        <button class="primary" type="submit" :disabled="probing || !input.trim()">
-          {{ probing ? "解析中" : "解析" }}
-        </button>
-      </form>
-      <p v-if="errorText" class="error-line">{{ errorText }}</p>
-    </section>
+        <TransferPage
+          v-else-if="page === 'transfer'"
+          :tasks="tasks"
+          @cancel="cancelTask"
+          @open="openPath"
+          @clear="clearFinished"
+        />
+        <SettingsPage
+          v-else-if="page === 'settings'"
+          :login="login"
+          :output-dir="outputDir"
+          @toast="showToast"
+          @login="openLogin"
+          @logout="doLogout"
+          @output-dir="applyOutputDir"
+        />
+        <AboutPage v-else-if="page === 'about'" :version="version" />
+        <LibraryPage v-else @goto="page = $event" />
+      </main>
+    </div>
 
-    <main class="body">
-      <PreviewCard
-        v-if="probe"
-        :probe="probe"
-        @start="startDownload"
-        @dismiss="probe = null"
-      />
-      <TaskList
-        :tasks="tasks"
-        @cancel="cancelTask"
-        @open="openPath"
-        @clear="clearFinished"
-      />
-    </main>
-
-    <footer class="statusbar">
-      <button class="path" :title="outputDir" @click="pickOutputDir">
-        保存到 {{ outputDir }}
-      </button>
-      <span class="spacer"></span>
-      <button class="ghost" @click="openPath(outputDir)">打开目录</button>
-      <span class="version num">v{{ version }}</span>
-    </footer>
+    <Transition name="toast">
+      <div v-if="toastText" class="toast">{{ toastText }}</div>
+    </Transition>
 
     <LoginDialog
       v-if="showLogin"
@@ -275,181 +220,41 @@ async function doLogout() {
   height: 100%;
 }
 
-.topbar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 13px 20px;
-  border-bottom: 1px solid var(--line-soft);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.mark {
-  width: 22px;
-  height: 22px;
-}
-
-.name {
-  font-size: 14.5px;
-  font-weight: 600;
-  letter-spacing: 0.2px;
-}
-
-.login-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 13px;
-  font-size: 12.5px;
-  color: var(--muted);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  transition: border-color 0.15s ease, color 0.15s ease;
-}
-
-.login-chip:hover {
-  color: var(--text);
-  border-color: #3a4150;
-}
-
-.login-chip.on {
-  color: var(--text);
-}
-
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ok);
-}
-
-.dot.off {
-  background: var(--faint);
-}
-
-.vip {
-  padding: 1px 7px;
-  font-size: 11px;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-radius: 999px;
-}
-
-.intake {
-  flex: none;
-  padding: 16px 20px 6px;
-}
-
-.intake-form {
-  display: flex;
-  gap: 10px;
-}
-
-.intake-form input {
-  flex: 1;
-  padding: 11px 14px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  transition: border-color 0.15s ease;
-}
-
-.intake-form input::placeholder {
-  color: var(--faint);
-}
-
-.intake-form input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.intake-form input:disabled {
-  opacity: 0.6;
-}
-
-.primary {
-  flex: none;
-  padding: 11px 24px;
-  font-weight: 600;
-  color: #240d16;
-  background: var(--accent);
-  border-radius: var(--r-md);
-}
-
-.primary:hover:not(:disabled) {
-  background: #ff86a8;
-}
-
-.primary:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.error-line {
-  margin: 10px 2px 0;
-  font-size: 12.5px;
-  color: var(--err);
-  line-height: 1.5;
-}
-
 .body {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  padding: 12px 20px 16px;
-}
-
-.statusbar {
-  flex: none;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 9px 20px;
-  font-size: 12px;
-  color: var(--faint);
-  border-top: 1px solid var(--line-soft);
 }
 
-.path {
-  max-width: 58%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-  padding: 3px 7px;
-  border-radius: var(--r-sm);
-}
-
-.path:hover {
-  color: var(--text);
-  background: var(--hover);
-}
-
-.spacer {
+.content {
   flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 18px 22px 22px;
 }
 
-.ghost {
-  padding: 3px 9px;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  padding: 9px 18px;
+  font-size: 12.5px;
+  color: #fff;
+  background: rgba(38, 30, 34, 0.9);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(60, 40, 50, 0.2);
+  z-index: 30;
 }
 
-.ghost:hover {
-  color: var(--text);
-  border-color: #3a4150;
-  background: var(--hover);
+.toast-enter-active,
+.toast-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-.version {
-  color: var(--faint);
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 8px);
 }
 </style>

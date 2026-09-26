@@ -13,12 +13,13 @@
     "windows": [
       {
         "title": "BILIdown",
-        "width": 1060,
+        "width": 1100,
         "height": 740,
-        "minWidth": 880,
-        "minHeight": 580,
+        "minWidth": 900,
+        "minHeight": 600,
         "resizable": true,
-        "center": true
+        "center": true,
+        "decorations": false
       }
     ],
     "security": {

@@ -10,20 +10,23 @@ B 站视频下载器。技术栈：Tauri 2 + Rust + Vue 3 + SQLite，ffmpeg 以 
 |---|---|---|
 | M0 工程起步 | ✅ 完成 | 仓库、.gitignore、CI 检查流水线 |
 | M1 CLI 原型 | ✅ 完成 | wbi 签名、API 客户端、DASH 分片并发下载、ffmpeg 合成，端到端跑通 |
-| M2 桌面界面 | ✅ 完成 | Tauri 2 + Vue 3 界面：链接解析预览、清晰度/音轨选择、任务列表与三段式进度、扫码登录弹窗、账号状态 |
-| M3 完整下载 | ⬜ 待开始 | 断点续传、批量（收藏夹/合集/UP 主）、弹幕字幕 |
-| M4 体验完善 | ⬜ 待开始 | 番剧课程、ffmpeg 打包、自动更新 |
+| M2 桌面界面 | ✅ 完成 | Tauri 2 + Vue 3，界面按 BDL 的视觉语言重做（浅色、左侧导航、步骤条、卡片） |
+
+界面结构：解析（批量/单个解析 → 逐条选择清晰度与音轨 → 全部加入下载）、
+传输（任务队列与三段式进度：视频流 / 音频流 / 合成）、内容库（M3 占位）、
+设置（保存位置、账号、登录凭据、ffmpeg 状态）、关于。
 
 已实测可用：扫码登录后同一视频从 480P 提升到 1080P60，另成功下载杜比视界（HEVC
-Main10 + hvc1）内容；32 个单元测试全绿，clippy 零警告。
+Main10 + hvc1）内容；35 个单元测试全绿，clippy 零警告。
 
 ## 目录结构
 
 ```
 src/                    桌面端前端（Vue 3）
-├── App.vue             主界面：链接输入、任务列表、状态栏
+├── App.vue             外壳：标题栏 + 侧栏 + 页面切换 + 全局状态
 ├── api.js              与后端通信；浏览器中打开时自动切换为假数据
-└── components/         预览卡片、任务行（含三段式进度）、登录弹窗
+├── pages/              解析 / 传输 / 设置 / 关于 / 内容库
+└── components/         标题栏（含窗口控制）、侧栏、步骤条、任务行、登录弹窗
 
 src-tauri/              桌面端后端（Tauri 2）
 └── src/
@@ -44,6 +47,13 @@ crates/
 └── bili-cli/           命令行
 ```
 
+## 快捷脚本
+
+| 脚本 | 用途 |
+|---|---|
+| `dev.bat` | 开发模式（热更新）；`dev.bat build` 打包安装程序 |
+| `login.bat` | 命令行扫码登录（终端显示二维码） |
+
 ## 开发环境
 
 - Rust 1.98+（Windows 需 MSVC 生成工具）
@@ -52,12 +62,31 @@ crates/
 
 ## 运行桌面端
 
+**Windows 下推荐双击 `dev.bat`**（会自动带上 Node 路径）：
+
+- 直接双击 = 开发模式：起前端热更新服务并打开窗口
+- `dev.bat build` = 打包出安装程序
+
+等效命令（需要 Node 在 PATH 里）：
+
 ```bash
 npm install            # 首次
-npm run tauri dev      # 开发模式（自动起前端 dev server 并打开窗口）
-
-npm run tauri build    # 打包出安装程序（M4 会加上 ffmpeg 与自动更新）
+npm run tauri dev      # 开发模式
+npm run tauri build    # 打包安装程序（M4 会加上 ffmpeg 与自动更新）
 ```
+
+> **注意**：`cargo run -p bilidown` 出来的 debug 版本会去连开发服务器
+> （http://localhost:5173）。开发服务器没起时窗口里会显示「localhost 拒绝连接」——
+> 这是 Tauri 的预期行为，不是程序坏了。
+>
+> 要一个不依赖开发服务器的可执行文件，**必须启用 `custom-protocol` feature**
+> （Tauri 靠它区分开发/生产：没开就按开发模式连 devUrl）：
+>
+> ```bash
+> cargo build --release -p bilidown --features custom-protocol
+> ```
+>
+> 用 `npm run tauri build`（或 `dev.bat build`）打包时会自动启用，无需手动指定。
 
 只调界面时可以直接 `npm run dev` 打开 http://localhost:5173 —— 检测不到 Tauri
 运行时会自动使用假数据，改样式不必反复编译 Rust。

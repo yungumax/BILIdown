@@ -16,17 +16,17 @@ const STATUS_TEXT = {
   canceled: "已取消",
 };
 
-/** 三个阶段各自的状态：文字与视觉标记都由它决定。 */
+/** 三个阶段各自的状态，驱动进度条与状态点 */
 const stages = computed(() => {
   const task = props.task;
   const finished = task.status === "done";
   const failed = task.status === "failed";
   const canceled = task.status === "canceled";
 
-  const build = (pct, doneByStatus, activeStatus) => {
+  const build = (pct, doneByStatus, active) => {
     if (doneByStatus || pct >= 100) return { pct: 100, text: "完成", state: "done" };
-    if (activeStatus) return { pct, text: `${pct.toFixed(0)}%`, state: "active" };
-    if (failed) return { pct, text: "中断", state: failed ? "failed" : "idle" };
+    if (active) return { pct, text: `${pct.toFixed(0)}%`, state: "active" };
+    if (failed) return { pct, text: "中断", state: "failed" };
     if (canceled) return { pct, text: "已取消", state: "idle" };
     return { pct, text: "待处理", state: "idle" };
   };
@@ -53,11 +53,7 @@ const stages = computed(() => {
     {
       key: "merge",
       label: "合成",
-      ...build(
-        finished ? 100 : 0,
-        finished,
-        task.status === "merging"
-      ),
+      ...build(finished ? 100 : 0, finished, task.status === "merging"),
     },
   ];
 });
@@ -76,7 +72,7 @@ const speedText = computed(() =>
 );
 
 const canCancel = computed(() => RUNNING.includes(props.task.status));
-const canOpen = computed(() => props.task.status === "done" && props.task.output_path);
+const canOpen = computed(() => !!props.task.output_path);
 
 function human(bytes) {
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -92,73 +88,62 @@ function human(bytes) {
 
 <template>
   <li class="row" :class="task.status">
-    <div class="body">
-      <div class="head">
-        <h4 class="title" :title="task.title">{{ task.title }}</h4>
-        <span v-if="task.quality_label" class="quality">{{ task.quality_label }}</span>
-        <span class="spacer"></span>
-        <span class="status" :class="task.status">{{ STATUS_TEXT[task.status] }}</span>
-        <button v-if="canCancel" class="action" @click="emit('cancel')">取消</button>
-        <button v-else-if="canOpen" class="action" @click="emit('open', task.output_path)">
-          打开
-        </button>
-        <button v-else-if="task.output_path" class="action" @click="emit('open', task.output_path)">
-          定位
-        </button>
-      </div>
+    <div class="head">
+      <h4 class="title" :title="task.title">{{ task.title }}</h4>
+      <span v-if="task.quality_label" class="quality">{{ task.quality_label }}</span>
+      <span class="spacer"></span>
+      <span class="status">{{ STATUS_TEXT[task.status] }}</span>
+      <button v-if="canCancel" class="action" @click="emit('cancel')">取消</button>
+      <button v-else-if="canOpen" class="action" @click="emit('open', task.output_path)">
+        {{ task.status === "done" ? "打开" : "定位" }}
+      </button>
+    </div>
 
-      <div class="bar" role="progressbar" :aria-valuenow="Math.round(task.video_pct)">
-        <div
-          v-for="(stage, index) in stages"
-          :key="stage.key"
-          class="seg"
-          :class="[
-            stage.state,
-            index === 2 && isMergeIndeterminate ? 'indeterminate' : '',
-          ]"
-        >
-          <span class="fill" :style="{ width: `${stage.pct}%` }"></span>
-        </div>
+    <div class="bar">
+      <div
+        v-for="(stage, index) in stages"
+        :key="stage.key"
+        class="seg"
+        :class="[stage.state, index === 2 && isMergeIndeterminate ? 'indeterminate' : '']"
+      >
+        <span class="fill" :style="{ width: `${stage.pct}%` }"></span>
       </div>
+    </div>
 
-      <div class="meta">
-        <ul class="stages">
-          <li v-for="stage in stages" :key="stage.key" :class="stage.state">
-            <span class="pip"></span>
-            <span class="name">{{ stage.label }}</span>
-            <span class="value num">{{ stage.text }}</span>
-          </li>
-        </ul>
-        <span class="spacer"></span>
-        <span v-if="task.status === 'failed'" class="message error" :title="task.message">
-          {{ task.message }}
-        </span>
-        <span v-else-if="task.status === 'done'" class="message">{{ task.message }}</span>
-        <span class="bytes num">{{ bytesText }}</span>
-        <span v-if="speedText" class="speed num">{{ speedText }}</span>
-      </div>
+    <div class="meta">
+      <ul class="stages">
+        <li v-for="stage in stages" :key="stage.key" :class="stage.state">
+          <span class="pip"></span>
+          <span class="name">{{ stage.label }}</span>
+          <span class="value num">{{ stage.text }}</span>
+        </li>
+      </ul>
+      <span class="spacer"></span>
+      <span v-if="task.status === 'failed'" class="message error" :title="task.message">
+        {{ task.message }}
+      </span>
+      <span class="bytes num">{{ bytesText }}</span>
+      <span v-if="speedText" class="speed num">{{ speedText }}</span>
     </div>
   </li>
 </template>
 
 <style scoped>
 .row {
-  padding: 12px 14px;
-  background: var(--surface);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-md);
+  padding: 13px 15px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 
 .row.done {
-  border-color: rgba(71, 192, 140, 0.28);
+  border-color: #cfe9dc;
+  background: #fbfefc;
 }
 
 .row.failed {
-  border-color: rgba(229, 84, 75, 0.32);
-}
-
-.body {
-  min-width: 0;
+  border-color: #f0d3d0;
+  background: #fdf6f5;
 }
 
 .head {
@@ -169,9 +154,9 @@ function human(bytes) {
 
 .title {
   margin: 0;
+  max-width: 46%;
   font-size: 13.5px;
   font-weight: 600;
-  max-width: 46%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -183,7 +168,8 @@ function human(bytes) {
   font-size: 11.5px;
   color: var(--muted);
   background: var(--raised);
-  border-radius: var(--r-sm);
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
 }
 
 .spacer {
@@ -195,31 +181,32 @@ function human(bytes) {
   color: var(--muted);
 }
 
-.status.downloading,
-.status.merging {
-  color: var(--accent);
+.row.downloading .status,
+.row.merging .status {
+  color: var(--accent-dark);
 }
 
-.status.done {
+.row.done .status {
   color: var(--ok);
 }
 
-.status.failed {
+.row.failed .status {
   color: var(--err);
 }
 
 .action {
   font-size: 12px;
   color: var(--muted);
-  padding: 3px 9px;
+  padding: 3px 10px;
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--radius-sm);
+  background: #fff;
 }
 
 .action:hover {
   color: var(--text);
-  border-color: #3a4150;
-  background: var(--hover);
+  border-color: #ded6da;
+  background: var(--raised);
 }
 
 /* 三段式进度：视频流 | 音频流 | 合成 */
@@ -227,12 +214,12 @@ function human(bytes) {
   display: flex;
   gap: 3px;
   height: 6px;
-  margin: 10px 0 8px;
+  margin: 11px 0 9px;
 }
 
 .seg {
   flex: 1;
-  background: var(--raised);
+  background: #f0ebee;
   border-radius: 3px;
   overflow: hidden;
 }
@@ -241,8 +228,8 @@ function human(bytes) {
   display: block;
   height: 100%;
   width: 0;
-  border-radius: 3px;
   background: var(--accent);
+  border-radius: 3px;
   transition: width 0.25s ease;
 }
 
@@ -251,18 +238,15 @@ function human(bytes) {
 }
 
 .seg.idle .fill {
-  background: #4b5260;
+  background: #cfc6cb;
 }
 
 .row.failed .seg .fill {
   background: var(--err);
+  opacity: 0.55;
 }
 
-.row.canceled .seg .fill {
-  background: #4b5260;
-}
-
-/* 合成阶段没有百分比，用流动填充表示正在进行 */
+/* 合成阶段没有百分比，用流动填充表示进行中 */
 .seg.indeterminate .fill {
   width: 100%;
   background: linear-gradient(
@@ -310,7 +294,7 @@ function human(bytes) {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #4b5260;
+  background: #cfc6cb;
 }
 
 .stages li.active .pip {
@@ -337,23 +321,15 @@ function human(bytes) {
   color: var(--faint);
 }
 
-.bytes,
-.speed {
+.bytes {
   color: var(--text);
 }
 
-.speed {
-  color: var(--muted);
-}
-
-.message {
+.message.error {
   max-width: 40%;
+  color: var(--err);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.message.error {
-  color: var(--err);
 }
 </style>

@@ -1,29 +1,33 @@
 /* 设计令牌与基础样式。
-   配色克制：仅用 B 站粉作为「进行中」的强调色，语义色只用于状态。 */
+   浅色体系，参考 BDL 的视觉语言：极浅暖灰底 + 白色卡片 + B 站粉作为唯一强调色。 */
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  --ink: #0f1115;
-  --surface: #171a21;
-  --raised: #1e222b;
-  --hover: #232833;
-  --line: #2a2f3a;
-  --line-soft: #21252e;
+  --app-bg: #f5f3f4;
+  --side-bg: #fbf2f5;
+  --card: #ffffff;
+  --raised: #faf8f9;
 
-  --text: #e8eaef;
-  --muted: #949baa;
-  --faint: #6c7382;
+  --line: #e9e4e7;
+  --line-soft: #f1edef;
+
+  --text: #26262b;
+  --muted: #85858f;
+  --faint: #a8a8b2;
 
   --accent: #fb7299;
-  --accent-soft: rgba(251, 114, 153, 0.16);
-  --ok: #47c08c;
-  --err: #e5544b;
-  --warn: #e0b341;
+  --accent-dark: #f25c86;
+  --accent-soft: #fdeef3;
+  --accent-line: #f8c9d9;
 
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
+  --ok: #2fa96f;
+  --err: #e04b42;
+  --warn: #cf8b1f;
+
+  --radius-lg: 14px;
+  --radius: 10px;
+  --radius-sm: 8px;
 
   --font: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC",
     -apple-system, "Segoe UI", system-ui, sans-serif;
@@ -41,11 +45,11 @@ body,
 }
 
 body {
-  background: var(--ink);
+  background: var(--app-bg);
   color: var(--text);
   font-family: var(--font);
   font-size: 13.5px;
-  line-height: 1.55;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
@@ -53,19 +57,20 @@ body {
 button {
   font: inherit;
   color: inherit;
-  cursor: pointer;
   background: none;
   border: none;
   padding: 0;
+  cursor: pointer;
 }
 
 input,
-select {
+select,
+textarea {
   font: inherit;
   color: inherit;
 }
 
-/* 进度、体积、速度这类会跳动的数字统一用等宽数字，避免抖动 */
+/* 进度、体积、速度这类跳动的数字用等宽数字，避免抖动 */
 .num {
   font-variant-numeric: tabular-nums;
 }
@@ -81,13 +86,15 @@ select {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2c313c;
-  border: 3px solid var(--ink);
+  background: #dcd6d9;
+  border: 3px solid transparent;
+  background-clip: content-box;
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a4150;
+  background: #c9c2c6;
+  background-clip: content-box;
 }
 
 @media (prefers-reduced-motion: reduce) {
