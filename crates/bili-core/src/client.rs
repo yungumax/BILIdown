@@ -122,10 +122,10 @@ impl BiliClient {
 
     /// 注入 SESSDATA；1080P 及以上清晰度需要登录态。
     pub fn set_sessdata(&self, sessdata: &str) -> Result<()> {
-        let url = Url::parse(REFERER_VALUE)
-            .map_err(|e| BiliError::InvalidInput(format!("URL 非法: {e}")))?;
-        self.add_cookie(&format!("SESSDATA={}", sessdata.trim()), &url);
-        Ok(())
+        self.set_cookies(&Cookies {
+            sessdata: sessdata.trim().to_string(),
+            ..Default::default()
+        })
     }
 
     /// 访问首页拿到 buvid3 等风控 Cookie，可显著降低被拦截概率。
@@ -222,5 +222,59 @@ pub(crate) fn truncate(s: &str, max_chars: usize) -> String {
         let mut out: String = s.chars().take(max_chars).collect();
         out.push_str("...");
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cookie_header_for(client: &BiliClient, url: &str) -> String {
+        let url = Url::parse(url).unwrap();
+        client
+            .jar
+            .cookies(&url)
+            .and_then(|value| value.to_str().ok().map(str::to_string))
+            .unwrap_or_default()
+    }
+
+    /// 回归测试：登录态安装后必须能被 api 子域读到。
+    ///
+    /// 曾经的缺陷是把 Cookie 按 host-only 只挂在 www 上，导致登录态校验接口
+    /// （api.bilibili.com）收不到 Cookie，扫码确认后仍被判为未登录。
+    #[test]
+    fn installed_cookies_reach_api_subdomain() {
+        let client = BiliClient::new().unwrap();
+        client
+            .set_cookies(&Cookies {
+                sessdata: "sess_value".into(),
+                bili_jct: "jct_value".into(),
+                ..Default::default()
+            })
+            .unwrap();
+
+        let api = cookie_header_for(&client, "https://api.bilibili.com/x/web-interface/nav");
+        assert!(
+            api.contains("SESSDATA=sess_value"),
+            "api 子域应收到 SESSDATA: {api}"
+        );
+        assert!(
+            api.contains("bili_jct=jct_value"),
+            "api 子域应收到 bili_jct: {api}"
+        );
+
+        let www = cookie_header_for(&client, "https://www.bilibili.com/");
+        assert!(www.contains("SESSDATA=sess_value"), "www 也应收到: {www}");
+    }
+
+    #[test]
+    fn sessdata_helper_installs_domain_wide_cookie() {
+        let client = BiliClient::new().unwrap();
+        client.set_sessdata(" manual_value ").unwrap();
+        let api = cookie_header_for(&client, "https://api.bilibili.com/x/web-interface/nav");
+        assert!(
+            api.contains("SESSDATA=manual_value"),
+            "应去除首尾空格并覆盖 api 子域: {api}"
+        );
     }
 }

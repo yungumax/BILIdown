@@ -247,11 +247,17 @@ impl BiliClient {
     }
 
     /// 把登录态写入会话，后续请求自动携带。
+    ///
+    /// 必须显式声明 `Domain=.bilibili.com`：登录态实际校验发生在 `api.bilibili.com`，
+    /// 若按 host-only 只挂在 `www.bilibili.com` 下，api 子域收不到，会被判为未登录。
     pub fn set_cookies(&self, cookies: &Cookies) -> Result<()> {
         let origin = Url::parse("https://www.bilibili.com/")
             .map_err(|e| BiliError::InvalidInput(format!("URL 非法: {e}")))?;
         for (name, value) in cookies.to_pairs() {
-            self.add_cookie(&format!("{name}={value}"), &origin);
+            self.add_cookie(
+                &format!("{name}={value}; Domain=.bilibili.com; Path=/"),
+                &origin,
+            );
         }
         Ok(())
     }
@@ -274,20 +280,15 @@ async fn confirm_cookies(
         .filter(|u| !u.is_empty())
         .collect();
 
-    // 第一轮：直接用当前会话里已有的 Cookie（Set-Cookie 或地址解析）
+    // 浏览器在扫码成功后会跳转到该地址完成凭据投递（ticket 换取跨域 Cookie），
+    // 这里先忠实跟随一次，再读会话。
+    if !success_url.is_empty() {
+        let _ = client.http.get(success_url).send().await;
+    }
+
     for cookies in collect_candidates(client, &probes, success_url) {
         if verify_cookies(client, &cookies).await {
             return Ok(cookies);
-        }
-    }
-
-    // 第二轮：有些流程要在成功地址上再发一次请求，才会把登录态下发下来
-    if !success_url.is_empty() {
-        let _ = client.http.get(success_url).send().await;
-        for cookies in collect_candidates(client, &probes, success_url) {
-            if verify_cookies(client, &cookies).await {
-                return Ok(cookies);
-            }
         }
     }
 

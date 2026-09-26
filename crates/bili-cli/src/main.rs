@@ -344,7 +344,7 @@ async fn run_login(client: &BiliClient, cookie_path: &Path, max_wait: Duration) 
     println!("  {}\n", qr.url);
     println!("等待扫码中 ...（在手机上确认后会自动继续，Ctrl+C 可取消）");
 
-    let cookies = wait_for_login(
+    let cookies = match wait_for_login(
         client,
         &qr.qrcode_key,
         DEFAULT_POLL_INTERVAL,
@@ -356,7 +356,25 @@ async fn run_login(client: &BiliClient, cookie_path: &Path, max_wait: Duration) 
             LoginState::Confirmed => println!("已确认，正在获取登录态 ..."),
         },
     )
-    .await?;
+    .await
+    {
+        Ok(cookies) => cookies,
+        Err(e) => {
+            // 验证没通过，但本次拿到的凭据可能仍有排查价值：另存一份，便于离线定位
+            let salvaged =
+                client.cookies_from_jar_with(&[bili_core::login::poll_url(&qr.qrcode_key)]);
+            if salvaged.is_valid() {
+                let diag_path = cookie_path.with_extension("failed.json");
+                if salvaged.save(&diag_path).is_ok() {
+                    return Err(anyhow!(
+                        "{e}\n本次取得的凭据已另存到 {}（未通过验证，仅供排查）",
+                        diag_path.display()
+                    ));
+                }
+            }
+            return Err(e.into());
+        }
+    };
 
     client.set_cookies(&cookies)?;
     // 带上登录态重新取一次 wbi 密钥，同时验证 Cookie 是否真的生效
