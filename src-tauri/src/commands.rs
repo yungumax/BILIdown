@@ -97,15 +97,12 @@ pub async fn update_settings(
 
 async fn collect_settings(state: &AppState) -> AppSettings {
     let cookies_path = state.cookies_path();
-    let (ffmpeg_ok, ffmpeg_info) = match ffmpeg::find_ffmpeg(None) {
-        Some(path) => match ffmpeg::probe_version(&path).await {
-            Ok(version) => (true, version),
-            Err(e) => (false, e.to_string()),
-        },
-        None => (
-            false,
-            "未找到 ffmpeg：请安装到 PATH，或放到程序目录下".to_string(),
-        ),
+    // 不在这里探测 ffmpeg：探测要起子进程（实测约 0.8 秒），而本函数每次读设置、
+    // 每次保存设置都会调用，会把启动与主题切换都拖慢近一秒。真实结果改由
+    // `ffmpeg_status` 命令异步取，前端拿到后合并进 env 显示。
+    let (ffmpeg_ok, ffmpeg_info) = match state.ffmpeg_cached() {
+        Some(status) => (status.ok, status.info),
+        None => (true, "检测中…".to_string()),
     };
 
     AppSettings {
@@ -116,6 +113,47 @@ async fn collect_settings(state: &AppState) -> AppSettings {
         ffmpeg_info,
         version: env!("CARGO_PKG_VERSION").to_string(),
     }
+}
+
+/// 探测 ffmpeg 可用性与版本；结果缓存在 AppState，`refresh` 为真时忽略缓存重探。
+#[tauri::command]
+pub async fn ffmpeg_status(
+    state: State<'_, AppState>,
+    refresh: Option<bool>,
+) -> Result<crate::state::FfmpegStatus, String> {
+    if !refresh.unwrap_or(false) {
+        if let Some(cached) = state.ffmpeg_cached() {
+            return Ok(cached);
+        }
+    }
+
+    let explicit = {
+        let path = state.settings().ffmpeg_path.trim().to_string();
+        if path.is_empty() {
+            None
+        } else {
+            Some(std::path::PathBuf::from(path))
+        }
+    };
+
+    let status = match ffmpeg::find_ffmpeg(explicit.as_deref()) {
+        Some(path) => match ffmpeg::probe_version(&path).await {
+            Ok(version) => crate::state::FfmpegStatus {
+                ok: true,
+                info: version,
+            },
+            Err(e) => crate::state::FfmpegStatus {
+                ok: false,
+                info: format!("{} 无法执行：{e}", path.display()),
+            },
+        },
+        None => crate::state::FfmpegStatus {
+            ok: false,
+            info: "未找到 ffmpeg：请安装到 PATH，或放到程序目录下".to_string(),
+        },
+    };
+
+    Ok(state.set_ffmpeg_status(status))
 }
 
 /// 分页拉取上限，避免超大收藏夹一次解析上千条。

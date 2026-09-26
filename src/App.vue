@@ -49,6 +49,7 @@ onMounted(async () => {
   }
 
   await loadSettings();
+  refreshFfmpeg();
 
   unlistenTask = await api.onTaskUpdate((task) => {
     const index = tasks.value.findIndex((item) => item.id === task.id);
@@ -65,7 +66,8 @@ onUnmounted(() => {
 
 /**
  * 把主题模式写到根元素上：light / dark 直接生效，
- * system 交给 CSS 的 prefers-color-scheme media query（首帧纯 CSS，最可靠）。
+ * system 交给 CSS 的 prefers-color-scheme media query。
+ * 注意：启动首帧不依赖这里——那是 Rust 初始化脚本的职责，否则会先看到一次配色翻转。
  * 切换瞬时完成；同步窗口原生底色，避免边缘/滚动条区域露出旧色。
  */
 function applyTheme(mode) {
@@ -74,6 +76,22 @@ function applyTheme(mode) {
   // 显式切换时同步，避免边缘露出旧色
   if (mode !== "system") {
     api.setWindowBackground(mode === "dark" ? "#1b1d21" : "#f5f3f4");
+  }
+}
+
+/** ffmpeg 状态单独取：探测要起子进程（约 0.8 秒），不能拖慢设置读取与主题生效 */
+async function refreshFfmpeg(refresh = false) {
+  try {
+    const status = await api.ffmpegStatus(refresh);
+    if (settingsEnv.value) {
+      settingsEnv.value = {
+        ...settingsEnv.value,
+        ffmpeg_ok: status.ok,
+        ffmpeg_info: status.info,
+      };
+    }
+  } catch {
+    // 状态展示失败不影响使用
   }
 }
 
@@ -91,12 +109,15 @@ async function loadSettings() {
 /** 改动即时保存；失败则回读一次，避免界面与磁盘不一致 */
 /** 设置页点「保存」：整份提交，成功后同步主题 */
 async function saveSettings(next) {
+  const ffmpegChanged = next.ffmpeg_path !== settings.value?.ffmpeg_path;
   try {
     const data = await api.updateSettings(next);
     settingsEnv.value = data;
     settings.value = data.settings;
     applyTheme(data.settings.theme);
     showToast("设置已保存");
+    // 换了 ffmpeg 才需要重新探测，避免每次保存都起子进程
+    if (ffmpegChanged) refreshFfmpeg(true);
   } catch (error) {
     showToast(String(error));
     await loadSettings();

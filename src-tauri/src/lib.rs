@@ -31,6 +31,26 @@ pub fn run() {
                 "light" => "light",
                 _ => "system",
             };
+            // WebView2 执行初始化脚本时 document.documentElement 可能还是 null，
+            // 直接写 dataset 会抛 TypeError、属性永远落不上（实测：首帧无属性 → 约 1 秒后
+            // 才被设置接口补上，整页可见地翻一次主题）。改成「<html> 一出现就写」。
+            let init_script = format!(
+                r##"(function () {{
+  var mode = "{init_theme}";
+  var tries = 0;
+  function apply() {{
+    var el = document.documentElement;
+    if (!el) return false;
+    el.dataset.theme = mode;
+    return true;
+  }}
+  if (!apply()) {{
+    var timer = setInterval(function () {{
+      if (apply() || ++tries > 1000) clearInterval(timer);
+    }}, 0);
+  }}
+}})();"##
+            );
             // 窗口先隐藏，前端渲染完成后由前端调 show_window 显示，
             // 彻底避免「先见白底/旧底色、再见内容」的启动闪烁。
             let window = WebviewWindowBuilder::new(app.handle(), "main", WebviewUrl::default())
@@ -41,21 +61,23 @@ pub fn run() {
                 .center()
                 .decorations(false)
                 .visible(false)
-                .initialization_script(format!(
-                    "document.documentElement.dataset.theme = '{init_theme}';"
-                ))
+                .initialization_script(init_script)
                 .build()?;
 
-            // 跟随系统：用窗口解析出的真实系统主题设置原生底色
-            // （窗口此刻仍隐藏，设置无闪烁风险；页面本身由 CSS 精确控制）
-            if theme_mode == "system" {
-                let resolved_dark = matches!(window.theme(), Ok(Theme::Dark));
-                let _ = window.set_background_color(Some(if resolved_dark {
-                    BG_DARK
-                } else {
-                    BG_LIGHT
-                }));
-            }
+            // 原生窗口底色：三种模式都要设。窗口可能在页面首帧之前就被系统显示出来，
+            // 这时能看到的就是这层底色——不设就是 WebView2 的白，深色下即一块白色空壳。
+            // system 模式以 Tauri 解析出的真实系统主题为准（WebView2 的
+            // prefers-color-scheme 不总是可靠）。
+            let resolved_dark = match theme_mode.as_str() {
+                "dark" => true,
+                "light" => false,
+                _ => matches!(window.theme(), Ok(Theme::Dark)),
+            };
+            let _ = window.set_background_color(Some(if resolved_dark {
+                BG_DARK
+            } else {
+                BG_LIGHT
+            }));
 
             Ok(())
         })
@@ -73,6 +95,7 @@ pub fn run() {
             commands::set_output_dir,
             commands::open_path,
             commands::pick_ffmpeg,
+            commands::ffmpeg_status,
             commands::cleanup_temp,
             commands::cleanup_cache,
             commands::export_diagnostics,

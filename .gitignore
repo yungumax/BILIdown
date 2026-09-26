@@ -27,3 +27,9 @@ Thumbs.db
 *.local
 .idea/
 .vscode/
+
+# 观测脚本的运行产物
+tools/*.log
+tools/*.txt
+tools/*.json
+tools/shots*/

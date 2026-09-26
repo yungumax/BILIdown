@@ -88,8 +88,11 @@
   --shade: rgba(8, 9, 11, 0.6);
 }
 
+/* 跟随系统：显式 data-theme="system"、以及属性完全缺失时都走这里。
+   属性缺失是启动期的真实状态（初始化脚本与首帧之间的窗口期），
+   此时若回落到浅色，深色系统上就会看到整页由浅翻深。 */
 @media (prefers-color-scheme: dark) {
-  :root[data-theme="system"] {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
 
     --app-bg: #1b1d21;

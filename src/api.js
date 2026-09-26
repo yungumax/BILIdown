@@ -71,6 +71,14 @@ export async function pickFfmpeg() {
   return invoke("pick_ffmpeg");
 }
 
+// ffmpeg 探测要起子进程（约 0.8 秒），单独调用，不拖慢设置读取与主题生效。
+// refresh=true 时忽略缓存重新探测（用户换了 ffmpeg 路径后用）。
+export async function ffmpegStatus(refresh = false) {
+  if (!hasTauri)
+    return { ok: true, info: "ffmpeg version 6.1.1-essentials_build-www.gyan.dev" };
+  return invoke("ffmpeg_status", { refresh });
+}
+
 export async function cleanupTemp() {
   if (!hasTauri) return 0;
   return invoke("cleanup_temp");

@@ -24,6 +24,16 @@ pub struct AppState {
     /// 并发下载槽位，会随设置变化重建
     slots: RwLock<Arc<Semaphore>>,
     counter: Mutex<u64>,
+    /// ffmpeg 探测结果缓存。探测要起子进程（实测约 0.8 秒），
+    /// 不能放进每次都会调用的设置读取里，否则启动与每次保存都要等它。
+    ffmpeg: Mutex<Option<FfmpegStatus>>,
+}
+
+/// ffmpeg 可用性：`ok` 表示探测通过，`info` 为版本行或失败原因。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FfmpegStatus {
+    pub ok: bool,
+    pub info: String,
 }
 
 /// 一条命名模板预设：用户可把常用模板存成名字，随时选用。
@@ -352,7 +362,18 @@ impl AppState {
             slots: RwLock::new(Arc::new(Semaphore::new(settings.max_concurrent_tasks))),
             settings: Mutex::new(settings),
             counter: Mutex::new(0),
+            ffmpeg: Mutex::new(None),
         })
+    }
+
+    /// 读缓存的 ffmpeg 探测结果；没有缓存时返回 None（调用方给中性文案，不谎报）。
+    pub fn ffmpeg_cached(&self) -> Option<FfmpegStatus> {
+        self.ffmpeg.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn set_ffmpeg_status(&self, status: FfmpegStatus) -> FfmpegStatus {
+        *self.ffmpeg.lock().unwrap_or_else(|e| e.into_inner()) = Some(status.clone());
+        status
     }
 
     /// 建会话并装上已保存的登录态。
