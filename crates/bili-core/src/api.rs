@@ -27,6 +27,11 @@ pub struct NavData {
     pub uname: String,
     #[serde(default)]
     pub mid: u64,
+    /// 0=非大会员，1=大会员
+    #[serde(default, rename = "vipStatus")]
+    pub vip_status: u32,
+    #[serde(default, rename = "vip_label")]
+    pub vip_label: String,
     #[serde(rename = "wbi_img")]
     pub wbi_img: WbiImg,
 }

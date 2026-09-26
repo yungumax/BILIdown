@@ -45,12 +45,27 @@ cargo run -p bili-cli -- BV1Vkag6TExf -o ./downloads
 # 指定清晰度与并发
 cargo run -p bili-cli -- BV1Vkag6TExf -q 80 --concurrency 8
 
-# 带登录态（可获取 1080P 及以上）
-cargo run -p bili-cli -- BV1Vkag6TExf --sessdata "你的SESSDATA"
-
 # 查看帮助
 cargo run -p bili-cli -- --help
 ```
+
+### 扫码登录（解锁 1080P 及以上）
+
+```bash
+# 扫码登录：终端显示二维码，用 B 站手机客户端「我的 → 扫一扫」扫描
+cargo run -p bili-cli -- --login
+
+# 退出登录（删除已保存的登录态）
+cargo run -p bili-cli -- --logout
+
+# 登录后直接下载即可自动使用登录态
+cargo run -p bili-cli -- BV1Vkag6TExf -q 120      # 120 = 4K
+```
+
+登录态默认保存在 `D:\Zcode\_data\bilidown\cookies.json`（可用 `--cookie-file` 或环境变量
+`BILIDOWN_COOKIE_FILE` 改路径）。该文件等同于账号凭据，请勿分享或提交到仓库。
+
+也可以退化为手动模式：`--sessdata "你的SESSDATA"`（优先级高于登录态文件）。
 
 ## 开发命令
 

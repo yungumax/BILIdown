@@ -48,12 +48,16 @@ impl BiliClient {
         })
     }
 
+    /// 向会话中写入一条 Cookie，后续请求自动携带。
+    pub fn add_cookie(&self, cookie: &str, url: &Url) {
+        self.jar.add_cookie_str(cookie, url);
+    }
+
     /// 注入 SESSDATA；1080P 及以上清晰度需要登录态。
     pub fn set_sessdata(&self, sessdata: &str) -> Result<()> {
         let url = Url::parse(REFERER_VALUE)
             .map_err(|e| BiliError::InvalidInput(format!("URL 非法: {e}")))?;
-        self.jar
-            .add_cookie_str(&format!("SESSDATA={}", sessdata.trim()), &url);
+        self.add_cookie(&format!("SESSDATA={}", sessdata.trim()), &url);
         Ok(())
     }
 

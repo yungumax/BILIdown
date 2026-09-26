@@ -1,14 +1,20 @@
-//! BILIdown M1 原型命令行：BV 号 → 解析 → DASH 下载 → ffmpeg 合成 mp4。
+//! BILIdown 命令行原型：BV 号 → 解析 → DASH 下载 → ffmpeg 合成 mp4，并支持扫码登录。
 
 use anyhow::{anyhow, bail, Context, Result};
 use bili_core::api::{quality_name, AudioKind, VideoInfo};
 use bili_core::download::{download, DownloadOptions, Progress, ProgressFn};
 use bili_core::ffmpeg;
+use bili_core::login::{
+    default_cookie_path, wait_for_login, Cookies, LoginState, DEFAULT_MAX_WAIT,
+    DEFAULT_POLL_INTERVAL,
+};
 use bili_core::parser::{is_short_link, parse_target, Target};
 use bili_core::BiliClient;
 use clap::Parser;
+use qrcode::render::unicode;
+use qrcode::QrCode;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[derive(Parser, Debug)]
@@ -18,8 +24,20 @@ use std::sync::Arc;
     about = "BILIdown M1 原型：B 站视频下载（BV 号 → DASH 下载 → ffmpeg 合成 mp4）"
 )]
 struct Cli {
-    /// BV 号 / av 号 / 视频链接 / b23.tv 短链
-    input: String,
+    /// BV 号 / av 号 / 视频链接 / b23.tv 短链（仅做登录 / 登出时可不填）
+    input: Option<String>,
+
+    /// 扫码登录：用 B 站手机客户端扫描终端里的二维码
+    #[arg(long)]
+    login: bool,
+
+    /// 退出登录：删除已保存的登录态文件
+    #[arg(long)]
+    logout: bool,
+
+    /// 登录态文件路径（默认 D:\Zcode\_data\bilidown\cookies.json）
+    #[arg(long, value_name = "PATH")]
+    cookie_file: Option<PathBuf>,
 
     /// 输出目录
     #[arg(short, long, value_name = "DIR", default_value = ".")]
@@ -61,29 +79,62 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+    let cookie_path = cli.cookie_file.clone().unwrap_or_else(default_cookie_path);
+
+    if cli.logout {
+        if Cookies::remove(&cookie_path)? {
+            println!("已退出登录，删除登录态: {}", cookie_path.display());
+        } else {
+            println!("当前没有已保存的登录态（{}）", cookie_path.display());
+        }
+        return Ok(());
+    }
 
     let audio_kind = AudioKind::parse(&cli.audio)
         .ok_or_else(|| anyhow!("--audio 只支持 normal / dolby / flac"))?;
 
     let client = BiliClient::new()?;
+
+    // 登录态优先级：命令行 SESSDATA > 已保存的登录态文件
     if let Some(sessdata) = cli.sessdata.as_deref() {
         client.set_sessdata(sessdata)?;
-        println!("已注入 SESSDATA，将以登录态请求");
+        println!("已注入 SESSDATA（来自命令行）");
+    } else if let Some(saved) = Cookies::load(&cookie_path)? {
+        client.set_cookies(&saved)?;
+        let who = if saved.uname.is_empty() {
+            format!("mid={}", saved.dede_user_id)
+        } else {
+            saved.uname.clone()
+        };
+        println!("已载入登录态: {who}");
     }
+
     client
         .warmup()
         .await
         .context("访问 B 站首页失败，请检查网络或代理")?;
 
-    let raw_input = if is_short_link(&cli.input) {
+    if cli.login {
+        run_login(&client, &cookie_path).await?;
+        if cli.input.is_none() {
+            return Ok(());
+        }
+    }
+
+    let input = cli
+        .input
+        .clone()
+        .ok_or_else(|| anyhow!("请提供 BV 号 / av 号 / 链接，或使用 --login 扫码登录"))?;
+
+    let raw_input = if is_short_link(&input) {
         let resolved = client
-            .resolve_redirect(&cli.input)
+            .resolve_redirect(&input)
             .await
             .context("解析 b23.tv 短链失败")?;
         println!("短链解析为: {resolved}");
         resolved
     } else {
-        cli.input.clone()
+        input
     };
 
     let target = parse_target(&raw_input)?;
@@ -271,6 +322,87 @@ fn sanitize_filename(name: &str) -> String {
         cleaned = "video".to_string();
     }
     cleaned
+}
+
+/// 扫码登录：打印二维码 → 轮询状态 → 验证并保存登录态。
+async fn run_login(client: &BiliClient, cookie_path: &Path) -> Result<Cookies> {
+    println!("正在申请登录二维码 ...");
+    let qr = client.qrcode_generate().await.context("申请二维码失败")?;
+
+    println!("\n请用 B 站手机客户端（我的 → 扫一扫）扫描下面的二维码：\n");
+    match render_qr(&qr.url) {
+        Ok(art) => println!("{art}"),
+        Err(e) => println!("（二维码渲染失败: {e}）"),
+    }
+    println!(
+        "二维码有效期约 3 分钟。若终端显示异常，可在已登录 B 站的浏览器里打开同一链接完成授权："
+    );
+    println!("  {}\n", qr.url);
+    println!("等待扫码中 ...（在手机上确认后会自动继续，Ctrl+C 可取消）");
+
+    let cookies = wait_for_login(
+        client,
+        &qr.qrcode_key,
+        DEFAULT_POLL_INTERVAL,
+        DEFAULT_MAX_WAIT,
+        |state| match state {
+            LoginState::Pending => {}
+            LoginState::Scanned => println!("已扫码，请在手机上点击确认 ..."),
+            LoginState::Expired => println!("二维码已过期。"),
+            LoginState::Confirmed => println!("已确认，正在获取登录态 ..."),
+        },
+    )
+    .await?;
+
+    client.set_cookies(&cookies)?;
+    // 带上登录态重新取一次 wbi 密钥，同时验证 Cookie 是否真的生效
+    if let Err(e) = client.refresh_wbi_keys().await {
+        println!("警告：刷新 wbi 密钥失败（{e}）");
+    }
+
+    let mut cookies = cookies;
+    match client.nav().await {
+        Ok(nav) if nav.is_login => {
+            cookies.uname = nav.uname.clone();
+            println!("登录成功: {} (mid={})", nav.uname, nav.mid);
+            if nav.vip_status > 0 {
+                let label = if nav.vip_label.is_empty() {
+                    "有效"
+                } else {
+                    nav.vip_label.as_str()
+                };
+                println!("大会员: {label} —— 可下载 1080P+ / 4K / HDR / 杜比 / Hi-Res");
+            } else {
+                println!("大会员: 未开通（最高 1080P）");
+            }
+        }
+        Ok(_) => println!("警告：Cookie 已保存，但接口显示未登录，登录态可能已失效"),
+        Err(e) => println!("警告：验证登录态失败（{e}）"),
+    }
+
+    cookies.saved_at = now_secs();
+    cookies.save(cookie_path)?;
+    println!("登录态已保存: {}", cookie_path.display());
+    println!("提示：该文件等同于账号凭据，请勿分享，也不要提交到代码仓库。");
+    Ok(cookies)
+}
+
+/// 用半块字符在终端渲染二维码；深色终端下做反色处理以便扫描。
+fn render_qr(content: &str) -> Result<String> {
+    let code = QrCode::new(content.as_bytes()).map_err(|e| anyhow!("生成二维码失败: {e}"))?;
+    Ok(code
+        .render::<unicode::Dense1x2>()
+        .quiet_zone(true)
+        .dark_color(unicode::Dense1x2::Light)
+        .light_color(unicode::Dense1x2::Dark)
+        .build())
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
