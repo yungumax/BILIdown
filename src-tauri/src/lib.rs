@@ -13,6 +13,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::app_status,
             commands::app_settings,
+            commands::update_settings,
             commands::probe_video,
             commands::start_download,
             commands::cancel_download,

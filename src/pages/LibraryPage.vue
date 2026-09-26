@@ -83,7 +83,7 @@ h1 {
   margin-top: 16px;
   padding: 7px 15px;
   font-size: 12.5px;
-  background: #fff;
+  background: var(--field);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
 }

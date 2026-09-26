@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from "vue";
+
 import * as api from "./api";
 import TitleBar from "./components/TitleBar.vue";
 import Sidebar from "./components/Sidebar.vue";
@@ -21,6 +22,13 @@ const toastText = ref("");
 const showLogin = ref(false);
 const qr = ref(null);
 const loginState = ref("loading");
+const settings = ref(null);
+const settingsEnv = ref(null);
+const resolvedTheme = ref("light");
+
+const systemPrefersDark =
+  typeof window !== "undefined" &&
+  window.matchMedia("(prefers-color-scheme: dark)");
 
 let unlistenTask = null;
 let pollTimer = null;
@@ -44,6 +52,11 @@ onMounted(async () => {
     showToast(String(error));
   }
 
+  await loadSettings();
+  systemPrefersDark?.addEventListener("change", () => {
+    if (settings.value?.theme === "system") applyTheme("system");
+  });
+
   unlistenTask = await api.onTaskUpdate((task) => {
     const index = tasks.value.findIndex((item) => item.id === task.id);
     if (index === -1) tasks.value.unshift(task);
@@ -56,6 +69,46 @@ onUnmounted(() => {
   stopPolling();
   clearTimeout(toastTimer);
 });
+
+/** 把主题写到根元素上，CSS 令牌据此切换 */
+function applyTheme(choice) {
+  const resolved =
+    choice === "system" ? (systemPrefersDark?.matches ? "dark" : "light") : choice;
+  resolvedTheme.value = resolved === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = resolvedTheme.value;
+}
+
+async function loadSettings() {
+  try {
+    const data = await api.appSettings();
+    settingsEnv.value = data;
+    settings.value = data.settings;
+    applyTheme(data.settings.theme);
+  } catch (error) {
+    showToast(String(error));
+  }
+}
+
+/** 改动即时保存；失败则回读一次，避免界面与磁盘不一致 */
+async function changeSettings(patch) {
+  if (!settings.value) return;
+  const next = { ...settings.value, ...patch };
+  settings.value = next;
+  applyTheme(next.theme);
+  try {
+    const data = await api.updateSettings(next);
+    settingsEnv.value = data;
+    settings.value = data.settings;
+    applyTheme(data.settings.theme);
+  } catch (error) {
+    showToast(String(error));
+    await loadSettings();
+  }
+}
+
+function toggleTheme() {
+  changeSettings({ theme: resolvedTheme.value === "dark" ? "light" : "dark" });
+}
 
 function showToast(text) {
   if (!text) return;
@@ -82,13 +135,6 @@ async function openPath(path) {
 
 function clearFinished() {
   tasks.value = tasks.value.filter((task) => RUNNING.includes(task.status));
-}
-
-function applyOutputDir(dir) {
-  if (dir) {
-    outputDir.value = dir;
-    showToast("保存位置已更新");
-  }
 }
 
 function openLogin() {
@@ -159,7 +205,13 @@ async function doLogout() {
 
 <template>
   <div class="app">
-    <TitleBar :login="login" :version="version" @login="openLogin" />
+    <TitleBar
+      :login="login"
+      :version="version"
+      :theme="resolvedTheme"
+      @login="openLogin"
+      @toggle-theme="toggleTheme"
+    />
 
     <div class="body">
       <Sidebar
@@ -173,6 +225,7 @@ async function doLogout() {
         <ParsePage
           v-if="page === 'parse'"
           :login="login"
+          :settings="settings"
           @toast="showToast"
           @goto="page = $event"
         />
@@ -186,11 +239,14 @@ async function doLogout() {
         <SettingsPage
           v-else-if="page === 'settings'"
           :login="login"
-          :output-dir="outputDir"
+          :settings="settings"
+          :env="settingsEnv"
+          :resolved-theme="resolvedTheme"
           @toast="showToast"
           @login="openLogin"
           @logout="doLogout"
-          @output-dir="applyOutputDir"
+          @change="changeSettings"
+          @reload="loadSettings"
         />
         <AboutPage v-else-if="page === 'about'" :version="version" />
         <LibraryPage v-else @goto="page = $event" />
@@ -241,7 +297,8 @@ async function doLogout() {
   padding: 9px 18px;
   font-size: 12.5px;
   color: #fff;
-  background: rgba(38, 30, 34, 0.9);
+  background: var(--text);
+  color: var(--card);
   border-radius: 999px;
   box-shadow: 0 8px 24px rgba(60, 40, 50, 0.2);
   z-index: 30;

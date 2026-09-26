@@ -132,7 +132,7 @@ nav {
 }
 
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.75);
+  background: var(--hover);
   color: var(--text);
 }
 

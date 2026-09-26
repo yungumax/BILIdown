@@ -8,7 +8,6 @@ use bili_core::download::{download, DownloadOptions, Progress, ProgressFn};
 use bili_core::error::BiliError;
 use bili_core::login::{self, Cookies, LoginState};
 use bili_core::parser::{is_short_link, parse_target, Target};
-use bili_core::util::sanitize_filename;
 use bili_core::{ffmpeg, BiliClient};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -74,9 +73,23 @@ pub async fn probe_video(state: State<'_, AppState>, input: String) -> Result<Pr
     probe_one(&client, &input).await
 }
 
-/// 设置页需要的运行环境信息。
+/// 设置页数据：可编辑项加运行环境信息。
 #[tauri::command]
 pub async fn app_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
+    Ok(collect_settings(&state).await)
+}
+
+/// 覆盖保存设置；改并发会重建任务槽位，改代理会重建会话。
+#[tauri::command]
+pub async fn update_settings(
+    state: State<'_, AppState>,
+    settings: crate::state::Settings,
+) -> Result<AppSettings, String> {
+    state.apply_settings(settings);
+    Ok(collect_settings(&state).await)
+}
+
+async fn collect_settings(state: &AppState) -> AppSettings {
     let cookies_path = state.cookies_path();
     let (ffmpeg_ok, ffmpeg_info) = match ffmpeg::find_ffmpeg(None) {
         Some(path) => match ffmpeg::probe_version(&path).await {
@@ -89,14 +102,14 @@ pub async fn app_settings(state: State<'_, AppState>) -> Result<AppSettings, Str
         ),
     };
 
-    Ok(AppSettings {
-        output_dir: state.output_dir().to_string_lossy().to_string(),
+    AppSettings {
+        settings: state.settings(),
         cookies_saved: cookies_path.exists(),
         cookies_path: cookies_path.to_string_lossy().to_string(),
         ffmpeg_ok,
         ffmpeg_info,
         version: env!("CARGO_PKG_VERSION").to_string(),
-    })
+    }
 }
 
 /// 解析一条来源：短链展开 → 识别目标 → 取稿件信息与可用清晰度。
@@ -271,7 +284,8 @@ pub async fn start_download(
 
     let client = state.client();
     let output_dir = state.output_dir();
-    let slots = state.slots.clone();
+    let slots = state.slots();
+    let settings = state.settings();
     let task_id = id.clone();
     let shared_for_task = shared.clone();
     let task_app = app.clone();
@@ -281,6 +295,7 @@ pub async fn start_download(
             task_app.clone(),
             client,
             slots,
+            settings,
             output_dir,
             &req,
             shared_for_task.clone(),
@@ -316,6 +331,7 @@ async fn run_download(
     app: AppHandle,
     client: Arc<BiliClient>,
     slots: Arc<Semaphore>,
+    settings: crate::state::Settings,
     output_dir: PathBuf,
     req: &DownloadRequest,
     shared: Arc<Mutex<TaskUpdate>>,
@@ -355,7 +371,12 @@ async fn run_download(
     tokio::fs::create_dir_all(&work_dir).await?;
     let video_path = work_dir.join("video.m4s");
     let audio_path = work_dir.join("audio.m4s");
-    let opts = DownloadOptions::default();
+    // 分片大小与并发来自设置，默认 4MB × 4
+    let opts = DownloadOptions {
+        concurrency: settings.chunk_concurrency,
+        chunk_size: settings.chunk_mb * 1024 * 1024,
+        ..DownloadOptions::default()
+    };
 
     let video_url = video.base_url.clone();
     let video_backup = video.backup_url.clone();
@@ -421,9 +442,12 @@ async fn run_download(
     })?;
 
     tokio::fs::create_dir_all(&output_dir).await?;
-    let out_file = output_dir.join(format!("{}.mp4", sanitize_filename(&req.title)));
+    let out_file =
+        output_dir.join(settings.output_filename(&req.title, &req.bvid, quality_name(video.id)));
     ffmpeg::merge_video_audio(&ffmpeg_bin, &video_path, &audio_path, &out_file, is_hevc).await?;
-    tokio::fs::remove_dir_all(&work_dir).await.ok();
+    if !settings.keep_temp {
+        tokio::fs::remove_dir_all(&work_dir).await.ok();
+    }
 
     let out_path = out_file.to_string_lossy().to_string();
     mutate(&shared, &app, |t| {

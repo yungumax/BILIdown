@@ -97,7 +97,7 @@ h1 {
   padding: 7px 13px;
   font-size: 12.5px;
   color: var(--text);
-  background: #fff;
+  background: var(--field);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
 }

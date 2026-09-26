@@ -33,6 +33,15 @@ pub struct BiliClient {
 
 impl BiliClient {
     pub fn new() -> Result<Self> {
+        Self::build(None)
+    }
+
+    /// 走指定代理（形如 `http://127.0.0.1:7890`）；传空则直连。
+    pub fn with_proxy(proxy: Option<&str>) -> Result<Self> {
+        Self::build(proxy.filter(|value| !value.trim().is_empty()))
+    }
+
+    fn build(proxy: Option<&str>) -> Result<Self> {
         let mut headers = HeaderMap::new();
         headers.insert(USER_AGENT, HeaderValue::from_static(UA));
         headers.insert(REFERER, HeaderValue::from_static(REFERER_VALUE));
@@ -43,15 +52,20 @@ impl BiliClient {
         );
 
         let jar = Arc::new(Jar::default());
-        let http = Client::builder()
+        let mut builder = Client::builder()
             .default_headers(headers)
             .cookie_provider(jar.clone())
             .connect_timeout(Duration::from_secs(15))
-            .timeout(Duration::from_secs(180))
-            .build()?;
+            .timeout(Duration::from_secs(180));
+
+        if let Some(addr) = proxy {
+            let proxy = reqwest::Proxy::all(addr.trim())
+                .map_err(|e| BiliError::InvalidInput(format!("代理地址无效: {e}")))?;
+            builder = builder.proxy(proxy);
+        }
 
         Ok(Self {
-            http,
+            http: builder.build()?,
             jar,
             wbi: RwLock::new(None),
         })

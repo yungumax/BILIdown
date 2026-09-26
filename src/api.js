@@ -21,6 +21,11 @@ export async function appSettings() {
   return invoke("app_settings");
 }
 
+export async function updateSettings(settings) {
+  if (!hasTauri) return mock.updateSettings(settings);
+  return invoke("update_settings", { settings });
+}
+
 export async function probeVideo(input) {
   if (!hasTauri) return mock.probe(input);
   return invoke("probe_video", { input });
@@ -125,13 +130,29 @@ const mock = (() => {
   });
 
   const settings = () => ({
-    output_dir: "D:\\Zcode\\_data\\bilidown\\downloads",
-    cookies_path: "D:\\Zcode\\_data\\bilidown\\cookies.json",
+    settings: {
+      output_dir: "D:\Zcode\_data\bilidown\downloads",
+      max_concurrent_tasks: 2,
+      chunk_concurrency: 4,
+      chunk_mb: 4,
+      keep_temp: false,
+      naming: "title",
+      default_quality: 0,
+      default_audio: "normal",
+      proxy: "",
+      theme: "system",
+    },
+    cookies_path: "D:\Zcode\_data\bilidown\cookies.json",
     cookies_saved: true,
     ffmpeg_ok: true,
     ffmpeg_info: "ffmpeg version 6.1.1-essentials_build-www.gyan.dev",
     version: "0.1.0",
   });
+
+  const updateSettings = async (next) => {
+    const base = settings();
+    return { ...base, settings: { ...base.settings, ...next } };
+  };
 
   function makeProbe(bvid, title, owner) {
     return {
@@ -257,5 +278,5 @@ const mock = (() => {
     return () => listeners.delete(handler);
   };
 
-  return { status, settings, probe, start, cancel, qrcode, poll, onUpdate };
+  return { status, settings, updateSettings, probe, start, cancel, qrcode, poll, onUpdate };
 })();

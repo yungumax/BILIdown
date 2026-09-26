@@ -1,5 +1,5 @@
 /* 设计令牌与基础样式。
-   浅色体系，参考 BDL 的视觉语言：极浅暖灰底 + 白色卡片 + B 站粉作为唯一强调色。 */
+   浅色为默认；深色通过 <html data-theme="dark"> 切换（见 app 里的主题处理）。 */
 
 :root {
   color-scheme: light;
@@ -25,12 +25,63 @@
   --err: #e04b42;
   --warn: #cf8b1f;
 
+  --hover: #f2eef0;
+  --field: #ffffff;
+  --thumb: #f2edef;
+  --seg-track: #f0ebee;
+  --seg-idle: #cfc6cb;
+  --done-bg: #fbfefc;
+  --done-line: #cfe9dc;
+  --fail-bg: #fdf6f5;
+  --fail-line: #f0d3d0;
+  --scroll: #dcd6d9;
+  --scroll-hover: #c9c2c6;
+  --shade: rgba(38, 30, 34, 0.34);
+
   --radius-lg: 14px;
   --radius: 10px;
   --radius-sm: 8px;
 
   --font: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC",
     -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --app-bg: #17151a;
+  --side-bg: #1c1a20;
+  --card: #211e25;
+  --raised: #272329;
+
+  --line: #332e37;
+  --line-soft: #2a262d;
+
+  --text: #ece8ee;
+  --muted: #a49ea8;
+  --faint: #7e7883;
+
+  --accent: #fb7299;
+  --accent-dark: #ff86a8;
+  --accent-soft: rgba(251, 114, 153, 0.16);
+  --accent-line: #6e3b4c;
+
+  --ok: #46c08c;
+  --err: #ec6a62;
+  --warn: #dda93f;
+
+  --hover: #2f2a33;
+  --field: #1b181f;
+  --thumb: #2c2830;
+  --seg-track: #322d35;
+  --seg-idle: #4a444e;
+  --done-bg: #1b2320;
+  --done-line: #2c4c3d;
+  --fail-bg: #251b1c;
+  --fail-line: #4d2f2f;
+  --scroll: #3a343d;
+  --scroll-hover: #48414b;
+  --shade: rgba(10, 8, 12, 0.6);
 }
 
 * {
@@ -86,14 +137,14 @@ textarea {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #dcd6d9;
+  background: var(--scroll);
   border: 3px solid transparent;
   background-clip: content-box;
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #c9c2c6;
+  background: var(--scroll-hover);
   background-clip: content-box;
 }
 

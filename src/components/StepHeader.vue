@@ -67,7 +67,7 @@ li.done {
   font-weight: 600;
   border-radius: 50%;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--field);
   color: var(--faint);
 }
 

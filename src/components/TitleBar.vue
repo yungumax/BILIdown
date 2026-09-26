@@ -4,8 +4,10 @@ import * as api from "../api";
 defineProps({
   login: { type: Object, required: true },
   version: { type: String, default: "" },
+  /** 当前生效的外观：light / dark */
+  theme: { type: String, default: "light" },
 });
-const emit = defineEmits(["login"]);
+const emit = defineEmits(["login", "toggle-theme"]);
 
 /** 只有按住左键才当作拖动窗口；按钮区域不参与 */
 function onDrag(event) {
@@ -39,6 +41,31 @@ function onDrag(event) {
     </div>
 
     <div class="drag-fill" @mousedown="onDrag"></div>
+
+    <button
+      class="icon-btn"
+      :title="theme === 'dark' ? '切换到浅色' : '切换到深色'"
+      @click="emit('toggle-theme')"
+    >
+      <svg v-if="theme === 'dark'" viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M20 14.4A8.4 8.4 0 0 1 9.6 4 8.4 8.4 0 1 0 20 14.4Z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.6"
+          stroke-linejoin="round"
+        />
+      </svg>
+      <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="3.7" fill="none" stroke="currentColor" stroke-width="1.6" />
+        <path
+          d="M12 3.4v2M12 18.6v2M3.4 12h2M18.6 12h2M6.1 6.1 7.5 7.5M16.5 16.5 17.9 17.9M17.9 6.1 16.5 7.5M7.5 16.5 6.1 17.9"
+          stroke="currentColor"
+          stroke-width="1.6"
+          stroke-linecap="round"
+        />
+      </svg>
+    </button>
 
     <button class="login-chip" :class="{ on: login.logged_in }" @click="emit('login')">
       <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
@@ -151,13 +178,37 @@ function onDrag(event) {
   margin-right: 12px;
   font-size: 12.5px;
   color: var(--accent);
-  background: #fff;
+  background: var(--field);
   border: 1px solid var(--accent-line);
   border-radius: 999px;
   transition: background 0.15s ease;
 }
 
 .login-chip:hover {
+  background: var(--accent-soft);
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-right: 8px;
+  color: var(--muted);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.icon-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent-line);
   background: var(--accent-soft);
 }
 
@@ -200,7 +251,7 @@ function onDrag(event) {
 }
 
 .ctrl:hover {
-  background: #f2eef0;
+  background: var(--hover);
   color: var(--text);
 }
 

@@ -5,6 +5,7 @@ import StepHeader from "../components/StepHeader.vue";
 
 const props = defineProps({
   login: { type: Object, required: true },
+  settings: { type: Object, default: null },
 });
 const emit = defineEmits(["toast", "goto"]);
 
@@ -39,6 +40,16 @@ const sources = [
   { label: "UP 空间", pending: true },
   { label: "番剧与课程", pending: true },
 ];
+
+/** 优先用设置里的默认清晰度；该视频拿不到时退回推荐档 */
+function pickDefaultQuality(probe) {
+  const wanted = props.settings?.default_quality ?? 0;
+  if (wanted > 0) {
+    const match = probe.qualities.find((q) => q.qn === wanted && q.available);
+    if (match) return wanted;
+  }
+  return probe.recommended_quality;
+}
 
 function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600);
@@ -84,8 +95,8 @@ async function parse() {
         ok: true,
         error: "",
         probe,
-        quality: probe.recommended_quality,
-        audio: "normal",
+        quality: pickDefaultQuality(probe),
+        audio: props.settings?.default_audio || "normal",
       });
     } catch (error) {
       collected.push({ input, ok: false, error: String(error) });
@@ -345,7 +356,7 @@ h1 {
   padding: 6px 15px;
   font-size: 12.5px;
   color: var(--muted);
-  background: #fff;
+  background: var(--field);
   border: 1px solid var(--line);
   border-radius: 999px;
   transition: all 0.15s ease;
@@ -368,7 +379,7 @@ input {
   width: 100%;
   padding: 12px 14px;
   color: var(--text);
-  background: #fff;
+  background: var(--field);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   resize: vertical;
@@ -435,7 +446,7 @@ input:focus {
   padding: 8px 14px;
   font-size: 12.5px;
   color: var(--text);
-  background: #fff;
+  background: var(--field);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
 }
@@ -530,8 +541,8 @@ h2 {
 }
 
 .item.failed {
-  background: #fdf4f3;
-  border-color: #f5d8d5;
+  background: var(--fail-bg);
+  border-color: var(--fail-line);
 }
 
 .thumb {
@@ -542,13 +553,13 @@ h2 {
   height: 58px;
   border-radius: var(--radius-sm);
   overflow: hidden;
-  background: #f2edef;
+  background: var(--thumb);
 }
 
 .thumb-placeholder {
   width: 24px;
   height: 24px;
-  color: #d3c9ce;
+  color: var(--faint);
 }
 
 .thumb img {
@@ -636,7 +647,7 @@ option:disabled {
 
 .remove:hover {
   color: var(--err);
-  background: #fbeceb;
+  background: var(--fail-bg);
 }
 
 .login-tip {

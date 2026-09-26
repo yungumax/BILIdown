@@ -87,7 +87,7 @@ watch(() => props.qr, draw);
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(38, 30, 34, 0.34);
+  background: var(--shade);
   z-index: 20;
 }
 
@@ -142,7 +142,7 @@ h2 {
 .spinner {
   width: 26px;
   height: 26px;
-  border: 2px solid #eee6ea;
+  border: 2px solid var(--line);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.9s linear infinite;
@@ -240,7 +240,7 @@ h2 {
   padding: 9px 14px;
   font-size: 12.5px;
   color: var(--text);
-  background: #fff;
+  background: var(--field);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
 }

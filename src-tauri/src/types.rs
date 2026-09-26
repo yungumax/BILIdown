@@ -159,10 +159,10 @@ pub struct LoginPoll {
     pub login: LoginInfo,
 }
 
-/// 设置页需要的运行环境信息。
+/// 设置页数据：可编辑项 + 只读的运行环境信息。
 #[derive(Debug, Clone, Serialize)]
 pub struct AppSettings {
-    pub output_dir: String,
+    pub settings: crate::state::Settings,
     pub cookies_path: String,
     pub cookies_saved: bool,
     pub ffmpeg_ok: bool,

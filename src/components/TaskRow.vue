@@ -131,19 +131,19 @@ function human(bytes) {
 <style scoped>
 .row {
   padding: 13px 15px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
 }
 
 .row.done {
-  border-color: #cfe9dc;
-  background: #fbfefc;
+  border-color: var(--done-line);
+  background: var(--done-bg);
 }
 
 .row.failed {
-  border-color: #f0d3d0;
-  background: #fdf6f5;
+  border-color: var(--fail-line);
+  background: var(--fail-bg);
 }
 
 .head {
@@ -200,7 +200,7 @@ function human(bytes) {
   padding: 3px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--field);
 }
 
 .action:hover {
@@ -219,7 +219,7 @@ function human(bytes) {
 
 .seg {
   flex: 1;
-  background: #f0ebee;
+  background: var(--seg-track);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -238,7 +238,7 @@ function human(bytes) {
 }
 
 .seg.idle .fill {
-  background: #cfc6cb;
+  background: var(--seg-idle);
 }
 
 .row.failed .seg .fill {
@@ -294,7 +294,7 @@ function human(bytes) {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #cfc6cb;
+  background: var(--seg-idle);
 }
 
 .stages li.active .pip {
