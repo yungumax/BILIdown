@@ -4,7 +4,7 @@ mod commands;
 mod state;
 mod types;
 
-use tauri::{Manager, Theme, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Theme, WebviewUrl, WebviewWindowBuilder};
 
 const BG_DARK: tauri::window::Color = tauri::window::Color(27, 29, 33, 255);
 const BG_LIGHT: tauri::window::Color = tauri::window::Color(245, 243, 244, 255);
@@ -15,15 +15,6 @@ pub fn run() {
     let theme_mode = state.settings().theme.clone();
 
     tauri::Builder::default()
-        // 单实例保护：二次启动时聚焦已有窗口而不是开新实例。
-        // 官方要求此插件必须最先注册。
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
-        }))
         .plugin(tauri_plugin_dialog::init())
         .manage(state)
         // 兜底：页面加载完成即显示窗口（正常路径是前端挂载后主动调用）
