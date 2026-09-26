@@ -322,41 +322,105 @@ function entryKey(probe, entry) {
   return `${probe.kind}:${entry.bvid || `ep-${entry.ep_id}`}`;
 }
 
-function isSelected(entry) {
+/** 多个单视频时把它们并成一个清单看（不再一个个切标签） */
+const videosOnly = computed(() => okItems.value.filter((item) => item.probe.kind === "video"));
+const multiVideos = computed(() => videosOnly.value.length > 1);
+
+/** 表格行：批量来源是它的条目，多个单视频就是这些视频本身 */
+const tableRows = computed(() => {
+  if (multiVideos.value) {
+    return videosOnly.value.map((item, index) => ({
+      key: item.input,
+      index: index + 1,
+      title: item.probe.title,
+      owner: item.probe.owner,
+      duration: item.probe.duration,
+      source: item,
+    }));
+  }
   const source = activeSource.value;
-  return !!source && selected.value.has(entryKey(source.probe, entry));
+  if (!source || source.probe.kind === "video") return [];
+  return source.probe.items.map((entry, index) => ({
+    key: entryKey(source.probe, entry),
+    index: index + 1,
+    title: entry.title,
+    owner: entry.owner,
+    duration: entry.duration,
+    entry,
+    source,
+  }));
+});
+
+/** 有表格可看（批量来源，或多个单视频） */
+const hasTable = computed(() => tableRows.value.length > 0);
+
+function isSelected(row) {
+  return selected.value.has(row.key);
 }
 
-function toggleEntry(entry) {
-  const source = activeSource.value;
-  if (!source) return;
-  const key = entryKey(source.probe, entry);
+function toggleEntry(row) {
   const next = new Set(selected.value);
-  if (next.has(key)) next.delete(key);
-  else next.add(key);
+  if (next.has(row.key)) next.delete(row.key);
+  else next.add(row.key);
   selected.value = next;
 }
 
-const loadedCount = computed(() => activeSource.value?.probe.items.length ?? 0);
-const selectedCount = computed(() =>
-  activeSource.value ? activeSource.value.probe.items.filter((entry) => isSelected(entry)).length : 0
-);
+const loadedCount = computed(() => tableRows.value.length);
+const selectedCount = computed(() => tableRows.value.filter((row) => isSelected(row)).length);
 const allLoadedSelected = computed(
   () => loadedCount.value > 0 && selectedCount.value === loadedCount.value
 );
 
 /** 全选/全不选只作用于"已加载"的部分，没拉下来的不会被选中 */
 function toggleAllLoaded(checked) {
-  const source = activeSource.value;
-  if (!source) return;
   const next = new Set(selected.value);
-  for (const entry of source.probe.items) {
-    const key = entryKey(source.probe, entry);
-    if (checked) next.add(key);
-    else next.delete(key);
+  for (const row of tableRows.value) {
+    if (checked) next.add(row.key);
+    else next.delete(row.key);
   }
   selected.value = next;
 }
+
+// ---- 下载设置弹层绑定：多视频清单用共享的一档，单来源用来源自己的 ----
+const multiQuality = ref(0);
+const multiAudio = ref("normal");
+
+const dlQuality = computed({
+  get: () =>
+    multiVideos.value ? multiQuality.value : activeSource.value?.quality ?? 0,
+  set: (value) => {
+    if (multiVideos.value) multiQuality.value = value;
+    else if (activeSource.value) activeSource.value.quality = value;
+  },
+});
+
+const dlAudio = computed({
+  get: () => (multiVideos.value ? multiAudio.value : activeSource.value?.audio ?? "normal"),
+  set: (value) => {
+    if (multiVideos.value) multiAudio.value = value;
+    else if (activeSource.value) activeSource.value.audio = value;
+  },
+});
+
+const dlQualities = computed(() =>
+  multiVideos.value
+    ? videosOnly.value[0]?.probe.qualities ?? []
+    : activeSource.value?.probe.qualities ?? []
+);
+
+const dlAudios = computed(() =>
+  multiVideos.value
+    ? videosOnly.value[0]?.probe.audios ?? []
+    : activeSource.value?.probe.audios ?? []
+);
+
+// 有多个单视频时，默认档位取第一个视频的推荐值
+watch(videosOnly, () => {
+  const first = videosOnly.value[0];
+  if (!first) return;
+  multiQuality.value = pickDefaultQuality(first.probe);
+  multiAudio.value = pickDefaultAudio(first.probe);
+});
 
 async function loadMore() {
   const source = activeSource.value;
@@ -376,32 +440,42 @@ async function loadMore() {
   }
 }
 
-/** 把给定条目逐个入队；列表序号从 1 开始，供命名模板的 {index} 使用 */
-async function startEntries(entries) {
-  const source = activeSource.value;
-  if (!source || !entries.length) return 0;
-  const picked = new Set(entries);
+/** 把给定行逐个入队；序号从 1 开始，供命名模板的 {index} / {episode_index} 用 */
+async function startRows(rows) {
+  if (!rows.length) return 0;
   let started = 0;
-  let position = 0;
-  for (const entry of source.probe.items) {
-    position += 1;
-    if (!picked.has(entry)) continue;
+  for (const row of rows) {
     try {
-      await api.startDownload({
-        bvid: entry.bvid,
-        cid: entry.cid,
-        ep_id: entry.ep_id,
-        source: source.probe.kind,
-        title: entry.title,
-        owner: source.probe.owner,
-        quality: source.quality,
-        audio: source.audio,
-        cover: "",
-        naming: batchNaming(source.probe, entry, position),
-      });
+      if (!row.entry) {
+        // 多个单视频：每一个都是独立来源，用共享的清晰度/音轨
+        await api.startDownload({
+          bvid: row.source.probe.bvid,
+          cid: row.source.probe.cid,
+          title: row.source.probe.title,
+          owner: row.source.probe.owner,
+          source: "video",
+          quality: multiQuality.value,
+          audio: multiAudio.value,
+          cover: row.source.probe.cover,
+          naming: singleNaming(row.source.probe),
+        });
+      } else {
+        await api.startDownload({
+          bvid: row.entry.bvid,
+          cid: row.entry.cid,
+          ep_id: row.entry.ep_id,
+          source: row.source.probe.kind,
+          title: row.entry.title,
+          owner: row.source.probe.owner,
+          quality: row.source.quality,
+          audio: row.source.audio,
+          cover: "",
+          naming: batchNaming(row.source.probe, row.entry, row.index),
+        });
+      }
       started += 1;
     } catch (error) {
-      emit("toast", `${entry.title}: ${error}`);
+      emit("toast", `${row.title}: ${error}`);
     }
   }
   if (started) {
@@ -411,31 +485,27 @@ async function startEntries(entries) {
   return started;
 }
 
-/** 下载：批量来源下勾选的条目，单视频直接下这一条 */
+/** 下载：清单里勾选的行；只有一个视频时直接下这一条 */
 async function downloadSelected() {
-  const source = activeSource.value;
-  if (!source) return;
-  if (source.probe.kind === "video") {
-    await startSingle(source);
+  if (!hasTable.value) {
+    if (activeSource.value) await startSingle(activeSource.value);
     return;
   }
-  const picked = source.probe.items.filter((entry) => isSelected(entry));
+  const picked = tableRows.value.filter((row) => isSelected(row));
   if (!picked.length) {
     emit("toast", "先勾选要下载的内容");
     return;
   }
-  await startEntries(picked);
+  await startRows(picked);
 }
 
-/** 下载全部：不看勾选，把已加载的条目全部入队 */
+/** 下载全部：不看勾选，把已加载的行全部入队 */
 async function downloadAll() {
-  const source = activeSource.value;
-  if (!source) return;
-  if (source.probe.kind === "video") {
-    await startSingle(source);
+  if (!hasTable.value) {
+    if (activeSource.value) await startSingle(activeSource.value);
     return;
   }
-  await startEntries([...source.probe.items]);
+  await startRows([...tableRows.value]);
 }
 
 // 「下载设置」弹层（清晰度/音轨）
@@ -574,14 +644,20 @@ async function startSingle(item) {
             />
           </svg>
         </button>
-        <h2 class="select-title" :title="activeSource.probe.title">
-          {{ activeSource.probe.title }}
+        <h2
+          class="select-title"
+          :title="multiVideos ? `${loadedCount} 个单视频` : activeSource.probe.title"
+        >
+          {{ multiVideos ? `${loadedCount} 个单视频` : activeSource.probe.title }}
         </h2>
-        <span class="kind-tag">{{ kindLabel(activeSource.probe.kind) }}</span>
+        <span class="kind-tag">
+          {{ multiVideos ? "视频" : kindLabel(activeSource.probe.kind) }}
+        </span>
 
         <span class="spacer"></span>
 
-        <div v-if="allSources.length > 1" class="source-tabs">
+        <!-- 多个单视频时列表已经全展示了，切换标签就没有意义了 -->
+        <div v-if="allSources.length > 1 && !multiVideos" class="source-tabs">
           <button
             v-for="source in allSources"
             :key="source.input"
@@ -596,7 +672,10 @@ async function startSingle(item) {
         </div>
 
         <div class="bar-actions">
-        <template v-if="activeIsBatch">
+        <template v-if="multiVideos">
+          <span class="loaded-hint num">共 {{ loadedCount }} 个视频</span>
+        </template>
+        <template v-else-if="activeIsBatch">
           <span class="loaded-hint num">
             已加载 {{ loadedCount }} / {{ activeSource.probe.total }} 项
           </span>
@@ -638,9 +717,9 @@ async function startSingle(item) {
             <div v-if="pickingDl" class="dl-pop">
               <label class="pop-field">
                 <span>清晰度</span>
-                <select v-model.number="activeSource.quality">
+                <select v-model.number="dlQuality">
                   <option
-                    v-for="quality in activeSource.probe.qualities"
+                    v-for="quality in dlQualities"
                     :key="quality.qn"
                     :value="quality.qn"
                     :disabled="!quality.available"
@@ -651,9 +730,9 @@ async function startSingle(item) {
               </label>
               <label class="pop-field">
                 <span>音轨</span>
-                <select v-model="activeSource.audio">
+                <select v-model="dlAudio">
                   <option
-                    v-for="audio in activeSource.probe.audios"
+                    v-for="audio in dlAudios"
                     :key="audio.kind"
                     :value="audio.kind"
                     :disabled="!audio.available"
@@ -669,20 +748,20 @@ async function startSingle(item) {
           </Transition>
         </div>
 
-        <button v-if="activeIsBatch" class="ghost" @click="downloadAll">下载全部</button>
+        <button v-if="hasTable" class="ghost" @click="downloadAll">下载全部</button>
         <button
           class="primary"
-          :disabled="activeIsBatch && !selectedCount"
+          :disabled="hasTable && !selectedCount"
           @click="downloadSelected"
         >
-          {{ activeIsBatch ? `下载所选 (${selectedCount})` : "加入下载" }}
+          {{ hasTable ? `下载所选 (${selectedCount})` : "加入下载" }}
         </button>
         </div>
       </header>
 
       <p v-if="activeSource.probe.note" class="note">{{ activeSource.probe.note }}</p>
 
-      <div v-if="!activeIsBatch" class="video-detail">
+      <div v-if="!hasTable" class="video-detail">
         <div class="thumb">
           <img v-if="activeSource.probe.cover" :src="activeSource.probe.cover" alt="" />
         </div>
@@ -703,7 +782,7 @@ async function startSingle(item) {
         </div>
       </div>
 
-      <div v-if="activeIsBatch" class="table-scroll">
+      <div v-if="hasTable" class="table-scroll">
         <table class="batch-table">
           <thead>
             <tr>
@@ -722,25 +801,21 @@ async function startSingle(item) {
             </tr>
           </thead>
           <tbody>
-            <tr
-              v-for="(entry, index) in activeSource.probe.items"
-              :key="entry.bvid || `ep-${entry.ep_id}`"
-              :class="{ on: isSelected(entry) }"
-            >
+            <tr v-for="row in tableRows" :key="row.key" :class="{ on: isSelected(row) }">
               <td class="col-check">
-                <input type="checkbox" :checked="isSelected(entry)" @change="toggleEntry(entry)" />
+                <input type="checkbox" :checked="isSelected(row)" @change="toggleEntry(row)" />
               </td>
-              <td class="col-idx num">{{ String(index + 1).padStart(2, "0") }}</td>
-              <td class="col-title" :title="entry.title">{{ entry.title }}</td>
-              <td class="col-owner" :title="entry.owner">{{ entry.owner || "—" }}</td>
-              <td class="col-dur num">{{ formatDuration(entry.duration) }}</td>
+              <td class="col-idx num">{{ String(row.index).padStart(2, "0") }}</td>
+              <td class="col-title" :title="row.title">{{ row.title }}</td>
+              <td class="col-owner" :title="row.owner">{{ row.owner || "—" }}</td>
+              <td class="col-dur num">{{ formatDuration(row.duration) }}</td>
             </tr>
           </tbody>
         </table>
       </div>
 
       <!-- 底部统计只对批量清单有意义，单视频不渲染这条空栏 -->
-      <footer v-if="activeIsBatch" class="select-foot">
+      <footer v-if="hasTable" class="select-foot">
         <span class="foot-count">已选 <b class="num">{{ selectedCount }}</b> 项</span>
         <span class="foot-count">共 <b class="num">{{ loadedCount }}</b> 项</span>
         <span class="spacer"></span>
@@ -1190,7 +1265,6 @@ input:focus {
 /* 文件名是补充信息：收成一行，悬停看全，不跟标题抢注意力 */
 .video-detail .file-line {
   display: flex;
-  align-items: baseline;
   gap: 7px;
   margin-top: 7px;
   min-width: 0;
@@ -1207,13 +1281,22 @@ input:focus {
   border-radius: var(--radius-sm);
 }
 
+/* 一行放不下就折成两排，超过两排才省略（文件名往往很长） */
 .video-detail .file-line code {
+  flex: 1;
   min-width: 0;
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   color: var(--muted);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.video-detail .file-line {
+  align-items: flex-start;
 }
 
 /* 选择页占满可用高度：顶部工具条与底部统计不随滚动移动 */
