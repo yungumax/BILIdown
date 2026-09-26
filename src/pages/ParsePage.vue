@@ -26,6 +26,8 @@ const KIND_LABELS = {
 };
 
 /** 批量来源里每条的勾选状态 */
+/** 本次解析被跳过的重复来源，列在解析结果里 */
+const parseSkipped = ref([]);
 const selected = ref(new Set());
 const okItems = computed(() => items.value.filter((item) => item.ok));
 const failedItems = computed(() => items.value.filter((item) => !item.ok));
@@ -106,19 +108,6 @@ function formatDuration(seconds) {
     : `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function lines() {
-  // 同一链接贴两次不必解析两遍
-  const seen = new Set();
-  const out = [];
-  for (const raw of text.value.split("\n")) {
-    const line = raw.trim();
-    if (!line || seen.has(line)) continue;
-    seen.add(line);
-    out.push(line);
-  }
-  return out;
-}
-
 async function pasteFromClipboard() {
   const value = await api.readClipboard();
   if (!value) {
@@ -149,8 +138,20 @@ function pickDefaultAudio(probe) {
 }
 
 async function parse() {
-  const inputs = lines();
-  const rawLineCount = text.value.split("\n").filter((line) => line.trim()).length;
+  // 同一链接贴两次不必解析两遍；被跳过的记下来，回头列在解析结果里
+  const skipped = [];
+  const inputs = [];
+  const seenLine = new Set();
+  for (const raw of text.value.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (seenLine.has(line)) {
+      skipped.push({ input: line, reason: "与前面的链接相同" });
+      continue;
+    }
+    seenLine.add(line);
+    inputs.push(line);
+  }
   if (!inputs.length || parsing.value) return;
 
   // 按解析节奏分批：批内并发、批间等待、每 N 条休息，降低触发风控的概率
@@ -160,11 +161,8 @@ async function parse() {
   done.value = 0;
   total.value = inputs.length;
 
-  const droppedLines = rawLineCount - inputs.length;
-
   const collected = [];
-  const seenKeys = new Set();
-  let duplicated = 0;
+  const seenKeys = new Map();
   const batch = Math.max(1, props.settings?.parse_batch ?? 8);
   const batchWait = props.settings?.parse_batch_wait_ms ?? 1000;
   const restEvery = Math.max(1, props.settings?.parse_rest_every ?? 100);
@@ -176,11 +174,14 @@ async function parse() {
       const probe = await api.probeSource(input, mode.value === "batch");
       // 同一个来源（同一链接/同一合集的另一个视频）只保留第一次
       if (probe.key && seenKeys.has(probe.key)) {
-        duplicated += 1;
+        skipped.push({
+          input,
+          reason: `与「${seenKeys.get(probe.key)}」是同一个来源`,
+        });
         done.value += 1;
         return;
       }
-      if (probe.key) seenKeys.add(probe.key);
+      if (probe.key) seenKeys.set(probe.key, probe.title || input);
       if (probe.kind === "video") {
         collected.push({
           input,
@@ -221,14 +222,14 @@ async function parse() {
   }
 
   parsing.value = false;
+  parseSkipped.value = [...skipped];
 
   const failed = collected.filter((item) => !item.ok).length;
   if (failed) {
     emit("toast", `${collected.length - failed} 条解析成功，${failed} 条失败`);
   }
-  const skipped = duplicated + droppedLines;
-  if (skipped) {
-    emit("toast", `已跳过 ${skipped} 个重复来源（同一链接或同一合集）`);
+  if (skipped.length) {
+    emit("toast", `已跳过 ${skipped.length} 个重复来源，明细见解析结果`);
   }
 
   // 解析成功的一律进「选择内容」页：单视频与批量清单都在那里挑
@@ -651,6 +652,7 @@ function gotoStep(target) {
 /** 清空全部解析结果 */
 function resetParsed() {
   items.value = [];
+  parseSkipped.value = [];
   selected.value = new Set();
   text.value = "";
   view.value = "input";
@@ -1039,6 +1041,28 @@ async function startSingle(item) {
         </button>
       </div>
 
+      <div v-if="parseSkipped.length || dedupedCount > 0" class="skipped-box">
+        <p class="skipped-head">
+          去重结果
+          <span class="num faint">
+            {{ parseSkipped.length ? `跳过 ${parseSkipped.length} 个重复来源` : "" }}
+            {{ parseSkipped.length && dedupedCount ? " · " : "" }}
+            {{ dedupedCount ? `合并 ${dedupedCount} 条重复内容` : "" }}
+          </span>
+        </p>
+        <ul class="skipped-list">
+          <li v-for="(item, index) in parseSkipped" :key="`${item.input}-${index}`">
+            <span class="skipped-input" :title="item.input">{{ item.input }}</span>
+            <span class="skipped-reason">{{ item.reason }}</span>
+          </li>
+          <li v-if="dedupedCount > 0" class="skipped-merged">
+            <span class="skipped-reason">
+              另有 {{ dedupedCount }} 条内容与已有来源重复，已合并（不重复下载）
+            </span>
+          </li>
+        </ul>
+      </div>
+
       <ul v-if="failedItems.length" class="list">
         <li v-for="item in failedItems" :key="item.input" class="item failed">
           <div class="meta">
@@ -1223,6 +1247,56 @@ input:focus {
   width: 14px;
   height: 14px;
   color: var(--accent);
+}
+
+/* 解析结果里的去重明细 */
+.skipped-box {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+}
+
+.skipped-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.skipped-list {
+  margin: 7px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skipped-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.skipped-input {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 58%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: var(--text);
+}
+
+.skipped-reason {
+  flex: 1;
+  min-width: 0;
+  color: var(--faint);
 }
 
 /* 输入页里的"已解析来源"入口 */
