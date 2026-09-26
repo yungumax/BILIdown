@@ -1,14 +1,22 @@
+# Rust 构建产物
+/target/
+crates/*/target/
+
 # Node / 前端
 node_modules/
 dist/
 
-# Rust / Tauri
+# Tauri
 src-tauri/target/
 src-tauri/binaries/
 src-tauri/gen/
 
 # ffmpeg 大文件不入库（由脚本/CI 下载放置）
 *.exe
+
+# 下载的临时/产物文件
+.bilitmp/
+*.m4s
 
 # 本地工具状态
 .video_agent/

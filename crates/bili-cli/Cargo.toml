@@ -1,0 +1,17 @@
+[package]
+name = "bili-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "BILIdown 命令行原型（M1）：验证 wbi 签名、DASH 下载与 ffmpeg 合成链路"
+
+[[bin]]
+name = "bili-cli"
+path = "src/main.rs"
+
+[dependencies]
+bili-core = { path = "../bili-core" }
+anyhow.workspace = true
+clap.workspace = true
+tokio.workspace = true
