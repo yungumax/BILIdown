@@ -87,6 +87,7 @@ pub fn run() {
             commands::app_settings,
             commands::update_settings,
             commands::probe_source,
+            commands::probe_more,
             commands::start_download,
             commands::cancel_download,
             commands::login_qrcode,

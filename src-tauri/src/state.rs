@@ -27,6 +27,8 @@ pub struct AppState {
     /// ffmpeg 探测结果缓存。探测要起子进程（实测约 0.8 秒），
     /// 不能放进每次都会调用的设置读取里，否则启动与每次保存都要等它。
     ffmpeg: Mutex<Option<FfmpegStatus>>,
+    /// 批量来源的增量加载缓存，按来源输入索引
+    batches: Mutex<HashMap<String, BatchCache>>,
 }
 
 /// ffmpeg 可用性：`ok` 表示探测通过，`info` 为版本行或失败原因。
@@ -35,6 +37,42 @@ pub struct FfmpegStatus {
     pub ok: bool,
     pub info: String,
 }
+
+/// 批量来源的分页参数：重新拉某一页时需要知道来源本身。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BatchTarget {
+    Fav(u64),
+    Collection { mid: u64, sid: u64 },
+    Space(u64),
+    /// 番剧/课程一次给全，没有分页
+    Whole,
+}
+
+/// 批量来源的增量加载缓存。
+///
+/// 解析时只拉第一页，「继续解析」接着往后拉：收藏夹 130 条要 7 次请求，
+/// 每次都从第一页重来会很浪费，也更容易触发风控。
+#[derive(Debug, Clone)]
+pub struct BatchCache {
+    pub kind: String,
+    pub target: BatchTarget,
+    pub title: String,
+    pub owner: String,
+    /// 来源声明的总条数
+    pub total: usize,
+    pub items: Vec<crate::types::BatchVideo>,
+    /// 下次要拉的页码
+    pub next_page: u32,
+    /// 已经拉完（没有更多，或到了单次上限）
+    pub exhausted: bool,
+    pub qualities: Vec<crate::types::QualityOption>,
+    pub audios: Vec<crate::types::AudioOption>,
+    pub recommended_quality: u32,
+    pub best_quality: u32,
+}
+
+/// 缓存条目上限：同一来源边看边拉时只会有几条，超了丢最早的一条。
+const MAX_BATCH_CACHE: usize = 8;
 
 /// 一条画质优先项：目标档位 + 同档内的编码偏好（auto/avc/hevc/av1）。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -407,7 +445,26 @@ impl AppState {
             settings: Mutex::new(settings),
             counter: Mutex::new(0),
             ffmpeg: Mutex::new(None),
+            batches: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// 取出某个来源的加载缓存（取出后由调用方持有，避免克隆整份清单）。
+    pub fn take_batch(&self, key: &str) -> Option<BatchCache> {
+        self.batches
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(key)
+    }
+
+    pub fn put_batch(&self, key: String, cache: BatchCache) {
+        let mut guard = self.batches.lock().unwrap_or_else(|e| e.into_inner());
+        if !guard.contains_key(&key) && guard.len() >= MAX_BATCH_CACHE {
+            if let Some(victim) = guard.keys().next().cloned() {
+                guard.remove(&victim);
+            }
+        }
+        guard.insert(key, cache);
     }
 
     /// 读缓存的 ffmpeg 探测结果；没有缓存时返回 None（调用方给中性文案，不谎报）。

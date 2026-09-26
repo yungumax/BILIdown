@@ -82,6 +82,8 @@ pub struct ProbeSource {
     pub total: usize,
     /// 实际加载条数
     pub loaded: usize,
+    /// 是否已经拉到底（「继续解析」没有更多了）
+    pub exhausted: bool,
     pub qualities: Vec<QualityOption>,
     pub audios: Vec<AudioOption>,
     pub recommended_quality: u32,
@@ -237,4 +239,14 @@ pub struct AppSettings {
     pub ffmpeg_ok: bool,
     pub ffmpeg_info: String,
     pub version: String,
+}
+
+/// 「继续解析」的返回：本次新增的条目 + 最新进度。
+#[derive(Debug, Clone, Serialize)]
+pub struct ProbeMore {
+    pub items: Vec<BatchVideo>,
+    pub loaded: usize,
+    pub total: usize,
+    pub exhausted: bool,
+    pub note: String,
 }

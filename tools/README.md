@@ -118,3 +118,19 @@ tooltip 文本。
 踩坑：解析页原来有一条 `textarea, input { width: 100% }`，把批量列表里的勾选框
 也拉成了整行宽（30×26）。设置页早就是 `input:not([type="checkbox"])`，解析页漏了。
 写宽泛的 input 规则时记得排除 checkbox。
+
+## 「选择内容」独立页与增量加载
+
+`test-select-page.mjs` 覆盖：解析后进入独立页、首屏只加载第一页、顶部显示
+「已加载 N / M 项」、点「继续解析」行数真的变多且顶部数字同步、全选已加载、
+取消勾选后「下载所选 (N)」计数跟着变。
+
+`live_incremental_loading` 是它的后端对应物（联网）：断言首页只给 20 条
+（收藏夹每页 20），「继续解析」至少再取 50 条，两次之间不重复、进度等于两次之和。
+
+```bash
+cargo test -p bilidown -- --ignored --nocapture live_incremental_loading
+```
+
+踩坑：批量来源列表项是 Vue 深层响应式对象，`probe.items.push(...)` 能直接触发更新，
+但 `loaded/total/exhausted/note` 要逐个赋值（不是 computed）。

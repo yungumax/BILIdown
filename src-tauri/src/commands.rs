@@ -1,6 +1,6 @@
 //! 暴露给前端的命令，是界面与 `bili-core` 之间的唯一通道。
 
-use crate::state::{AppState, TaskEntry};
+use crate::state::{AppState, BatchCache, BatchTarget, TaskEntry};
 use crate::types::*;
 use base64::Engine;
 use bili_core::api::{codec_name, quality_name};
@@ -76,7 +76,18 @@ pub async fn probe_source(
     input: String,
 ) -> Result<ProbeSource, String> {
     let client = state.client();
-    probe_one(&client, &input).await
+    probe_one(&client, &state, &input).await
+}
+
+/// 继续解析：往后多拉 `want` 条。首次解析只给第一页，避免一上来就拉上千条。
+#[tauri::command]
+pub async fn probe_more(
+    state: State<'_, AppState>,
+    input: String,
+    want: usize,
+) -> Result<ProbeMore, String> {
+    let client = state.client();
+    probe_more_one(&client, &state, &input, want).await
 }
 
 /// 设置页数据：可编辑项加运行环境信息。
@@ -188,28 +199,268 @@ pub async fn preview_naming(
         .replace('\\', "/"))
 }
 
-/// 分页拉取上限，避免超大收藏夹一次解析上千条。
+/// 单次加载上限，避免超大来源被一次拉上千条（界面上可以「继续解析」分批拉）。
 const FAV_MAX_ITEMS: usize = 500;
 const COLLECTION_MAX_ITEMS: usize = 500;
 const SPACE_MAX_ITEMS: usize = 300;
 
+/// 各来源的单页条数，决定「继续解析」一次往后拉多少页。
+fn source_page_size(target: BatchTarget) -> usize {
+    match target {
+        BatchTarget::Fav(_) | BatchTarget::Whole => 20,
+        BatchTarget::Space(_) => 30,
+        BatchTarget::Collection { .. } => 100,
+    }
+}
+
+fn source_cap(kind: &str) -> usize {
+    match kind {
+        "fav" => FAV_MAX_ITEMS,
+        "collection" => COLLECTION_MAX_ITEMS,
+        _ => SPACE_MAX_ITEMS,
+    }
+}
+
 /// 批量来源的加载说明。
 ///
-/// `total > loaded` 有两种完全不同的原因，用户该做的事也不同：
-/// 到了单次解析上限（应该分批解析）与部分内容拿不到（失效/受限，分批也没用）。
-/// 实测收藏夹就是后者：total=130 而实际只能拿到 129 条。
-fn load_note(label: &str, total: usize, loaded: usize, cap: usize) -> String {
+/// `total > loaded` 有三种原因，用户该做的事都不同：
+/// 还没拉完（界面上会显示"已加载 N / M"，不必提示）、到了单次上限、
+/// 以及部分内容拿不到（失效/受限，再拉也没有）。实测收藏夹就是最后一种：
+/// total=130 而实际只能拿到 129 条。
+fn load_note(label: &str, total: usize, loaded: usize, cap: usize, exhausted: bool) -> String {
     if loaded >= cap && total > loaded {
-        format!("{label}共 {total} 条，已达单次解析上限 {cap} 条，分批解析可继续")
-    } else if total > loaded {
+        format!("{label}共 {total} 条，已达单次解析上限 {cap} 条")
+    } else if exhausted && total > loaded {
         format!("{label}共 {total} 条，其中 {loaded} 条可下载（其余可能已失效或受限）")
     } else {
         String::new()
     }
 }
 
-/// 解析一条来源：短链展开 → 识别目标 → 单视频取详情，批量来源逐页拉清单。
-async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, String> {
+/// 第一页返回的来源信息（后续页不再重复给）。
+struct BatchMeta {
+    kind: String,
+    title: String,
+    owner: String,
+    total: usize,
+}
+
+/// 拉批量来源的一页。`meta` 只有第一页有值。
+async fn fetch_batch_page(
+    client: &BiliClient,
+    target: BatchTarget,
+    page: u32,
+) -> Result<(Vec<BatchVideo>, Option<BatchMeta>), String> {
+    let first = page == 1;
+    match target {
+        BatchTarget::Fav(fid) => {
+            let data = client.fav_list(fid, page).await.map_err(describe)?;
+            let meta = first.then(|| BatchMeta {
+                kind: "fav".to_string(),
+                title: data.info.title.clone(),
+                owner: data.info.upper_name.clone(),
+                total: data.info.media_count as usize,
+            });
+            let items = data
+                .medias
+                .iter()
+                .map(|media| BatchVideo {
+                    bvid: media.bvid.clone(),
+                    cid: media.cid,
+                    ep_id: None,
+                    title: media.title.clone(),
+                    duration: media.duration,
+                })
+                .collect();
+            Ok((items, meta))
+        }
+        BatchTarget::Collection { mid, sid } => {
+            let data = client
+                .seasons_archives(mid, sid, page)
+                .await
+                .map_err(describe)?;
+            let meta = first.then(|| BatchMeta {
+                kind: "collection".to_string(),
+                title: data.meta.name.clone(),
+                owner: data
+                    .archives
+                    .first()
+                    .map(|a| a.owner.name.clone())
+                    .unwrap_or_default(),
+                total: data.meta.total as usize,
+            });
+            let items = data
+                .archives
+                .iter()
+                .map(|archive| BatchVideo {
+                    bvid: archive.bvid.clone(),
+                    cid: archive.cid,
+                    ep_id: None,
+                    title: archive.title.clone(),
+                    duration: archive.duration,
+                })
+                .collect();
+            Ok((items, meta))
+        }
+        BatchTarget::Space(mid) => {
+            let data = client.space_archives(mid, page).await.map_err(describe)?;
+            let list = data.list.as_ref();
+            let meta = first.then(|| BatchMeta {
+                kind: "space".to_string(),
+                title: format!(
+                    "{} 的投稿",
+                    list.and_then(|l| l.vlist.first())
+                        .map(|v| v.author.clone())
+                        .unwrap_or_default()
+                ),
+                owner: list
+                    .and_then(|l| l.vlist.first())
+                    .map(|v| v.author.clone())
+                    .unwrap_or_default(),
+                total: data.page.count as usize,
+            });
+            let items = list
+                .map(|l| {
+                    l.vlist
+                        .iter()
+                        .map(|video| BatchVideo {
+                            bvid: video.bvid.clone(),
+                            cid: 0,
+                            ep_id: None,
+                            title: video.title.clone(),
+                            duration: parse_mmss(&video.length),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            Ok((items, meta))
+        }
+        // 番剧/课程一次给全，没有分页
+        BatchTarget::Whole => Ok((Vec::new(), None)),
+    }
+}
+
+/// 解析批量来源：拉第一页建缓存，顺带探一次可用清晰度/音轨。
+async fn start_batch(
+    client: &BiliClient,
+    target: BatchTarget,
+    meta: BatchMeta,
+    items: Vec<BatchVideo>,
+) -> Result<BatchCache, String> {
+    if items.is_empty() {
+        return Err(match meta.kind.as_str() {
+            "fav" => "收藏夹为空或不可访问".to_string(),
+            "collection" => "合集为空或不可访问".to_string(),
+            "space" => "该 UP 主没有可访问的投稿，或触发了风控".to_string(),
+            _ => "来源没有可访问的内容".to_string(),
+        });
+    }
+
+    let source = if meta.kind == "bangumi" {
+        "bangumi"
+    } else if meta.kind == "cheese" {
+        "cheese"
+    } else {
+        "video"
+    };
+    let (qualities, audios, recommended_quality, best_quality) =
+        probe_media_options(client, &items[0], source).await;
+
+    let exhausted = source_page_size(target) > items.len() && items.len() >= meta.total;
+    Ok(BatchCache {
+        kind: meta.kind,
+        target,
+        title: meta.title,
+        owner: meta.owner,
+        total: meta.total,
+        items,
+        next_page: 2,
+        exhausted,
+        qualities,
+        audios,
+        recommended_quality,
+        best_quality,
+    })
+}
+
+/// 继续往后拉，至少再取 `want` 条（到来源末尾或单次上限为止）。
+async fn extend_batch(
+    client: &BiliClient,
+    cache: &mut BatchCache,
+    want: usize,
+) -> Result<(), String> {
+    let cap = source_cap(&cache.kind);
+    let before = cache.items.len();
+    while cache.items.len() - before < want && !cache.exhausted {
+        if cache.items.len() >= cap {
+            cache.exhausted = true;
+            break;
+        }
+        let page = cache.next_page;
+        let (items, _) = fetch_batch_page(client, cache.target, page).await?;
+        if items.is_empty() {
+            cache.exhausted = true;
+            break;
+        }
+        cache.items.extend(items);
+        cache.next_page = page + 1;
+        if cache.items.len() >= cache.total {
+            cache.exhausted = true;
+        }
+    }
+    Ok(())
+}
+
+/// 由缓存拼出对外的解析结果。
+fn batch_to_source(cache: &BatchCache) -> ProbeSource {
+    let loaded = cache.items.len();
+    let label = match cache.kind.as_str() {
+        "fav" => "收藏夹",
+        "collection" => "合集",
+        "space" => "投稿",
+        _ => "来源",
+    };
+    ProbeSource {
+        kind: cache.kind.clone(),
+        title: cache.title.clone(),
+        owner: cache.owner.clone(),
+        cover: String::new(),
+        note: load_note(
+            label,
+            cache.total,
+            loaded,
+            source_cap(&cache.kind),
+            cache.exhausted,
+        ),
+        bvid: String::new(),
+        cid: 0,
+        aid: 0,
+        owner_mid: 0,
+        pubdate: 0,
+        // 批量条目没有"分 P"这个概念，part_* 留空由 {index}/{series_title} 承担
+        part_index: 0,
+        part_title: String::new(),
+        duration: 0,
+        page_count: 1,
+        total: cache.total,
+        loaded,
+        exhausted: cache.exhausted,
+        qualities: cache.qualities.clone(),
+        audios: cache.audios.clone(),
+        recommended_quality: cache.recommended_quality,
+        best_quality: cache.best_quality,
+        items: cache.items.clone(),
+    }
+}
+
+/// 解析一条来源：短链展开 → 识别目标 → 单视频取详情，批量来源拉第一页。
+///
+/// 批量来源的加载进度存进 AppState，供「继续解析」接着往后拉，不必从第一页重来。
+async fn probe_one(
+    client: &BiliClient,
+    state: &AppState,
+    input: &str,
+) -> Result<ProbeSource, String> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return Err("来源为空".to_string());
@@ -224,227 +475,95 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, Stri
     let target = parse_target(&resolved).map_err(describe)?;
 
     match target {
-        // ---------- 单视频 ----------
         Target::Bvid(bvid) => probe_video_bvid(client, &bvid).await,
         Target::Aid(aid) => {
             let info = client.video_info_by_aid(aid).await.map_err(describe)?;
             probe_video_bvid(client, &info.bvid).await
         }
 
-        // ---------- 收藏夹 ----------
+        // ---------- 批量来源：只拉第一页 ----------
         Target::FavList(fid) => {
-            let mut items: Vec<BatchVideo> = Vec::new();
-            let mut title = String::new();
-            let mut owner = String::new();
-            let mut total = 0usize;
-
-            for page in 1.. {
-                let page_data = client.fav_list(fid, page).await.map_err(describe)?;
-                if title.is_empty() {
-                    title = page_data.info.title.clone();
-                    owner = page_data.info.upper_name.clone();
-                    total = page_data.info.media_count as usize;
-                }
-                if page_data.medias.is_empty() {
-                    break;
-                }
-                for media in &page_data.medias {
-                    items.push(BatchVideo {
-                        bvid: media.bvid.clone(),
-                        cid: media.cid,
-                        ep_id: None,
-                        title: media.title.clone(),
-                        duration: media.duration,
-                    });
-                }
-                if items.len() >= FAV_MAX_ITEMS || items.len() >= total {
-                    break;
-                }
-            }
-
-            if items.is_empty() {
-                return Err("收藏夹为空或不可访问".to_string());
-            }
-
-            let (qualities, audios, recommended_quality, best_quality) =
-                probe_media_options(client, &items[0], "video").await;
-            let loaded = items.len();
-            let note = load_note("收藏夹", total, loaded, FAV_MAX_ITEMS);
-
-            Ok(ProbeSource {
-                kind: "fav".to_string(),
-                title,
-                owner,
-                cover: String::new(),
-                note,
-                bvid: String::new(),
-                cid: 0,
-                aid: 0,
-                owner_mid: 0,
-                pubdate: 0,
-                // 批量条目没有"分 P"这个概念，part_* 留空由 {index}/{series_title} 承担
-                part_index: 0,
-                part_title: String::new(),
-                duration: 0,
-                page_count: 1,
-                total,
-                loaded,
-                qualities,
-                audios,
-                recommended_quality,
-                best_quality,
-                items,
-            })
+            probe_batch_first_page(client, state, trimmed, BatchTarget::Fav(fid)).await
         }
-
-        // ---------- 合集 ----------
         Target::Collection { mid, sid } => {
-            let mut items: Vec<BatchVideo> = Vec::new();
-            let mut title = String::new();
-            let mut owner = String::new();
-            let mut total = 0usize;
-
-            for page in 1.. {
-                let page_data = client
-                    .seasons_archives(mid, sid, page)
-                    .await
-                    .map_err(describe)?;
-                if title.is_empty() {
-                    title = page_data.meta.name.clone();
-                    total = page_data.meta.total as usize;
-                    owner = page_data
-                        .archives
-                        .first()
-                        .map(|a| a.owner.name.clone())
-                        .unwrap_or_default();
-                }
-                if page_data.archives.is_empty() {
-                    break;
-                }
-                for archive in &page_data.archives {
-                    items.push(BatchVideo {
-                        bvid: archive.bvid.clone(),
-                        cid: archive.cid,
-                        ep_id: None,
-                        title: archive.title.clone(),
-                        duration: archive.duration,
-                    });
-                }
-                if items.len() >= COLLECTION_MAX_ITEMS || items.len() >= total {
-                    break;
-                }
-            }
-
-            if items.is_empty() {
-                return Err("合集为空或不可访问".to_string());
-            }
-
-            let (qualities, audios, recommended_quality, best_quality) =
-                probe_media_options(client, &items[0], "video").await;
-            let loaded = items.len();
-            let note = load_note("合集", total, loaded, COLLECTION_MAX_ITEMS);
-
-            Ok(ProbeSource {
-                kind: "collection".to_string(),
-                title,
-                owner,
-                cover: String::new(),
-                note,
-                bvid: String::new(),
-                cid: 0,
-                aid: 0,
-                owner_mid: 0,
-                pubdate: 0,
-                // 批量条目没有"分 P"这个概念，part_* 留空由 {index}/{series_title} 承担
-                part_index: 0,
-                part_title: String::new(),
-                duration: 0,
-                page_count: 1,
-                total,
-                loaded,
-                qualities,
-                audios,
-                recommended_quality,
-                best_quality,
-                items,
-            })
+            probe_batch_first_page(client, state, trimmed, BatchTarget::Collection { mid, sid }).await
         }
-
-        // ---------- UP 空间 ----------
         Target::Space(mid) => {
-            let mut items: Vec<BatchVideo> = Vec::new();
-            let mut owner = String::new();
-            let mut total = 0usize;
-
-            for page in 1.. {
-                let page_data = client.space_archives(mid, page).await.map_err(describe)?;
-                if total == 0 {
-                    total = page_data.page.count as usize;
-                }
-                let Some(list) = page_data.list.as_ref() else {
-                    break;
-                };
-                if list.vlist.is_empty() {
-                    break;
-                }
-                if owner.is_empty() {
-                    owner = list
-                        .vlist
-                        .first()
-                        .map(|v| v.author.clone())
-                        .unwrap_or_default();
-                }
-                for video in &list.vlist {
-                    items.push(BatchVideo {
-                        bvid: video.bvid.clone(),
-                        cid: 0,
-                        ep_id: None,
-                        title: video.title.clone(),
-                        duration: parse_mmss(&video.length),
-                    });
-                }
-                if items.len() >= SPACE_MAX_ITEMS || items.len() >= total {
-                    break;
-                }
-            }
-
-            if items.is_empty() {
-                return Err("该 UP 主没有可访问的投稿，或触发了风控".to_string());
-            }
-
-            let (qualities, audios, recommended_quality, best_quality) =
-                probe_media_options(client, &items[0], "video").await;
-            let loaded = items.len();
-            let note = load_note("投稿", total, loaded, SPACE_MAX_ITEMS);
-
-            Ok(ProbeSource {
-                kind: "space".to_string(),
-                title: format!("{owner} 的投稿"),
-                owner,
-                cover: String::new(),
-                note,
-                bvid: String::new(),
-                cid: 0,
-                aid: 0,
-                owner_mid: 0,
-                pubdate: 0,
-                // 批量条目没有"分 P"这个概念，part_* 留空由 {index}/{series_title} 承担
-                part_index: 0,
-                part_title: String::new(),
-                duration: 0,
-                page_count: 1,
-                total,
-                loaded,
-                qualities,
-                audios,
-                recommended_quality,
-                best_quality,
-                items,
-            })
+            probe_batch_first_page(client, state, trimmed, BatchTarget::Space(mid)).await
         }
-
-        // ---------- 番剧 ----------
         Target::Bangumi { season_id, ep_id } => {
+            let (items, meta) = fetch_whole(client, Target::Bangumi { season_id, ep_id }, "bangumi").await?;
+            let meta = meta.ok_or_else(|| "来源没有可访问的内容".to_string())?;
+            finish_batch(client, state, trimmed, BatchTarget::Whole, meta, items).await
+        }
+        Target::Cheese(season_id) => {
+            let (items, meta) = fetch_whole(client, Target::Cheese(season_id), "cheese").await?;
+            let meta = meta.ok_or_else(|| "来源没有可访问的内容".to_string())?;
+            finish_batch(client, state, trimmed, BatchTarget::Whole, meta, items).await
+        }
+    }
+}
+
+/// 分页类批量来源：拉第一页 → 建缓存 → 返回。
+async fn probe_batch_first_page(
+    client: &BiliClient,
+    state: &AppState,
+    key: &str,
+    target: BatchTarget,
+) -> Result<ProbeSource, String> {
+    let (items, meta) = fetch_batch_page(client, target, 1).await?;
+    let meta = meta.ok_or_else(|| "来源没有可访问的内容".to_string())?;
+    finish_batch(client, state, key, target, meta, items).await
+}
+
+async fn finish_batch(
+    client: &BiliClient,
+    state: &AppState,
+    key: &str,
+    target: BatchTarget,
+    meta: BatchMeta,
+    items: Vec<BatchVideo>,
+) -> Result<ProbeSource, String> {
+    let cache = start_batch(client, target, meta, items).await?;
+    let source = batch_to_source(&cache);
+    state.put_batch(key.to_string(), cache);
+    Ok(source)
+}
+
+/// 继续解析：从缓存里接着往后拉 `want` 条。
+async fn probe_more_one(
+    client: &BiliClient,
+    state: &AppState,
+    input: &str,
+    want: usize,
+) -> Result<ProbeMore, String> {
+    let key = input.trim();
+    let mut cache = state
+        .take_batch(key)
+        .ok_or_else(|| "这个来源的解析结果已过期，请重新解析".to_string())?;
+
+    let before = cache.items.len();
+    let result = extend_batch(client, &mut cache, want.max(1)).await;
+    let added = cache.items[before..].to_vec();
+    let more = ProbeMore {
+        items: added,
+        loaded: cache.items.len(),
+        total: cache.total,
+        exhausted: cache.exhausted,
+        note: batch_to_source(&cache).note,
+    };
+    state.put_batch(key.to_string(), cache);
+    result.map(|_| more)
+}
+
+/// 番剧/课程：一次取全部剧集，包装成第一页。
+async fn fetch_whole(
+    client: &BiliClient,
+    target: Target,
+    kind: &str,
+) -> Result<(Vec<BatchVideo>, Option<BatchMeta>), String> {
+    let (title, items) = match (target, kind) {
+        (Target::Bangumi { season_id, ep_id }, _) => {
             let season = client
                 .pgc_season(season_id, ep_id)
                 .await
@@ -452,8 +571,7 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, Stri
             if season.episodes.is_empty() {
                 return Err("该番剧没有可访问的剧集".to_string());
             }
-
-            let items: Vec<BatchVideo> = season
+            let items = season
                 .episodes
                 .iter()
                 .map(|episode| BatchVideo {
@@ -467,46 +585,17 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, Stri
                     },
                     duration: episode.duration / 1000,
                 })
-                .collect();
-
-            let (qualities, audios, recommended_quality, best_quality) =
-                probe_media_options(client, &items[0], "bangumi").await;
-
-            Ok(ProbeSource {
-                kind: "bangumi".to_string(),
-                title: season.title,
-                owner: String::new(),
-                cover: String::new(),
-                note: String::new(),
-                bvid: String::new(),
-                cid: 0,
-                aid: 0,
-                owner_mid: 0,
-                pubdate: 0,
-                // 批量条目没有"分 P"这个概念，part_* 留空由 {index}/{series_title} 承担
-                part_index: 0,
-                part_title: String::new(),
-                duration: 0,
-                page_count: 1,
-                total: items.len(),
-                loaded: items.len(),
-                qualities,
-                audios,
-                recommended_quality,
-                best_quality,
-                items,
-            })
+                .collect::<Vec<_>>();
+            (season.title, items)
         }
-
-        // ---------- 课程 ----------
-        Target::Cheese(season_id) => {
+        (Target::Cheese(season_id), _) => {
             let season = client.cheese_season(season_id).await.map_err(describe)?;
-            // 课程 episodes 自带 cid 与秒级时长
-            let episodes: Vec<_> = season.episodes.iter().collect();
-            if episodes.is_empty() {
+            if season.episodes.is_empty() {
                 return Err("该课程没有可访问的课时".to_string());
             }
-            let items: Vec<BatchVideo> = episodes
+            // 课程 episodes 自带 cid 与秒级时长
+            let items = season
+                .episodes
                 .iter()
                 .map(|episode| BatchVideo {
                     bvid: String::new(),
@@ -515,37 +604,22 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, Stri
                     title: episode.title.clone(),
                     duration: episode.duration,
                 })
-                .collect();
-
-            let (qualities, audios, recommended_quality, best_quality) =
-                probe_media_options(client, &items[0], "cheese").await;
-
-            Ok(ProbeSource {
-                kind: "cheese".to_string(),
-                title: season.title,
-                owner: String::new(),
-                cover: String::new(),
-                note: "付费课程需要已购买并登录才能下载".to_string(),
-                bvid: String::new(),
-                cid: 0,
-                aid: 0,
-                owner_mid: 0,
-                pubdate: 0,
-                // 批量条目没有"分 P"这个概念，part_* 留空由 {index}/{series_title} 承担
-                part_index: 0,
-                part_title: String::new(),
-                duration: 0,
-                page_count: 1,
-                total: items.len(),
-                loaded: items.len(),
-                qualities,
-                audios,
-                recommended_quality,
-                best_quality,
-                items,
-            })
+                .collect::<Vec<_>>();
+            (season.title, items)
         }
-    }
+        _ => return Err("不支持的来源".to_string()),
+    };
+
+    let total = items.len();
+    Ok((
+        items,
+        Some(BatchMeta {
+            kind: kind.to_string(),
+            title,
+            owner: String::new(),
+            total,
+        }),
+    ))
 }
 
 /// 单视频解析：稿件信息 + playurl 可用档位，包装成统一的 ProbeSource。
@@ -592,6 +666,7 @@ async fn probe_video_bvid(client: &BiliClient, bvid: &str) -> Result<ProbeSource
         page_count: info.pages.len(),
         total: 1,
         loaded: 1,
+        exhausted: true,
         qualities,
         audios,
         recommended_quality,
@@ -1575,23 +1650,30 @@ mod naming_tests {
 
     #[test]
     fn load_note_distinguishes_cap_from_unavailable() {
-        // 真的到了单次上限：该提示分批解析
-        let capped = load_note("收藏夹", 900, 500, 500);
+        // 真的到了单次上限
+        let capped = load_note("收藏夹", 900, 500, 500, true);
         assert!(capped.contains("上限"), "{capped}");
 
-        // 没到上限却少几条：是有内容拿不到，不能写成"已加载前 N 条"让人以为被截断
-        let partial = load_note("收藏夹", 130, 129, 500);
+        // 还没拉完：界面上的"已加载 N / M"已经说明了，不该提示成"已失效"
+        assert!(load_note("收藏夹", 130, 20, 500, false).is_empty());
+
+        // 拉完了却少几条：是有内容拿不到，不能写成"已加载前 N 条"让人以为被截断
+        let partial = load_note("收藏夹", 130, 129, 500, true);
         assert!(partial.contains("可下载"), "{partial}");
         assert!(!partial.contains("上限"), "{partial}");
 
         // 全部拿到：不提示
-        assert!(load_note("收藏夹", 129, 129, 500).is_empty());
+        assert!(load_note("收藏夹", 129, 129, 500, true).is_empty());
     }
 }
 
 #[cfg(test)]
 mod live_tests {
     use super::*;
+
+    fn app_state() -> AppState {
+        AppState::new().expect("应用状态")
+    }
 
     fn client() -> BiliClient {
         let client = BiliClient::new().expect("客户端");
@@ -1610,6 +1692,7 @@ mod live_tests {
         let client = client();
         let probe = probe_one(
             &client,
+            &app_state(),
             "https://space.bilibili.com/1858731/favlist?fid=52568231",
         )
         .await
@@ -1627,7 +1710,7 @@ mod live_tests {
     #[ignore = "需要网络与登录态"]
     async fn live_probe_space() {
         let client = client();
-        let probe = probe_one(&client, "https://space.bilibili.com/1858731")
+        let probe = probe_one(&client, &app_state(), "https://space.bilibili.com/1858731")
             .await
             .expect("解析成功");
         assert_eq!(probe.kind, "space");
@@ -1643,7 +1726,7 @@ mod live_tests {
     #[ignore = "需要网络"]
     async fn live_probe_bangumi() {
         let client = client();
-        let probe = probe_one(&client, "https://www.bilibili.com/bangumi/play/ss39468")
+        let probe = probe_one(&client, &app_state(), "https://www.bilibili.com/bangumi/play/ss39468")
             .await
             .expect("解析成功");
         assert_eq!(probe.kind, "bangumi");
@@ -1666,7 +1749,7 @@ mod live_tests {
     #[ignore = "需要网络"]
     async fn live_probe_cheese() {
         let client = client();
-        let probe = probe_one(&client, "https://www.bilibili.com/cheese/play/ss1")
+        let probe = probe_one(&client, &app_state(), "https://www.bilibili.com/cheese/play/ss1")
             .await
             .expect("解析成功");
         assert_eq!(probe.kind, "cheese");
@@ -1675,6 +1758,50 @@ mod live_tests {
             "cheese: {} loaded={} 首条={:?}",
             probe.title, probe.loaded, probe.items[0].title
         );
+    }
+
+    /// 增量加载：首次只给第一页，「继续解析」接着往后拉，不重复也不丢。
+    #[tokio::test]
+    #[ignore = "需要网络与登录态"]
+    async fn live_incremental_loading() {
+        let client = client();
+        let state = app_state();
+        let input = "https://space.bilibili.com/1858731/favlist?fid=52568231";
+
+        let first = probe_one(&client, &state, input).await.expect("首页解析");
+        println!(
+            "首页 loaded={} total={} exhausted={}",
+            first.loaded, first.total, first.exhausted
+        );
+        assert_eq!(first.loaded, 20, "收藏夹每页 20 条，首页就只该给 20 条");
+        assert!(!first.exhausted);
+
+        let more = probe_more_one(&client, &state, input, 50)
+            .await
+            .expect("继续解析");
+        println!(
+            "继续 loaded={} 本次新增={} exhausted={}",
+            more.loaded,
+            more.items.len(),
+            more.exhausted
+        );
+        assert!(more.items.len() >= 50, "应至少再取 50 条");
+        assert_eq!(
+            more.loaded,
+            first.loaded + more.items.len(),
+            "进度应等于两次之和"
+        );
+
+        // 两次之间不能重复，否则界面上会出现同一集两条
+        let first_keys: std::collections::HashSet<&str> =
+            first.items.iter().map(|i| i.bvid.as_str()).collect();
+        for item in &more.items {
+            assert!(
+                !first_keys.contains(item.bvid.as_str()),
+                "重复条目: {}",
+                item.bvid
+            );
+        }
     }
 
     /// 分页验证：拿一条真的超过单页的批量来源，确认确实逐页拉全。
@@ -1690,6 +1817,7 @@ mod live_tests {
         // 收藏夹：每页 20 条
         let fav = probe_one(
             &client,
+            &app_state(),
             "https://space.bilibili.com/1858731/favlist?fid=52568231",
         )
         .await
@@ -1709,7 +1837,7 @@ mod live_tests {
 
         // UP 空间：每页 30 条
         if let Ok(mid) = std::env::var("BILIDOWN_TEST_SPACE_MID") {
-            let space = probe_one(&client, &format!("https://space.bilibili.com/{mid}"))
+            let space = probe_one(&client, &app_state(), &format!("https://space.bilibili.com/{mid}"))
                 .await
                 .expect("空间解析成功");
             println!(
@@ -1727,7 +1855,7 @@ mod live_tests {
 
         // 合集：每页 100 条，用 BILIDOWN_TEST_COLLECTION_URL 指定
         if let Ok(url) = std::env::var("BILIDOWN_TEST_COLLECTION_URL") {
-            let collection = probe_one(&client, &url).await.expect("合集解析成功");
+            let collection = probe_one(&client, &app_state(), &url).await.expect("合集解析成功");
             println!(
                 "coll  loaded={} total={} → 至少翻了 {} 页",
                 collection.loaded,

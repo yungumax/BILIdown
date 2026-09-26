@@ -31,6 +31,12 @@ export async function probeSource(input) {
   return invoke("probe_source", { input });
 }
 
+// 继续解析：往后多拉 want 条。首次解析只给第一页，避免一上来就拉上千条。
+export async function probeMore(input, want) {
+  if (!hasTauri) return mock.probeMore(input, want);
+  return invoke("probe_more", { input, want });
+}
+
 export async function startDownload(req) {
   if (!hasTauri) return mock.start(req);
   return invoke("start_download", { req });
@@ -428,6 +434,23 @@ const mock = (() => {
     return { state: "confirmed", login: status().login };
   };
 
+  // 浏览器预览用：从已解析的假清单里继续往后取
+  const moreState = new Map();
+  const probeMore = async (input, want) => {
+    const base = await probe(input);
+    const all = base.items || [];
+    const from = moreState.get(input) ?? Math.min(20, all.length);
+    const to = Math.min(from + want, all.length);
+    moreState.set(input, to);
+    return {
+      items: all.slice(from, to),
+      loaded: to,
+      total: all.length,
+      exhausted: to >= all.length,
+      note: "",
+    };
+  };
+
   const onUpdate = async (handler) => {
     listeners.add(handler);
     return () => listeners.delete(handler);
@@ -533,5 +556,6 @@ const mock = (() => {
     onUpdate,
     namingVariables,
     previewNaming,
+    probeMore,
   };
 })();
