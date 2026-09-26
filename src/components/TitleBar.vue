@@ -1,4 +1,6 @@
 <script setup>
+import { computed, h, onBeforeUnmount, onMounted, ref } from "vue";
+
 import * as api from "../api";
 
 const props = defineProps({
@@ -7,13 +9,96 @@ const props = defineProps({
   /** 主题模式：light / dark / system */
   theme: { type: String, default: "system" },
 });
-const emit = defineEmits(["login", "toggle-theme"]);
+const emit = defineEmits(["login", "set-theme"]);
 
-const THEME_TITLES = {
-  light: "主题：浅色（点击切换到深色）",
-  dark: "主题：深色（点击切换到跟随系统）",
-  system: "主题：跟随系统（点击切换到浅色）",
+const THEME_OPTIONS = [
+  { value: "light", label: "浅色" },
+  { value: "dark", label: "深色" },
+  { value: "system", label: "跟随系统" },
+];
+
+/** 图标只写一份：按钮与菜单项共用同一组路径 */
+const ICON_SHAPES = {
+  light: [
+    {
+      tag: "circle",
+      attrs: { cx: "12", cy: "12", r: "3.7", fill: "none", stroke: "currentColor", "stroke-width": "1.6" },
+    },
+    {
+      tag: "path",
+      attrs: {
+        d: "M12 3.4v2M12 18.6v2M3.4 12h2M18.6 12h2M6.1 6.1 7.5 7.5M16.5 16.5 17.9 17.9M17.9 6.1 16.5 7.5M7.5 16.5 6.1 17.9",
+        stroke: "currentColor",
+        "stroke-width": "1.6",
+        "stroke-linecap": "round",
+      },
+    },
+  ],
+  dark: [
+    {
+      tag: "path",
+      attrs: {
+        d: "M20 14.4A8.4 8.4 0 0 1 9.6 4 8.4 8.4 0 1 0 20 14.4Z",
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": "1.6",
+        "stroke-linejoin": "round",
+      },
+    },
+  ],
+  system: [
+    {
+      tag: "circle",
+      attrs: { cx: "12", cy: "12", r: "8.2", fill: "none", stroke: "currentColor", "stroke-width": "1.6" },
+    },
+    { tag: "path", attrs: { d: "M12 3.8a8.2 8.2 0 0 1 0 16.4Z", fill: "currentColor" } },
+  ],
 };
+
+const ThemeIcon = {
+  props: { mode: { type: String, required: true } },
+  render() {
+    return h(
+      "svg",
+      { viewBox: "0 0 24 24", "aria-hidden": "true" },
+      (ICON_SHAPES[this.mode] || ICON_SHAPES.system).map((shape) =>
+        h(shape.tag, shape.attrs)
+      )
+    );
+  },
+};
+
+const currentLabel = computed(
+  () => THEME_OPTIONS.find((option) => option.value === props.theme)?.label || "跟随系统"
+);
+
+// 点击展开菜单，再选一项；不再是点一下轮换
+const picking = ref(false);
+const picker = ref(null);
+
+function onDocumentDown(event) {
+  if (!picking.value) return;
+  if (picker.value && !picker.value.contains(event.target)) picking.value = false;
+}
+
+function onKeydown(event) {
+  if (event.key === "Escape") picking.value = false;
+}
+
+onMounted(() => {
+  document.addEventListener("mousedown", onDocumentDown);
+  document.addEventListener("keydown", onKeydown);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("mousedown", onDocumentDown);
+  document.removeEventListener("keydown", onKeydown);
+});
+
+function choose(mode) {
+  picking.value = false;
+  if (mode !== props.theme) emit("set-theme", mode);
+}
 
 /** 只有按住左键才当作拖动窗口；按钮区域不参与 */
 function onDrag(event) {
@@ -48,33 +133,45 @@ function onDrag(event) {
 
     <div class="drag-fill" @mousedown="onDrag"></div>
 
-    <button class="icon-btn" :title="THEME_TITLES[theme]" @click="emit('toggle-theme')">
-      <!-- 深色：月亮 -->
-      <svg v-if="theme === 'dark'" viewBox="0 0 24 24" aria-hidden="true">
-        <path
-          d="M20 14.4A8.4 8.4 0 0 1 9.6 4 8.4 8.4 0 1 0 20 14.4Z"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.6"
-          stroke-linejoin="round"
-        />
-      </svg>
-      <!-- 跟随系统：半填充对比圆 -->
-      <svg v-else-if="theme === 'system'" viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="1.6" />
-        <path d="M12 3.8a8.2 8.2 0 0 1 0 16.4Z" fill="currentColor" />
-      </svg>
-      <!-- 浅色：太阳 -->
-      <svg v-else viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="3.7" fill="none" stroke="currentColor" stroke-width="1.6" />
-        <path
-          d="M12 3.4v2M12 18.6v2M3.4 12h2M18.6 12h2M6.1 6.1 7.5 7.5M16.5 16.5 17.9 17.9M17.9 6.1 16.5 7.5M7.5 16.5 6.1 17.9"
-          stroke="currentColor"
-          stroke-width="1.6"
-          stroke-linecap="round"
-        />
-      </svg>
-    </button>
+    <div ref="picker" class="theme-picker">
+      <button
+        class="icon-btn"
+        :class="{ on: picking }"
+        :title="`主题：${currentLabel}（点击选择）`"
+        aria-haspopup="menu"
+        :aria-expanded="picking"
+        @click="picking = !picking"
+      >
+        <ThemeIcon :mode="theme" />
+      </button>
+
+      <Transition name="picker">
+        <div v-if="picking" class="theme-menu" role="menu">
+          <button
+            v-for="option in THEME_OPTIONS"
+            :key="option.value"
+            class="theme-item"
+            :class="{ active: option.value === theme }"
+            role="menuitemradio"
+            :aria-checked="option.value === theme"
+            @click="choose(option.value)"
+          >
+            <ThemeIcon :mode="option.value" />
+            <span class="label">{{ option.label }}</span>
+            <svg v-if="option.value === theme" class="check" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="m5 12.5 4.5 4.5L19 7.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
+      </Transition>
+    </div>
 
     <button class="login-chip" :class="{ on: login.logged_in }" @click="emit('login')">
       <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
@@ -197,12 +294,17 @@ function onDrag(event) {
   background: var(--accent-soft);
 }
 
+/* 主题选择：按钮 + 下拉菜单共用定位上下文 */
+.theme-picker {
+  position: relative;
+  margin-right: 8px;
+}
+
 .icon-btn {
   display: grid;
   place-items: center;
   width: 30px;
   height: 30px;
-  margin-right: 8px;
   color: var(--muted);
   background: var(--field);
   border: 1px solid var(--line);
@@ -215,10 +317,72 @@ function onDrag(event) {
   height: 16px;
 }
 
-.icon-btn:hover {
+.icon-btn:hover,
+.icon-btn.on {
   color: var(--accent);
   border-color: var(--accent-line);
   background: var(--accent-soft);
+}
+
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 15;
+  min-width: 134px;
+  padding: 5px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 28px rgba(20, 12, 16, 0.24);
+}
+
+.theme-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  font-size: 12.5px;
+  color: var(--text);
+  text-align: left;
+  border-radius: var(--radius-sm);
+}
+
+.theme-item:hover {
+  background: var(--hover);
+}
+
+.theme-item.active {
+  color: var(--accent);
+}
+
+.theme-item svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+
+.theme-item .label {
+  flex: 1;
+}
+
+.theme-item .check {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
+
+.picker-enter-active,
+.picker-leave-active {
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.picker-enter-from,
+.picker-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 .login-chip.on {

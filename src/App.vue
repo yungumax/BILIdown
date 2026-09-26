@@ -124,14 +124,7 @@ async function saveSettings(next) {
   }
 }
 
-/** 右上角按钮：浅色 → 深色 → 跟随系统 循环，切换即时保存 */
-function toggleTheme() {
-  const order = ["light", "dark", "system"];
-  const current = settings.value?.theme || "system";
-  const next = order[(order.indexOf(current) + 1) % order.length];
-  setTheme(next);
-}
-
+/** 主题由标题栏的菜单选定；切换即时保存 */
 async function setTheme(theme) {
   if (!settings.value) return;
   const next = { ...settings.value, theme };
@@ -284,7 +277,7 @@ async function doLogout() {
       :version="version"
       :theme="settings?.theme || 'system'"
       @login="openLogin"
-      @toggle-theme="toggleTheme"
+      @set-theme="setTheme"
     />
 
     <div class="body">
