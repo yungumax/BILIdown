@@ -67,8 +67,8 @@ li.active {
   color: var(--text);
 }
 
+/* 已完成的步骤只换打勾，不再画横线：横线只属于当前所在的步骤 */
 li.done {
-  border-bottom-color: var(--accent-line);
   color: var(--muted);
 }
 

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import * as api from "../api";
 import StepHeader from "../components/StepHeader.vue";
 
@@ -48,8 +48,9 @@ const steps = computed(() => {
       index: 1,
       title: "解析来源",
       hint: parsing.value ? `解析中 ${done.value}/${total.value}` : "输入链接",
-      state: items.value.length && !parsing.value ? "done" : "active",
-      to: "input",
+      // 状态跟着当前所在页面走：在选择页时第 1 步才算完成
+      state: view.value === "select" ? "done" : "active",
+      to: view.value === "select" ? "input" : "",
     },
     {
       index: 2,
@@ -61,9 +62,9 @@ const steps = computed(() => {
         : okItems.value.length
           ? `${okItems.value.length} 个来源待选择`
           : "等待解析",
-      state: items.value.length && !parsing.value ? "active" : "idle",
+      state: view.value === "select" ? "active" : "idle",
       // 有解析结果时第 2 步才可跳
-      to: items.value.length && !parsing.value ? "select" : "",
+      to: view.value !== "select" && items.value.length && !parsing.value ? "select" : "",
     },
   ];
 });
@@ -320,26 +321,16 @@ async function loadMore() {
   }
 }
 
-/** 下载：批量来源下勾选的条目，单视频直接下这一条 */
-async function downloadSelected() {
+/** 把给定条目逐个入队；列表序号从 1 开始，供命名模板的 {index} 使用 */
+async function startEntries(entries) {
   const source = activeSource.value;
-  if (!source) return;
-
-  if (source.probe.kind === "video") {
-    await startSingle(source);
-    return;
-  }
-
-  const picked = source.probe.items.filter((entry) => isSelected(entry));
-  if (!picked.length) {
-    emit("toast", "先勾选要下载的内容");
-    return;
-  }
+  if (!source || !entries.length) return 0;
+  const picked = new Set(entries);
   let started = 0;
   let position = 0;
   for (const entry of source.probe.items) {
     position += 1;
-    if (!isSelected(entry)) continue;
+    if (!picked.has(entry)) continue;
     try {
       await api.startDownload({
         bvid: entry.bvid,
@@ -362,7 +353,58 @@ async function downloadSelected() {
     emit("toast", `已加入 ${started} 个下载任务`);
     emit("goto", "transfer");
   }
+  return started;
 }
+
+/** 下载：批量来源下勾选的条目，单视频直接下这一条 */
+async function downloadSelected() {
+  const source = activeSource.value;
+  if (!source) return;
+  if (source.probe.kind === "video") {
+    await startSingle(source);
+    return;
+  }
+  const picked = source.probe.items.filter((entry) => isSelected(entry));
+  if (!picked.length) {
+    emit("toast", "先勾选要下载的内容");
+    return;
+  }
+  await startEntries(picked);
+}
+
+/** 下载全部：不看勾选，把已加载的条目全部入队 */
+async function downloadAll() {
+  const source = activeSource.value;
+  if (!source) return;
+  if (source.probe.kind === "video") {
+    await startSingle(source);
+    return;
+  }
+  await startEntries([...source.probe.items]);
+}
+
+// 「下载设置」弹层（清晰度/音轨）
+const pickingDl = ref(false);
+const dlPanel = ref(null);
+
+function onDlDocumentDown(event) {
+  if (!pickingDl.value) return;
+  if (dlPanel.value && !dlPanel.value.contains(event.target)) pickingDl.value = false;
+}
+
+function onDlKeydown(event) {
+  if (event.key === "Escape") pickingDl.value = false;
+}
+
+onMounted(() => {
+  document.addEventListener("mousedown", onDlDocumentDown);
+  document.addEventListener("keydown", onDlKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener("mousedown", onDlDocumentDown);
+  document.removeEventListener("keydown", onDlKeydown);
+});
 
 /** 步骤条点击跳转 */
 function gotoStep(target) {
@@ -514,6 +556,60 @@ async function startSingle(item) {
             {{ activeSource.probe.exhausted ? "已全部加载" : loadingMore ? "解析中…" : "继续解析" }}
           </button>
         </template>
+
+        <!-- 清晰度/音轨收进弹层，工具条只留动作 -->
+        <div ref="dlPanel" class="dl-settings">
+          <button class="ghost" :class="{ on: pickingDl }" @click="pickingDl = !pickingDl">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M5 7.4h14M5 12h14M5 16.6h14"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+              />
+              <circle cx="9" cy="7.4" r="1.9" fill="var(--card)" stroke="currentColor" stroke-width="1.5" />
+              <circle cx="15" cy="16.6" r="1.9" fill="var(--card)" stroke="currentColor" stroke-width="1.5" />
+            </svg>
+            下载设置
+          </button>
+
+          <Transition name="picker">
+            <div v-if="pickingDl" class="dl-pop">
+              <label class="pop-field">
+                <span>清晰度</span>
+                <select v-model.number="activeSource.quality">
+                  <option
+                    v-for="quality in activeSource.probe.qualities"
+                    :key="quality.qn"
+                    :value="quality.qn"
+                    :disabled="!quality.available"
+                  >
+                    {{ quality.label }}{{ quality.hint ? `（${quality.hint}）` : "" }}
+                  </option>
+                </select>
+              </label>
+              <label class="pop-field">
+                <span>音轨</span>
+                <select v-model="activeSource.audio">
+                  <option
+                    v-for="audio in activeSource.probe.audios"
+                    :key="audio.kind"
+                    :value="audio.kind"
+                    :disabled="!audio.available"
+                  >
+                    {{ audio.label }}{{ audio.available ? "" : "（不可用）" }}
+                  </option>
+                </select>
+              </label>
+              <p class="pop-note">
+                只对当前来源生效；设置里的「画质优先顺序」是全局的尝试顺序。
+              </p>
+            </div>
+          </Transition>
+        </div>
+
+        <button v-if="activeIsBatch" class="ghost" @click="downloadAll">下载全部</button>
         <button
           class="primary"
           :disabled="activeIsBatch && !selectedCount"
@@ -575,32 +671,6 @@ async function startSingle(item) {
       </div>
 
       <footer class="select-foot">
-        <label class="inline-field">
-          清晰度
-          <select v-model.number="activeSource.quality">
-            <option
-              v-for="quality in activeSource.probe.qualities"
-              :key="quality.qn"
-              :value="quality.qn"
-              :disabled="!quality.available"
-            >
-              {{ quality.label }}{{ quality.hint ? `（${quality.hint}）` : "" }}
-            </option>
-          </select>
-        </label>
-        <label class="inline-field">
-          音轨
-          <select v-model="activeSource.audio">
-            <option
-              v-for="audio in activeSource.probe.audios"
-              :key="audio.kind"
-              :value="audio.kind"
-              :disabled="!audio.available"
-            >
-              {{ audio.label }}{{ audio.available ? "" : "（不可用）" }}
-            </option>
-          </select>
-        </label>
         <span class="spacer"></span>
         <template v-if="activeIsBatch">
           <span class="num faint">已选 {{ selectedCount }} 项，共 {{ loadedCount }} 项</span>
@@ -936,6 +1006,76 @@ input:focus {
   white-space: nowrap;
 }
 
+/* 「下载设置」弹层：清晰度/音轨，工具条只留动作按钮 */
+.dl-settings {
+  position: relative;
+  flex: none;
+}
+
+.dl-settings .ghost {
+  gap: 7px;
+  padding: 6px 11px;
+  font-size: 12.5px;
+}
+
+.dl-settings .ghost svg {
+  width: 15px;
+  height: 15px;
+}
+
+.dl-settings .ghost.on {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--raised);
+}
+
+.dl-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 15;
+  width: 286px;
+  padding: 12px;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 30px rgba(20, 12, 16, 0.24);
+}
+
+.pop-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pop-field + .pop-field {
+  margin-top: 10px;
+}
+
+.pop-field span {
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.pop-field select {
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.pop-note {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--faint);
+}
+
 /* 选择页里的单视频详情 */
 .video-detail {
   display: flex;
@@ -975,6 +1115,14 @@ input:focus {
   flex-direction: column;
   padding: 0;
   overflow: hidden;
+}
+
+.select-bar .ghost,
+.select-bar .primary {
+  flex: none;
+  padding: 6px 13px;
+  font-size: 12.5px;
+  border-radius: var(--radius-sm);
 }
 
 .select-bar {
