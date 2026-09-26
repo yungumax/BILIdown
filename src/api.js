@@ -91,6 +91,12 @@ export async function namingVariables() {
   return invoke("naming_variables");
 }
 
+// 批量文件名预览：给每条内容算出文件名，与真实落盘共用同一个渲染器。
+export async function previewNames(items, quality, date, ext) {
+  if (!hasTauri) return items.map((item) => `${item.title}.${ext || "mp4"}`);
+  return invoke("preview_names", { items, quality, date, ext });
+}
+
 // 文件名预览走后端同一个渲染器，预览与真实落盘不会不一致。
 export async function previewNaming(template, { date, publish_date, ext } = {}) {
   if (!hasTauri) return mock.previewNaming(template, ext);

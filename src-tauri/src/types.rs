@@ -253,3 +253,17 @@ pub struct ProbeMore {
     pub exhausted: bool,
     pub note: String,
 }
+
+/// 文件名预览的入参：一条内容 + 它的命名变量取值。
+/// 变量取值由前端按来源类型算好（与真正下载时提交的是同一套），
+/// 这里只负责用同一个渲染器算出文件名，保证预览和落盘一致。
+#[derive(Debug, Clone, Deserialize)]
+pub struct NamingPreviewItem {
+    pub title: String,
+    #[serde(default)]
+    pub bvid: String,
+    #[serde(default)]
+    pub cid: u64,
+    #[serde(default)]
+    pub naming: NamingMeta,
+}

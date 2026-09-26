@@ -100,6 +100,7 @@ pub fn run() {
             commands::ffmpeg_status,
             commands::naming_variables,
             commands::preview_naming,
+            commands::preview_names,
             commands::cleanup_temp,
             commands::cleanup_cache,
             commands::export_diagnostics,

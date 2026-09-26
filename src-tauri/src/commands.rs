@@ -167,6 +167,62 @@ pub async fn ffmpeg_status(
     Ok(state.set_ffmpeg_status(status))
 }
 
+/// 文件名预览：按当前命名模板给每条内容算出文件名。
+///
+/// 与真正落盘共用 `naming::render`；清晰度用界面所选档位的标准名，
+/// 编码取设置里优先顺序中第一个明确指定的（下载时才由实际流决定）。
+#[tauri::command]
+pub async fn preview_names(
+    state: State<'_, AppState>,
+    items: Vec<crate::types::NamingPreviewItem>,
+    quality: Option<u32>,
+    date: Option<String>,
+    ext: Option<String>,
+) -> Result<Vec<String>, String> {
+    let settings = state.settings();
+    let ext = ext.unwrap_or_else(|| settings.container_ext().to_string());
+    let codec = settings
+        .quality_prefs
+        .iter()
+        .map(|pref| pref.codec.as_str())
+        .find(|codec| *codec != "auto")
+        .unwrap_or("avc");
+    let codec_label = codec_name(match codec {
+        "hevc" => "hev1",
+        "av1" => "av01",
+        _ => "avc1",
+    });
+
+    let names = items
+        .iter()
+        .map(|item| {
+            let ctx = crate::naming::NamingContext {
+                title: item.title.clone(),
+                part_title: item.naming.part_title.clone(),
+                part_index: item.naming.part_index,
+                bvid: item.bvid.clone(),
+                aid: item.naming.aid,
+                cid: item.cid,
+                owner_name: String::new(),
+                owner_mid: item.naming.owner_mid,
+                series_title: item.naming.series_title.clone(),
+                episode_index: item.naming.episode_index,
+                episode_title: item.naming.episode_title.clone(),
+                collection_title: item.naming.collection_title.clone(),
+                index: item.naming.index,
+                quality: quality.map(quality_name).unwrap_or_default().to_string(),
+                codec: codec_label.to_string(),
+                date: date.clone().unwrap_or_default(),
+                publish_date: item.naming.publish_date.clone(),
+            };
+            crate::naming::render(&settings.naming_template, &ctx, &ext)
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
+    Ok(names)
+}
+
 /// 「魔法变量」面板的数据源：界面直接渲染这份清单，不再手写第二份可能和后端脱节的表。
 #[tauri::command]
 pub async fn naming_variables() -> Result<Vec<crate::types::NamingVariable>, String> {

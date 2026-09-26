@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import * as api from "../api";
 import StepHeader from "../components/StepHeader.vue";
 
@@ -257,6 +257,61 @@ const isSelectView = computed(() => view.value === "select" && !!activeSource.va
 
 /** 当前来源是批量清单（单视频没有表格与页码） */
 const activeIsBatch = computed(() => !!activeSource.value && activeSource.value.probe.kind !== "video");
+
+/** 每条内容的文件名预览：按当前命名模板由后端算出，和真正落盘用同一个渲染器 */
+const fileNames = ref([]);
+let nameSeq = 0;
+
+async function refreshNames() {
+  const source = activeSource.value;
+  const seq = ++nameSeq;
+  if (!source) {
+    fileNames.value = [];
+    return;
+  }
+  try {
+    const date = localDate();
+    const ext = props.settings?.container === "mkv" ? "mkv" : "mp4";
+    let names;
+    if (source.probe.kind === "video") {
+      names = await api.previewNames(
+        [{ title: source.probe.title, bvid: source.probe.bvid, cid: source.probe.cid, naming: singleNaming(source.probe) }],
+        source.quality,
+        date,
+        ext
+      );
+    } else {
+      names = await api.previewNames(
+        source.probe.items.map((entry, index) => ({
+          title: entry.title,
+          bvid: entry.bvid,
+          cid: entry.cid,
+          naming: batchNaming(source.probe, entry, index + 1),
+        })),
+        source.quality,
+        date,
+        ext
+      );
+    }
+    if (seq === nameSeq) fileNames.value = names;
+  } catch {
+    if (seq === nameSeq) fileNames.value = [];
+  }
+}
+
+// 来源、已加载条数、所选清晰度、命名模板变化都要重算文件名
+watch(
+  () => [
+    activeSource.value?.input,
+    activeIsBatch.value ? activeSource.value?.probe.items.length : 0,
+    activeSource.value?.quality,
+    props.settings?.naming_template,
+    props.settings?.container,
+  ],
+  refreshNames,
+  { immediate: true }
+);
+
 
 function openSelect(input) {
   batchInput.value = input;
@@ -636,6 +691,9 @@ async function startSingle(item) {
             <span class="num">{{ formatDuration(activeSource.probe.duration) }}</span>
             <span class="num faint">{{ activeSource.probe.bvid }}</span>
           </p>
+          <p v-if="fileNames[0]" class="file-line">
+            文件名：<code>{{ fileNames[0] }}</code>
+          </p>
           <p v-if="activeSource.probe.note" class="note">{{ activeSource.probe.note }}</p>
         </div>
       </div>
@@ -654,6 +712,7 @@ async function startSingle(item) {
               </th>
               <th class="col-idx">序号</th>
               <th>标题</th>
+              <th class="col-name">文件名</th>
               <th class="col-owner">UP 主</th>
               <th class="col-dur">时长</th>
             </tr>
@@ -669,6 +728,9 @@ async function startSingle(item) {
               </td>
               <td class="col-idx num">{{ String(index + 1).padStart(2, "0") }}</td>
               <td class="col-title" :title="entry.title">{{ entry.title }}</td>
+              <td class="col-name" :title="fileNames[index] || ''">
+                {{ fileNames[index] || "…" }}
+              </td>
               <td class="col-owner" :title="entry.owner">{{ entry.owner || "—" }}</td>
               <td class="col-dur num">{{ formatDuration(entry.duration) }}</td>
             </tr>
@@ -1082,6 +1144,17 @@ input:focus {
   color: var(--faint);
 }
 
+.file-line {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.file-line code {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: var(--text);
+}
+
 /* 选择页里的单视频详情 */
 .video-detail {
   display: flex;
@@ -1291,28 +1364,34 @@ input:focus {
   width: 36px;
 }
 
-/* 表头文字对齐要压过 .batch-table th 的 left */
-.batch-table th.col-idx,
-.batch-table td.col-idx {
+.col-idx {
   width: 58px;
   color: var(--faint);
-  text-align: center;
 }
 
-.col-owner {
-  width: 150px;
+/* 文件名列：占剩余空间，超长省略，悬停看全 */
+.batch-table th.col-name,
+.batch-table td.col-name {
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* 表头文字对齐要压过 .batch-table th 的 left */
+.batch-table th.col-owner,
+.batch-table td.col-owner {
+  width: 150px;
+  text-align: center;
+}
+
 .batch-table th.col-dur,
 .batch-table td.col-dur {
   width: 84px;
-  color: var(--faint);
   text-align: center;
 }
+
+
 
 .col-title {
   overflow: hidden;
