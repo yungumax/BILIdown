@@ -293,6 +293,17 @@ fn load_note(label: &str, total: usize, loaded: usize, cap: usize, exhausted: bo
     }
 }
 
+/// 这一页之后还有没有可拉的了。
+///
+/// - 番剧/课程一次给全，没有下一页
+/// - 分页来源：已经到总数，或者这一页没取满（说明是最后一页）
+fn batch_exhausted(target: BatchTarget, loaded: usize, total: usize) -> bool {
+    if matches!(target, BatchTarget::Whole) {
+        return true;
+    }
+    loaded >= total || source_page_size(target) > loaded
+}
+
 /// 条目自己没有上传者时用来源的补上（合集接口不给每条的上传者）。
 fn fill_missing_owner(items: &mut [BatchVideo], owner: &str) {
     if owner.is_empty() {
@@ -442,7 +453,7 @@ async fn start_batch(
     let mut items = items;
     fill_missing_owner(&mut items, &meta.owner);
 
-    let exhausted = source_page_size(target) > items.len() && items.len() >= meta.total;
+    let exhausted = batch_exhausted(target, items.len(), meta.total);
     Ok(BatchCache {
         kind: meta.kind,
         target,
@@ -1727,6 +1738,31 @@ mod naming_tests {
             naming_context(&request(), "av01.0.12M.08", "1080P").codec,
             "AV1"
         );
+    }
+
+    #[test]
+    fn batch_exhausted_handles_whole_and_paged_sources() {
+        // 番剧/课程一次给全，不管多少条都是到底
+        assert!(batch_exhausted(BatchTarget::Whole, 22, 22));
+        assert!(batch_exhausted(BatchTarget::Whole, 5, 5));
+
+        // 收藏夹每页 20：首页 20 条而总数 130，还能继续
+        assert!(!batch_exhausted(BatchTarget::Fav(1), 20, 130));
+        // 最后一页：已经到总数，或这一页没取满
+        assert!(batch_exhausted(BatchTarget::Fav(1), 130, 130));
+        assert!(batch_exhausted(BatchTarget::Fav(1), 15, 15));
+
+        // 合集每页 100：100 条而总数 129，还能继续；129 条就到头
+        assert!(!batch_exhausted(
+            BatchTarget::Collection { mid: 1, sid: 2 },
+            100,
+            129
+        ));
+        assert!(batch_exhausted(
+            BatchTarget::Collection { mid: 1, sid: 2 },
+            129,
+            129
+        ));
     }
 
     #[test]

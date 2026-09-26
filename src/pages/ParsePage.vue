@@ -258,7 +258,7 @@ const isSelectView = computed(() => view.value === "select" && !!activeSource.va
 /** 当前来源是批量清单（单视频没有表格与页码） */
 const activeIsBatch = computed(() => !!activeSource.value && activeSource.value.probe.kind !== "video");
 
-/** 每条内容的文件名预览：按当前命名模板由后端算出，和真正落盘用同一个渲染器 */
+/** 单视频的文件名预览：与落盘共用同一个渲染器 */
 const fileNames = ref([]);
 let nameSeq = 0;
 
@@ -598,21 +598,21 @@ async function startSingle(item) {
           <span class="loaded-hint num">
             已加载 {{ loadedCount }} / {{ activeSource.probe.total }} 项
           </span>
-          <label class="inline-field">
-            每批
-            <select v-model.number="batchSize">
-              <option :value="20">20</option>
-              <option :value="50">50</option>
-              <option :value="100">100</option>
-            </select>
-          </label>
-          <button
-            class="ghost"
-            :disabled="loadingMore || activeSource.probe.exhausted"
-            @click="loadMore"
-          >
-            {{ activeSource.probe.exhausted ? "已全部加载" : loadingMore ? "解析中…" : "继续解析" }}
-          </button>
+          <template v-if="!activeSource.probe.exhausted">
+            <label class="inline-field">
+              每批
+              <select v-model.number="batchSize">
+                <option :value="20">20</option>
+                <option :value="50">50</option>
+                <option :value="100">100</option>
+              </select>
+            </label>
+            <button class="ghost" :disabled="loadingMore" @click="loadMore">
+              {{ loadingMore ? "解析中…" : "继续解析" }}
+            </button>
+          </template>
+          <span v-else class="hint-text">已全部加载</span>
+          <span class="spacer"></span>
         </template>
 
         <!-- 清晰度/音轨收进弹层，工具条只留动作 -->
@@ -712,7 +712,6 @@ async function startSingle(item) {
               </th>
               <th class="col-idx">序号</th>
               <th>标题</th>
-              <th class="col-name">文件名</th>
               <th class="col-owner">UP 主</th>
               <th class="col-dur">时长</th>
             </tr>
@@ -728,9 +727,6 @@ async function startSingle(item) {
               </td>
               <td class="col-idx num">{{ String(index + 1).padStart(2, "0") }}</td>
               <td class="col-title" :title="entry.title">{{ entry.title }}</td>
-              <td class="col-name" :title="fileNames[index] || ''">
-                {{ fileNames[index] || "…" }}
-              </td>
               <td class="col-owner" :title="entry.owner">{{ entry.owner || "—" }}</td>
               <td class="col-dur num">{{ formatDuration(entry.duration) }}</td>
             </tr>
@@ -739,9 +735,10 @@ async function startSingle(item) {
       </div>
 
       <footer class="select-foot">
-        <span class="spacer"></span>
         <template v-if="activeIsBatch">
-          <span class="num faint">已选 {{ selectedCount }} 项，共 {{ loadedCount }} 项</span>
+          <span class="foot-count">已选 <b class="num">{{ selectedCount }}</b> 项</span>
+          <span class="foot-count">共 <b class="num">{{ loadedCount }}</b> 项</span>
+          <span class="spacer"></span>
           <button class="mini" @click="toggleAllLoaded(true)">全选已加载</button>
         </template>
       </footer>
@@ -1369,15 +1366,6 @@ input:focus {
   color: var(--faint);
 }
 
-/* 文件名列：占剩余空间，超长省略，悬停看全 */
-.batch-table th.col-name,
-.batch-table td.col-name {
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* 表头文字对齐要压过 .batch-table th 的 left */
 .batch-table th.col-owner,
 .batch-table td.col-owner {
@@ -1402,9 +1390,25 @@ input:focus {
 .select-foot {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 18px;
+  padding: 11px 16px;
   border-top: 1px solid var(--line-soft);
+}
+
+.foot-count {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.foot-count b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* 已经拉到底时给一行灰字，不用禁用的按钮假装还能点 */
+.hint-text {
+  font-size: 12px;
+  color: var(--faint);
 }
 
 /* 输入页里的批量来源条目：点它进选择页 */
