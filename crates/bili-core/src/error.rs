@@ -20,6 +20,9 @@ pub enum BiliError {
     #[error("内容不可下载: {0}")]
     Unavailable(String),
 
+    #[error("登录失败: {0}")]
+    Login(String),
+
     #[error("未找到可用清晰度（请求 qn={0}），该内容可能需登录或大会员")]
     QualityNotFound(u32),
 

@@ -5,8 +5,7 @@ use bili_core::api::{quality_name, AudioKind, VideoInfo};
 use bili_core::download::{download, DownloadOptions, Progress, ProgressFn};
 use bili_core::ffmpeg;
 use bili_core::login::{
-    default_cookie_path, wait_for_login, Cookies, LoginState, DEFAULT_MAX_WAIT,
-    DEFAULT_POLL_INTERVAL,
+    default_cookie_path, wait_for_login, Cookies, LoginState, DEFAULT_POLL_INTERVAL,
 };
 use bili_core::parser::{is_short_link, parse_target, Target};
 use bili_core::BiliClient;
@@ -16,6 +15,7 @@ use qrcode::QrCode;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -38,6 +38,10 @@ struct Cli {
     /// 登录态文件路径（默认 D:\Zcode\_data\bilidown\cookies.json）
     #[arg(long, value_name = "PATH")]
     cookie_file: Option<PathBuf>,
+
+    /// 扫码登录的最长等待秒数
+    #[arg(long, value_name = "SECONDS", default_value_t = 180)]
+    login_wait: u64,
 
     /// 输出目录
     #[arg(short, long, value_name = "DIR", default_value = ".")]
@@ -115,7 +119,7 @@ async fn main() -> Result<()> {
         .context("访问 B 站首页失败，请检查网络或代理")?;
 
     if cli.login {
-        run_login(&client, &cookie_path).await?;
+        run_login(&client, &cookie_path, Duration::from_secs(cli.login_wait)).await?;
         if cli.input.is_none() {
             return Ok(());
         }
@@ -325,7 +329,7 @@ fn sanitize_filename(name: &str) -> String {
 }
 
 /// 扫码登录：打印二维码 → 轮询状态 → 验证并保存登录态。
-async fn run_login(client: &BiliClient, cookie_path: &Path) -> Result<Cookies> {
+async fn run_login(client: &BiliClient, cookie_path: &Path, max_wait: Duration) -> Result<Cookies> {
     println!("正在申请登录二维码 ...");
     let qr = client.qrcode_generate().await.context("申请二维码失败")?;
 
@@ -344,7 +348,7 @@ async fn run_login(client: &BiliClient, cookie_path: &Path) -> Result<Cookies> {
         client,
         &qr.qrcode_key,
         DEFAULT_POLL_INTERVAL,
-        DEFAULT_MAX_WAIT,
+        max_wait,
         |state| match state {
             LoginState::Pending => {}
             LoginState::Scanned => println!("已扫码，请在手机上点击确认 ..."),

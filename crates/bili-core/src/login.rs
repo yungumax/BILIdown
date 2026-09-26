@@ -231,15 +231,13 @@ where
         match state {
             LoginState::Confirmed => return Cookies::from_success_url(&poll.url),
             LoginState::Expired => {
-                return Err(BiliError::Unavailable(
-                    "二维码已过期，请重新执行登录".into(),
-                ))
+                return Err(BiliError::Login("二维码已过期，请重新执行登录".into()))
             }
             LoginState::Pending | LoginState::Scanned => {}
         }
 
         if started.elapsed() >= max_wait {
-            return Err(BiliError::Unavailable(format!(
+            return Err(BiliError::Login(format!(
                 "等待扫码超时（{} 秒），请重新执行登录",
                 max_wait.as_secs()
             )));
