@@ -128,6 +128,7 @@ const DEFAULT_SETTINGS = {
   chunk_mb: 4,
   keep_temp: false,
   naming_template: "{title}",
+  naming_presets: [],
   rename_conflict: "skip",
   container: "mp4",
   codec_pref: "auto",

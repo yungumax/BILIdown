@@ -37,6 +37,17 @@ const activeCategory = computed(() =>
 
 /** 本地草稿：编辑期间不落盘，点「保存」才提交 */
 const draft = ref(null);
+const BUILTIN_PRESETS = [
+  { name: "默认", template: "{title}" },
+  { name: "标题_BV号", template: "{title}_{bvid}" },
+  { name: "标题_清晰度", template: "{title}_{quality}" },
+  { name: "标题_UP主", template: "{title}_{owner}" },
+  { name: "完整信息", template: "{title}_{quality}_{bvid}" },
+];
+
+const selectedPreset = ref("");
+const presetName = ref("");
+
 const proxyDraft = ref("");
 const ffmpegDraft = ref("");
 const dataDirDraft = ref("");
@@ -171,6 +182,39 @@ const parsePaceNote = computed(() => {
 
 function set(key, value) {
   if (draft.value) draft.value[key] = value;
+}
+
+/** 选预设：内置或用户保存的，选中即填入模板 */
+function selectPreset(name) {
+  selectedPreset.value = name;
+  if (!name || !draft.value) return;
+  const builtin = BUILTIN_PRESETS.find((preset) => preset.name === name);
+  if (builtin) {
+    draft.value.naming_template = builtin.template;
+    return;
+  }
+  const saved = draft.value.naming_presets?.find((preset) => preset.name === name);
+  if (saved) draft.value.naming_template = saved.template;
+}
+
+/** 保存为预设：同名更新模板，随设置一起落盘 */
+function savePreset() {
+  const name = presetName.value.trim();
+  if (!name || !draft.value) {
+    emit("toast", "先填写预设名称，再保存为预设");
+    return;
+  }
+  const presets = [...(draft.value.naming_presets ?? [])];
+  const existing = presets.findIndex((preset) => preset.name === name);
+  if (existing >= 0) {
+    presets[existing] = { name, template: draft.value.naming_template };
+  } else {
+    presets.push({ name, template: draft.value.naming_template });
+  }
+  draft.value.naming_presets = presets;
+  selectedPreset.value = name;
+  presetName.value = "";
+  emit("toast", `预设「${name}」已加入，点上方「保存」生效`);
 }
 
 function applyPreset(name) {
@@ -542,6 +586,27 @@ async function open(path) {
           <!-- 文件命名 -->
           <div v-else-if="active === 'naming'" class="fields">
             <div class="field full">
+              <label>命名预设</label>
+              <select :value="selectedPreset" @change="selectPreset($event.target.value)">
+                <option value="">自定义…</option>
+                <optgroup label="内置">
+                  <option v-for="preset in BUILTIN_PRESETS" :key="preset.name" :value="preset.name">
+                    {{ preset.name }}
+                  </option>
+                </optgroup>
+                <optgroup v-if="draft.naming_presets?.length" label="我的预设">
+                  <option
+                    v-for="preset in draft.naming_presets"
+                    :key="preset.name"
+                    :value="preset.name"
+                  >
+                    {{ preset.name }}
+                  </option>
+                </optgroup>
+              </select>
+            </div>
+
+            <div class="field full">
               <label>命名模板</label>
               <div class="row-flex">
                 <input v-model="draft.naming_template" spellcheck="false" />
@@ -552,6 +617,32 @@ async function open(path) {
               <p class="note">
                 文件名预览：<b>{{ namingPreview }}</b>
               </p>
+            </div>
+
+            <div class="field full">
+              <label>预设名称</label>
+              <div class="row-flex">
+                <input
+                  v-model="presetName"
+                  spellcheck="false"
+                  placeholder="例如：收藏用命名"
+                  @keydown.enter="savePreset"
+                />
+                <button class="ghost" @click="savePreset">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M6.4 5.4h9.2l3 3v10.2H6.4zM9.4 5.4v3.6h5.2"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.6"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  保存为预设
+                </button>
+              </div>
+              <p class="note">同名预设会更新模板。预设随设置一起保存（点上方「保存」生效），下次可直接选用。</p>
             </div>
 
             <div class="field full">

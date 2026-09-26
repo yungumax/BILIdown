@@ -26,6 +26,13 @@ pub struct AppState {
     counter: Mutex<u64>,
 }
 
+/// 一条命名模板预设：用户可把常用模板存成名字，随时选用。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NamingPreset {
+    pub name: String,
+    pub template: String,
+}
+
 /// 用户可配置项，全部持久化到 settings.json。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -43,6 +50,9 @@ pub struct Settings {
     pub naming: String,
     /// 命名模板，可用标记：{title} {bvid} {quality} {owner}
     pub naming_template: String,
+    /// 用户保存的命名模板预设（同名覆盖）
+    #[serde(default)]
+    pub naming_presets: Vec<NamingPreset>,
     /// 重名处理：skip=跳过任务 / overwrite=覆盖 / auto=自动加序号
     pub rename_conflict: String,
     /// 封装格式：mp4 / mkv
@@ -101,6 +111,7 @@ impl Default for Settings {
             keep_temp: false,
             naming: "title".to_string(),
             naming_template: "{title}".to_string(),
+            naming_presets: Vec::new(),
             rename_conflict: "skip".to_string(),
             container: "mp4".to_string(),
             codec_pref: "auto".to_string(),
@@ -174,6 +185,13 @@ impl Settings {
         if self.naming_template.trim().is_empty() {
             self.naming_template = "{title}".to_string();
         }
+        self.naming_presets.truncate(50);
+        for preset in &mut self.naming_presets {
+            preset.name = preset.name.trim().to_string();
+            preset.template = preset.template.trim().to_string();
+        }
+        self.naming_presets
+            .retain(|preset| !preset.name.is_empty() && !preset.template.is_empty());
         if !matches!(self.rename_conflict.as_str(), "skip" | "overwrite" | "auto") {
             self.rename_conflict = "skip".to_string();
         }

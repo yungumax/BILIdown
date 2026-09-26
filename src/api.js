@@ -174,6 +174,9 @@ const mock = (() => {
       keep_temp: false,
       naming: "title",
       naming_template: "{title}",
+      naming_presets: [
+        { name: "示例收藏命名", template: "{title}_{bvid}" },
+      ],
       rename_conflict: "skip",
       container: "mp4",
       codec_pref: "auto",
