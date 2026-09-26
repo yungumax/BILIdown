@@ -11,6 +11,7 @@ pub mod error;
 pub mod ffmpeg;
 pub mod login;
 pub mod parser;
+pub mod util;
 pub mod wbi;
 
 pub use api::{DashStream, MediaStream, PlayUrlData, VideoInfo};
@@ -18,3 +19,4 @@ pub use client::BiliClient;
 pub use download::{DownloadOptions, Progress};
 pub use error::{BiliError, Result};
 pub use login::{Cookies, LoginState, QrCodeInfo};
+pub use util::sanitize_filename;

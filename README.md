@@ -10,33 +10,59 @@ B 站视频下载器。技术栈：Tauri 2 + Rust + Vue 3 + SQLite，ffmpeg 以 
 |---|---|---|
 | M0 工程起步 | ✅ 完成 | 仓库、.gitignore、CI 检查流水线 |
 | M1 CLI 原型 | ✅ 完成 | wbi 签名、API 客户端、DASH 分片并发下载、ffmpeg 合成，端到端跑通 |
-| M2 GUI 骨架 | ⬜ 待开始 | Tauri 壳 + 链接解析预览 + 任务列表 |
-| M3 完整下载 | ⬜ 待开始 | 断点续传、批量、扫码登录 |
-| M4 体验完善 | ⬜ 待开始 | 弹幕字幕、番剧课程、ffmpeg 打包、自动更新 |
+| M2 桌面界面 | ✅ 完成 | Tauri 2 + Vue 3 界面：链接解析预览、清晰度/音轨选择、任务列表与三段式进度、扫码登录弹窗、账号状态 |
+| M3 完整下载 | ⬜ 待开始 | 断点续传、批量（收藏夹/合集/UP 主）、弹幕字幕 |
+| M4 体验完善 | ⬜ 待开始 | 番剧课程、ffmpeg 打包、自动更新 |
 
-M1 已验证可用：输入 BV 号即可下载并合成出标准 MP4（h264 + aac），
-wbi 签名实现与官方文档示例值逐字一致，匿名访问自动降级到 480P。
+已实测可用：扫码登录后同一视频从 480P 提升到 1080P60，另成功下载杜比视界（HEVC
+Main10 + hvc1）内容；32 个单元测试全绿，clippy 零警告。
 
 ## 目录结构
 
 ```
+src/                    桌面端前端（Vue 3）
+├── App.vue             主界面：链接输入、任务列表、状态栏
+├── api.js              与后端通信；浏览器中打开时自动切换为假数据
+└── components/         预览卡片、任务行（含三段式进度）、登录弹窗
+
+src-tauri/              桌面端后端（Tauri 2）
+└── src/
+    ├── commands.rs     暴露给前端的命令
+    ├── state.rs        登录会话、任务表、输出目录
+    └── types.rs        IPC 数据结构
+
 crates/
-├── bili-core/          核心库（后续 Tauri 后端直接复用）
+├── bili-core/          核心库（CLI 与桌面端共用）
 │   ├── wbi.rs          wbi 签名（含官方示例向量回归测试）
 │   ├── client.rs       HTTP 会话、请求头伪装、Cookie、wbi 密钥缓存
 │   ├── api.rs          接口与数据结构、清晰度/音轨选择
 │   ├── download.rs     DASH 分片并发下载、断点区间写入、进度回调
 │   ├── ffmpeg.rs       sidecar 查找与无损合成
-│   └── parser.rs       输入解析（BV/av/链接/短链）
-└── bili-cli/           命令行原型
+│   ├── login.rs        扫码登录
+│   ├── parser.rs       输入解析（BV/av/链接/短链）
+│   └── util.rs         文件名清洗等
+└── bili-cli/           命令行
 ```
 
 ## 开发环境
 
 - Rust 1.98+（Windows 需 MSVC 生成工具）
+- Node.js 20+（前端构建）
 - ffmpeg（正式版将内置 sidecar，开发期用系统 PATH 即可）
 
-## 使用
+## 运行桌面端
+
+```bash
+npm install            # 首次
+npm run tauri dev      # 开发模式（自动起前端 dev server 并打开窗口）
+
+npm run tauri build    # 打包出安装程序（M4 会加上 ffmpeg 与自动更新）
+```
+
+只调界面时可以直接 `npm run dev` 打开 http://localhost:5173 —— 检测不到 Tauri
+运行时会自动使用假数据，改样式不必反复编译 Rust。
+
+## 命令行使用
 
 ```bash
 # 下载视频（默认请求 1080P，未登录会自动降级）

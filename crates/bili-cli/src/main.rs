@@ -323,24 +323,7 @@ fn format_duration(seconds: u64) -> String {
 
 /// 文件名清洗：替换 Windows 非法字符并限长。
 fn sanitize_filename(name: &str) -> String {
-    let mut cleaned: String = name
-        .chars()
-        .map(|c| {
-            if r#"\/:*?"<>|"#.contains(c) || c.is_control() {
-                '_'
-            } else {
-                c
-            }
-        })
-        .collect();
-    cleaned = cleaned.trim().trim_end_matches('.').to_string();
-    if cleaned.chars().count() > 120 {
-        cleaned = cleaned.chars().take(120).collect();
-    }
-    if cleaned.is_empty() {
-        cleaned = "video".to_string();
-    }
-    cleaned
+    bili_core::sanitize_filename(name)
 }
 
 /// 扫码登录：打印二维码 → 轮询状态 → 验证并保存登录态。
@@ -443,29 +426,18 @@ fn now_secs() -> u64 {
 mod tests {
     use super::*;
 
-    #[test]
-    fn sanitizes_windows_reserved_characters() {
-        assert_eq!(
-            sanitize_filename("a/b\\c:d*e?f\"g<h>i|j"),
-            "a_b_c_d_e_f_g_h_i_j"
-        );
-    }
-
-    #[test]
-    fn truncates_overlong_names() {
-        let long = "字".repeat(200);
-        assert_eq!(sanitize_filename(&long).chars().count(), 120);
-    }
-
-    #[test]
-    fn falls_back_when_name_is_empty() {
-        assert_eq!(sanitize_filename("   "), "video");
-    }
-
+    /// 文件名清洗的测试在 `bili_core::util` 中，这里只验证本程序用到的格式化。
     #[test]
     fn formats_duration() {
         assert_eq!(format_duration(59), "0:59");
         assert_eq!(format_duration(605), "10:05");
         assert_eq!(format_duration(3671), "1:01:11");
+    }
+
+    #[test]
+    fn humanizes_bytes() {
+        assert_eq!(human_bytes(512), "512 B");
+        assert_eq!(human_bytes(2048), "2.00 KB");
+        assert_eq!(human_bytes(5 * 1024 * 1024), "5.00 MB");
     }
 }

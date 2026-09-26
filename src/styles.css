@@ -1,0 +1,98 @@
+/* 设计令牌与基础样式。
+   配色克制：仅用 B 站粉作为「进行中」的强调色，语义色只用于状态。 */
+
+:root {
+  color-scheme: dark;
+
+  --ink: #0f1115;
+  --surface: #171a21;
+  --raised: #1e222b;
+  --hover: #232833;
+  --line: #2a2f3a;
+  --line-soft: #21252e;
+
+  --text: #e8eaef;
+  --muted: #949baa;
+  --faint: #6c7382;
+
+  --accent: #fb7299;
+  --accent-soft: rgba(251, 114, 153, 0.16);
+  --ok: #47c08c;
+  --err: #e5544b;
+  --warn: #e0b341;
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+
+  --font: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC",
+    -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* 进度、体积、速度这类会跳动的数字统一用等宽数字，避免抖动 */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2c313c;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3a4150;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

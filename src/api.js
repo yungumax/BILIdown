@@ -1,0 +1,207 @@
+// 与 Rust 后端通信的唯一入口。
+//
+// 在浏览器里直接打开时（没有 Tauri 运行时）自动切换到假数据，
+// 这样界面可以脱离桌面壳单独预览与调整。
+
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+
+export const hasTauri =
+  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+const TASK_EVENT = "task://update";
+
+export async function appStatus() {
+  if (!hasTauri) return mock.status();
+  return invoke("app_status");
+}
+
+export async function probeVideo(input) {
+  if (!hasTauri) return mock.probe();
+  return invoke("probe_video", { input });
+}
+
+export async function startDownload(req) {
+  if (!hasTauri) return mock.start(req);
+  return invoke("start_download", { req });
+}
+
+export async function cancelDownload(taskId) {
+  if (!hasTauri) return mock.cancel(taskId);
+  return invoke("cancel_download", { taskId });
+}
+
+export async function loginQrcode() {
+  if (!hasTauri) return mock.qrcode();
+  return invoke("login_qrcode");
+}
+
+export async function loginPoll(qrcodeKey) {
+  if (!hasTauri) return mock.poll();
+  return invoke("login_poll", { qrcodeKey });
+}
+
+export async function logout() {
+  if (!hasTauri) return { logged_in: false, uname: "", mid: 0, vip: false, vip_label: "" };
+  return invoke("logout");
+}
+
+export async function chooseOutputDir() {
+  if (!hasTauri) return mock.status().output_dir;
+  return invoke("choose_output_dir");
+}
+
+export async function setOutputDir(dir) {
+  if (!hasTauri) return dir;
+  return invoke("set_output_dir", { dir });
+}
+
+export async function openPath(path) {
+  if (!hasTauri) return;
+  return invoke("open_path", { path });
+}
+
+export async function onTaskUpdate(handler) {
+  if (!hasTauri) return mock.onUpdate(handler);
+  return listen(TASK_EVENT, (event) => handler(event.payload));
+}
+
+// 仅浏览器预览用的假数据
+const mock = (() => {
+  const listeners = new Set();
+  const timers = new Map();
+
+  const status = () => ({
+    version: "0.1.0",
+    login: { logged_in: true, uname: "术缕", mid: 1858731, vip: true, vip_label: "年度大会员" },
+    output_dir: "D:\\Zcode\\_data\\bilidown\\downloads",
+    cookies_path: "D:\\Zcode\\_data\\bilidown\\cookies.json",
+  });
+
+  const probe = () => ({
+    bvid: "BV1Vkag6TExf",
+    cid: 42178774115,
+    title: "今日份缇宝",
+    owner: "以尘动画",
+    duration: 18,
+    cover: "",
+    page_count: 1,
+    note: "",
+    recommended_quality: 80,
+    best_quality: 116,
+    qualities: [
+      { qn: 116, label: "高清 1080P60", available: true, hint: "" },
+      { qn: 112, label: "高清 1080P+", available: true, hint: "" },
+      { qn: 80, label: "高清 1080P", available: true, hint: "" },
+      { qn: 64, label: "高清 720P", available: true, hint: "" },
+      { qn: 32, label: "清晰 480P", available: true, hint: "" },
+      { qn: 120, label: "超清 4K", available: false, hint: "需大会员" },
+    ],
+    audios: [
+      { kind: "normal", label: "普通音轨 224 kbps", available: true },
+      { kind: "dolby", label: "杜比全景声", available: false },
+      { kind: "flac", label: "Hi-Res 无损", available: true },
+    ],
+  });
+
+  function emit(task) {
+    listeners.forEach((fn) => fn({ ...task }));
+  }
+
+  function baseTask(id, title, quality) {
+    return {
+      id,
+      title,
+      quality_label: quality,
+      status: "queued",
+      video_pct: 0,
+      audio_pct: 0,
+      downloaded: 0,
+      total: 0,
+      speed_bps: 0,
+      output_path: "",
+      message: "排队中",
+      cover: "",
+    };
+  }
+
+  let counter = 0;
+
+  const start = async (req) => {
+    const id = `mock-${++counter}`;
+    const task = baseTask(id, req.title, "1080P60 AVC");
+    const videoTotal = 16.7 * 1024 * 1024;
+    const audioTotal = 0.5 * 1024 * 1024;
+    task.total = videoTotal + audioTotal;
+    emit(task);
+
+    const state = { video: 0, audio: 0, phase: 0 };
+    const timer = setInterval(() => {
+      if (state.phase === 0) {
+        state.video += videoTotal * 0.14;
+        if (state.video >= videoTotal) {
+          state.video = videoTotal;
+          state.phase = 1;
+        }
+        task.video_pct = (state.video / videoTotal) * 100;
+        task.status = "downloading";
+        task.message = "下载视频流";
+        task.speed_bps = 3.4 * 1024 * 1024;
+      } else if (state.phase === 1) {
+        state.audio += audioTotal * 0.3;
+        if (state.audio >= audioTotal) {
+          state.audio = audioTotal;
+          state.phase = 2;
+        }
+        task.audio_pct = (state.audio / audioTotal) * 100;
+        task.message = "下载音频流";
+      } else {
+        task.video_pct = 100;
+        task.audio_pct = 100;
+        task.status = "merging";
+        task.message = "合成中";
+        task.speed_bps = 0;
+        task.output_path = `${status().output_dir}\\${req.title}.mp4`;
+        clearInterval(timer);
+        timers.delete(id);
+        emit({ ...task });
+        setTimeout(() => {
+          task.status = "done";
+          task.message = "已完成";
+          emit({ ...task });
+        }, 700);
+        return;
+      }
+      task.downloaded = state.video + state.audio;
+      emit({ ...task });
+    }, 260);
+    timers.set(id, timer);
+    return id;
+  };
+
+  const cancel = async (taskId) => {
+    const timer = timers.get(taskId);
+    if (timer) clearInterval(timer);
+    timers.delete(taskId);
+  };
+
+  const qrcode = async () => ({
+    url: "https://account.bilibili.com/h5/account-h5/auth/scan-web?navhide=1&qrcode_key=preview",
+    qrcode_key: "preview",
+  });
+
+  let polls = 0;
+  const poll = async () => {
+    polls += 1;
+    if (polls < 3) return { state: "pending", login: {} };
+    if (polls === 3) return { state: "scanned", login: {} };
+    return { state: "confirmed", login: status().login };
+  };
+
+  const onUpdate = async (handler) => {
+    listeners.add(handler);
+    return () => listeners.delete(handler);
+  };
+
+  return { status, probe, start, cancel, qrcode, poll, onUpdate };
+})();

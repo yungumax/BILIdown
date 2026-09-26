@@ -270,7 +270,11 @@ impl BiliClient {
 /// - 地址里的值经过 URL 编码，需要解码后回送
 ///
 /// 因此这里把可能的形态都试装一遍，用 `nav` 接口实测，取第一个真正生效的。
-async fn confirm_cookies(
+/// 扫码确认后落地登录态：跟随成功地址、尝试多种 Cookie 形态，并用 `nav` 实测。
+///
+/// 供需要自己控制轮询节奏的调用方使用（如桌面端的登录弹窗），命令行侧由
+/// [`wait_for_login`] 内部调用。
+pub async fn confirm(
     client: &BiliClient,
     qrcode_key: &str,
     success_url: &str,
@@ -359,7 +363,7 @@ where
         }
 
         match state {
-            LoginState::Confirmed => return confirm_cookies(client, qrcode_key, &poll.url).await,
+            LoginState::Confirmed => return confirm(client, qrcode_key, &poll.url).await,
             LoginState::Expired => {
                 return Err(BiliError::Login("二维码已过期，请重新执行登录".into()))
             }
