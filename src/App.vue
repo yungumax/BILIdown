@@ -70,12 +70,26 @@ onUnmounted(() => {
   clearTimeout(toastTimer);
 });
 
-/** 把主题写到根元素上，CSS 令牌据此切换 */
+const THEME_BG = { light: "#f5f3f4", dark: "#1b1d21" };
+let themeAnimTimer = null;
+
+/** 把主题写到根元素上，CSS 令牌据此切换；同步窗口原生底色避免白闪 */
 function applyTheme(choice) {
   const resolved =
     choice === "system" ? (systemPrefersDark?.matches ? "dark" : "light") : choice;
   resolvedTheme.value = resolved === "dark" ? "dark" : "light";
   document.documentElement.dataset.theme = resolvedTheme.value;
+
+  // 切换瞬间给全页一个短促的配色过渡，避免生硬翻转
+  document.documentElement.classList.add("theme-switching");
+  clearTimeout(themeAnimTimer);
+  themeAnimTimer = setTimeout(
+    () => document.documentElement.classList.remove("theme-switching"),
+    240
+  );
+
+  // WebView2 默认白底，切深色时会白闪；同步原生底色消除
+  api.setWindowBackground(THEME_BG[resolvedTheme.value]);
 }
 
 async function loadSettings() {
@@ -99,7 +113,6 @@ async function changeSettings(patch) {
     const data = await api.updateSettings(next);
     settingsEnv.value = data;
     settings.value = data.settings;
-    applyTheme(data.settings.theme);
   } catch (error) {
     showToast(String(error));
     await loadSettings();
@@ -108,6 +121,24 @@ async function changeSettings(patch) {
 
 function toggleTheme() {
   changeSettings({ theme: resolvedTheme.value === "dark" ? "light" : "dark" });
+}
+
+const DEFAULT_SETTINGS = {
+  max_concurrent_tasks: 2,
+  chunk_concurrency: 4,
+  chunk_mb: 4,
+  keep_temp: false,
+  naming: "title",
+  default_quality: 0,
+  default_audio: "normal",
+  proxy: "",
+  theme: "system",
+};
+
+async function resetSettings() {
+  if (!settings.value) return;
+  await changeSettings({ ...DEFAULT_SETTINGS, output_dir: settings.value.output_dir });
+  showToast("已恢复默认设置（保存位置不变）");
 }
 
 function showToast(text) {
@@ -241,12 +272,12 @@ async function doLogout() {
           :login="login"
           :settings="settings"
           :env="settingsEnv"
-          :resolved-theme="resolvedTheme"
           @toast="showToast"
           @login="openLogin"
           @logout="doLogout"
           @change="changeSettings"
           @reload="loadSettings"
+          @reset="resetSettings"
         />
         <AboutPage v-else-if="page === 'about'" :version="version" />
         <LibraryPage v-else @goto="page = $event" />

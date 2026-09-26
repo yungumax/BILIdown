@@ -108,6 +108,16 @@ export async function closeWindow() {
   await win?.close();
 }
 
+export async function setWindowBackground(color) {
+  if (!hasTauri) return;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().setBackgroundColor(color);
+  } catch {
+    // 旧版本 Tauri 没有该 API 时忽略；只影响切换瞬间的底色
+  }
+}
+
 export async function startWindowDrag() {
   const win = await windowApi();
   await win?.startDragging();

@@ -46,42 +46,54 @@
     -apple-system, "Segoe UI", system-ui, sans-serif;
 }
 
+/* 深色主题：中性深灰，避免偏色；粉色强调保持不变 */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --app-bg: #17151a;
-  --side-bg: #1c1a20;
-  --card: #211e25;
-  --raised: #272329;
+  --app-bg: #1b1d21;
+  --side-bg: #1f2126;
+  --card: #24262b;
+  --raised: #2a2c32;
 
-  --line: #332e37;
-  --line-soft: #2a262d;
+  --line: #35383f;
+  --line-soft: #2c2f35;
 
-  --text: #ece8ee;
-  --muted: #a49ea8;
-  --faint: #7e7883;
+  --text: #e9eaec;
+  --muted: #9ba0a8;
+  --faint: #767b83;
 
   --accent: #fb7299;
   --accent-dark: #ff86a8;
-  --accent-soft: rgba(251, 114, 153, 0.16);
-  --accent-line: #6e3b4c;
+  --accent-soft: rgba(251, 114, 153, 0.15);
+  --accent-line: #5d424c;
 
   --ok: #46c08c;
   --err: #ec6a62;
   --warn: #dda93f;
 
-  --hover: #2f2a33;
-  --field: #1b181f;
-  --thumb: #2c2830;
-  --seg-track: #322d35;
-  --seg-idle: #4a444e;
-  --done-bg: #1b2320;
-  --done-line: #2c4c3d;
-  --fail-bg: #251b1c;
-  --fail-line: #4d2f2f;
-  --scroll: #3a343d;
-  --scroll-hover: #48414b;
-  --shade: rgba(10, 8, 12, 0.6);
+  --hover: #2e3138;
+  --field: #1e2024;
+  --thumb: #2b2e34;
+  --seg-track: #303339;
+  --seg-idle: #4a4e56;
+  --done-bg: #1d2220;
+  --done-line: #2f4a3b;
+  --fail-bg: #241d1d;
+  --fail-line: #4d3232;
+  --scroll: #3a3d44;
+  --scroll-hover: #474b52;
+  --shade: rgba(8, 9, 11, 0.6);
+}
+
+/* 主题切换时的短促过渡：只影响配色，不加长动画，避免生硬翻转 */
+html.theme-switching body,
+html.theme-switching body * {
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease,
+    border-color 0.16s ease,
+    fill 0.16s ease,
+    box-shadow 0.16s ease !important;
 }
 
 * {
@@ -93,6 +105,10 @@ body,
 #app {
   height: 100%;
   margin: 0;
+}
+
+html {
+  background: var(--app-bg);
 }
 
 body {
