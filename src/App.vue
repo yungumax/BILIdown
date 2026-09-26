@@ -360,13 +360,6 @@ async function doLogout() {
   padding: 18px 22px 22px;
 }
 
-/* 宽屏下内容不再一路拉宽：一行拉到两千像素很难读，链接与右侧说明也离得太远。
-   限宽居中，窄窗口时自动占满（width:100% 受 max-width 约束）。 */
-.content > * {
-  width: 100%;
-  max-width: 1320px;
-  margin-inline: auto;
-}
 
 .toast {
   position: fixed;

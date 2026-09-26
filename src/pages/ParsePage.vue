@@ -733,7 +733,7 @@ async function startSingle(item) {
 </script>
 
 <template>
-  <div :class="{ 'fill-height': isSelectView }">
+  <div class="parse-page" :class="{ 'fill-height': isSelectView }">
     <StepHeader :steps="steps" @select="gotoStep" />
 
     <!-- 选择内容：解析后的独立一页 -->
@@ -1422,6 +1422,45 @@ input:focus {
 .fill-height .select-page {
   flex: 1;
   min-height: 0;
+}
+
+/* 输入页竖向占满窗口：两张卡分摊高度，卡片本身的空白也就被填满了 */
+.parse-page:not(.fill-height) {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+/* 解析链接卡：输入框吃掉剩下的高度 */
+.parse-page:not(.fill-height) > .card {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 260px;
+}
+
+.parse-page:not(.fill-height) > .card textarea {
+  flex: 1 1 auto;
+  min-height: 108px;
+}
+
+/* 解析结果卡：明细列表在卡内吃掉剩下的高度 */
+.parse-page:not(.fill-height) > .results {
+  flex: 1 1 auto;
+  min-height: 180px;
+}
+
+.parse-page:not(.fill-height) > .results .skipped-box {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.parse-page:not(.fill-height) > .results .skipped-list {
+  flex: 1 1 auto;
+  min-height: 44px;
+  max-height: none;
 }
 
 /* 选择内容页：解析结果独立成一页，表格 + 分批加载 */
