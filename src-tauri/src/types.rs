@@ -62,6 +62,10 @@ pub struct BatchVideo {
 #[derive(Debug, Clone, Serialize)]
 pub struct ProbeSource {
     pub kind: String,
+    /// 来源身份（如 collection:100:200、video:BV1xx）：前端用它判重，
+    /// 同一个合集的多个视频、同一链接贴两次都会被识别成同一个来源
+    #[serde(default)]
+    pub key: String,
     pub title: String,
     pub owner: String,
     /// 封面 data URL（仅单视频）

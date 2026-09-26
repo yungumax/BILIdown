@@ -512,6 +512,7 @@ fn batch_to_source(cache: &BatchCache) -> ProbeSource {
     };
     ProbeSource {
         kind: cache.kind.clone(),
+        key: String::new(),
         title: cache.title.clone(),
         owner: cache.owner.clone(),
         cover: String::new(),
@@ -543,6 +544,24 @@ fn batch_to_source(cache: &BatchCache) -> ProbeSource {
     }
 }
 
+/// 来源身份：同一个合集的不同视频展开后 key 相同，前端据此判重，
+/// 避免同一合集被解析两遍、同一条内容在列表里出现两次。
+fn target_key(target: &Target) -> String {
+    match target {
+        Target::Bvid(bvid) => format!("video:{bvid}"),
+        Target::Aid(aid) => format!("aid:{aid}"),
+        Target::FavList(fid) => format!("fav:{fid}"),
+        Target::Collection { mid, sid } => format!("collection:{mid}:{sid}"),
+        Target::Space(mid) => format!("space:{mid}"),
+        Target::Bangumi { season_id, ep_id } => match (season_id, ep_id) {
+            (Some(sid), _) => format!("bangumi:{sid}"),
+            (_, Some(ep)) => format!("bangumi:ep:{ep}"),
+            _ => "bangumi:unknown".to_string(),
+        },
+        Target::Cheese(season_id) => format!("cheese:{season_id}"),
+    }
+}
+
 /// 解析一条来源：短链展开 → 识别目标 → 单视频取详情，批量来源拉第一页。
 ///
 /// 批量来源的加载进度存进 AppState，供「继续解析」接着往后拉，不必从第一页重来。
@@ -564,6 +583,8 @@ async fn probe_one(
     };
 
     let target = parse_target(&resolved).map_err(describe)?;
+    // 来源身份：要在 match 吃掉 target 之前算好
+    let key = target_key(&target);
 
     match target {
         Target::Bvid(bvid) => {
@@ -595,6 +616,13 @@ async fn probe_one(
             finish_batch(client, state, trimmed, BatchTarget::Whole, meta, items).await
         }
     }
+    .map(|mut source| {
+        // 视频展开成合集时，函数内部已经把 key 设成合集身份，这里不要覆盖
+        if source.key.is_empty() {
+            source.key = key;
+        }
+        source
+    })
 }
 
 /// 单个视频链接：批量解析模式下先看它属于哪个合集，属于就把整个合集拉出来；
@@ -617,6 +645,9 @@ async fn probe_video_or_collection(
                 let (items, meta) = fetch_batch_page(client, target, 1).await?;
                 if let Some(meta) = meta {
                     let mut source = finish_batch(client, state, key, target, meta, items).await?;
+                    // 身份要记成合集：同一个合集里的另一个视频也会展开成这个合集，
+                    // 记成 video:BV... 的话判重就抓不到
+                    source.key = format!("collection:{}:{}", season.mid, season.id);
                     source.note = format!("该视频属于合集「{}」，已按合集解析", season.title);
                     return Ok(source);
                 }
@@ -776,6 +807,7 @@ async fn probe_video_bvid(client: &BiliClient, bvid: &str) -> Result<ProbeSource
 
     Ok(ProbeSource {
         kind: "video".to_string(),
+        key: String::new(),
         title: info.title.clone(),
         owner: info.owner.name.clone(),
         cover: cover_data_url(client, &info.pic).await,

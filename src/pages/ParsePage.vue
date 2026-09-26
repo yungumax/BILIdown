@@ -107,10 +107,16 @@ function formatDuration(seconds) {
 }
 
 function lines() {
-  return text.value
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
+  // 同一链接贴两次不必解析两遍
+  const seen = new Set();
+  const out = [];
+  for (const raw of text.value.split("\n")) {
+    const line = raw.trim();
+    if (!line || seen.has(line)) continue;
+    seen.add(line);
+    out.push(line);
+  }
+  return out;
 }
 
 async function pasteFromClipboard() {
@@ -144,6 +150,7 @@ function pickDefaultAudio(probe) {
 
 async function parse() {
   const inputs = lines();
+  const rawLineCount = text.value.split("\n").filter((line) => line.trim()).length;
   if (!inputs.length || parsing.value) return;
 
   // 按解析节奏分批：批内并发、批间等待、每 N 条休息，降低触发风控的概率
@@ -153,7 +160,11 @@ async function parse() {
   done.value = 0;
   total.value = inputs.length;
 
+  const droppedLines = rawLineCount - inputs.length;
+
   const collected = [];
+  const seenKeys = new Set();
+  let duplicated = 0;
   const batch = Math.max(1, props.settings?.parse_batch ?? 8);
   const batchWait = props.settings?.parse_batch_wait_ms ?? 1000;
   const restEvery = Math.max(1, props.settings?.parse_rest_every ?? 100);
@@ -163,6 +174,13 @@ async function parse() {
     try {
       // 批量解析模式下，视频链接会去解析它所在的合集；单个视频模式只解析这一个
       const probe = await api.probeSource(input, mode.value === "batch");
+      // 同一个来源（同一链接/同一合集的另一个视频）只保留第一次
+      if (probe.key && seenKeys.has(probe.key)) {
+        duplicated += 1;
+        done.value += 1;
+        return;
+      }
+      if (probe.key) seenKeys.add(probe.key);
       if (probe.kind === "video") {
         collected.push({
           input,
@@ -207,6 +225,10 @@ async function parse() {
   const failed = collected.filter((item) => !item.ok).length;
   if (failed) {
     emit("toast", `${collected.length - failed} 条解析成功，${failed} 条失败`);
+  }
+  const skipped = duplicated + droppedLines;
+  if (skipped) {
+    emit("toast", `已跳过 ${skipped} 个重复来源（同一链接或同一合集）`);
   }
 
   // 解析成功的一律进「选择内容」页：单视频与批量清单都在那里挑
@@ -348,6 +370,15 @@ watch(allSources, () => {
 });
 
 /** 按来源把行分组，用来在表里画出分界：哪几行属于哪个来源 */
+/** 来源条数之和与实际行数之差 = 被判重掉的内容数 */
+const totalItemCount = computed(() =>
+  allSources.value.reduce(
+    (sum, source) => sum + (source.probe.kind === "video" ? 1 : source.probe.items.length),
+    0
+  )
+);
+const dedupedCount = computed(() => totalItemCount.value - tableRows.value.length);
+
 const tableGroups = computed(() => {
   const groups = [];
   for (const row of tableRows.value) {
@@ -355,7 +386,8 @@ const tableGroups = computed(() => {
     if (last && last.source === row.source) last.rows.push(row);
     else groups.push({ source: row.source, rows: [row] });
   }
-  return groups;
+  // 内容被前面的来源覆盖完的来源不再显示分组行
+  return groups.filter((group) => group.rows.length > 0);
 });
 
 /** 折叠的分组（按来源输入记）：点分组行收起/展开该来源的行 */
@@ -419,8 +451,16 @@ const useShared = computed(() => allSources.value.length > 1);
  */
 const tableRows = computed(() => {
   const rows = [];
+  // 内容级判重：同一个视频可能被多个来源覆盖（合集与其中的单个视频、
+  // UP 空间与它的一条投稿），只保留先出现的那个
+  const seenItems = new Set();
+  const contentKey = (entry, source) =>
+    entry ? `item:${entry.bvid || `ep-${entry.ep_id}`}` : `item:${source.probe.bvid}`;
   for (const source of allSources.value) {
     if (source.probe.kind === "video") {
+      const ck = contentKey(null, source);
+      if (seenItems.has(ck)) continue;
+      seenItems.add(ck);
       rows.push({
         key: source.input,
         seq: rows.length + 1,
@@ -433,6 +473,9 @@ const tableRows = computed(() => {
       continue;
     }
     source.probe.items.forEach((entry, position) => {
+      const ck = contentKey(entry, source);
+      if (seenItems.has(ck)) return;
+      seenItems.add(ck);
       rows.push({
         key: entryKey(source.probe, entry),
         seq: rows.length + 1,
@@ -880,6 +923,9 @@ async function startSingle(item) {
       <footer v-if="hasTable" class="select-foot">
         <span class="foot-count">已选 <b class="num">{{ selectedCount }}</b> 项</span>
         <span class="foot-count">共 <b class="num">{{ loadedCount }}</b> 项</span>
+        <span v-if="dedupedCount > 0" class="foot-count faint">
+          （已去重 <b class="num">{{ dedupedCount }}</b> 条）
+        </span>
         <span class="spacer"></span>
         <button class="mini" @click="toggleAllLoaded(true)">全选已加载</button>
       </footer>
