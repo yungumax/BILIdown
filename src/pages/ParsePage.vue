@@ -365,6 +365,25 @@ function isCollapsed(input) {
   return collapsed.value.has(input);
 }
 
+/** 分组勾选：全选只覆盖这一组，不影响别的来源 */
+function groupChecked(group) {
+  return group.rows.length > 0 && group.rows.every((row) => isSelected(row));
+}
+
+function groupPartial(group) {
+  const picked = group.rows.filter((row) => isSelected(row)).length;
+  return picked > 0 && picked < group.rows.length;
+}
+
+function toggleGroupSelect(group, checked) {
+  const next = new Set(selected.value);
+  for (const row of group.rows) {
+    if (checked) next.add(row.key);
+    else next.delete(row.key);
+  }
+  selected.value = next;
+}
+
 function toggleGroup(input) {
   const next = new Set(collapsed.value);
   if (next.has(input)) next.delete(input);
@@ -811,6 +830,15 @@ async function startSingle(item) {
                 @click="toggleGroup(group.source.input)"
               >
                 <td colspan="5">
+                  <input
+                    type="checkbox"
+                    class="group-check"
+                    :checked="groupChecked(group)"
+                    :indeterminate.prop="groupPartial(group)"
+                    :title="`只选择「${group.source.probe.title}」`"
+                    @click.stop
+                    @change="toggleGroupSelect(group, $event.target.checked)"
+                  />
                   <svg class="fold-arrow" viewBox="0 0 24 24" aria-hidden="true">
                     <path
                       d="m9 6 6 6-6 6"
@@ -1408,6 +1436,12 @@ input:focus {
 .batch-table tr.group-row {
   cursor: pointer;
   user-select: none;
+}
+
+/* 分组选择框：和行内的勾选框左对齐，别被折叠点击抢走事件 */
+.group-check {
+  margin-right: 8px;
+  vertical-align: -3px;
 }
 
 .fold-arrow {
