@@ -61,13 +61,18 @@ pub async fn probe_version(ffmpeg: &Path) -> Result<String> {
 }
 
 /// 用 `-c copy` 直接封装，不做重编码，通常几秒内完成。
+///
+/// `tag_hvc1`：视频是 HEVC 时置 true。ffmpeg 默认写成 `hev1` 标签，多数播放器
+/// （含 Windows 自带播放器）识别不了，改用 `hvc1` 兼容性最好。
 pub async fn merge_video_audio(
     ffmpeg: &Path,
     video: &Path,
     audio: &Path,
     out: &Path,
+    tag_hvc1: bool,
 ) -> Result<()> {
-    let output = Command::new(ffmpeg)
+    let mut command = Command::new(ffmpeg);
+    command
         .arg("-hide_banner")
         .arg("-loglevel")
         .arg("error")
@@ -81,7 +86,13 @@ pub async fn merge_video_audio(
         .arg("-map")
         .arg("1:a:0")
         .arg("-c")
-        .arg("copy")
+        .arg("copy");
+
+    if tag_hvc1 {
+        command.arg("-tag:v").arg("hvc1");
+    }
+
+    let output = command
         .arg("-movflags")
         .arg("+faststart")
         .arg(out)

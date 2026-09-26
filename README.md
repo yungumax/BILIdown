@@ -72,17 +72,33 @@ cargo run -p bili-cli -- BV1Vkag6TExf -q 120      # 120 = 4K
 
 也可以退化为手动模式：`--sessdata "你的SESSDATA"`（优先级高于登录态文件）。
 
+### 清晰度
+
+| 清晰度 | qn | 要求 |
+|---|---|---|
+| 360P / 480P | 16 / 32 | 无需登录 |
+| 720P | 64 | 登录 |
+| 1080P / 1080P60 / 1080P+ | 80 / 116 / 112 | 登录 |
+| 4K / HDR / 杜比视界 | 120 / 125 / 126 | 大会员 |
+| Hi-Res 无损音轨 | `--audio flac` | 大会员 |
+
+请求的清晰度不可得时会自动降级到该视频可用的最高档，并说明是「视频本身没有」还是
+「账号权限不足」。HEVC 内容会打上 `hvc1` 标签，保证播放器兼容性。
+
 ## 开发命令
 
 ```bash
 cargo test --workspace                          # 单元测试
 cargo clippy --workspace --all-targets -- -D warnings   # 静态检查
 cargo fmt --all                                 # 格式化
+
+# 需要联网的手动测试（默认为跳过）
+cargo test -p bili-core -- --ignored --nocapture
 ```
 
 ## 已知限制（M1 范围）
 
 - 仅支持普通投稿视频（BV/av），番剧、课程、收藏夹、合集待 M3
 - 仅处理多 P 视频的 P1
-- 未登录最高 480P；登录后可解锁 1080P+、4K、HDR、杜比、Hi-Res
 - 尚未支持断点续传（已按区间写入，续传只需补记已下载区间）
+- 弹幕与字幕下载待 M3

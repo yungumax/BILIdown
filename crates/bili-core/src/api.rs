@@ -2,11 +2,31 @@
 
 use crate::client::BiliClient;
 use crate::error::Result;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 const API_NAV: &str = "https://api.bilibili.com/x/web-interface/nav";
 const API_VIEW: &str = "https://api.bilibili.com/x/web-interface/view";
 const API_PLAYURL: &str = "https://api.bilibili.com/x/player/wbi/playurl";
+
+// 该接口在不同登录状态/不同版本下，字段类型会变（缺失、null、字符串、对象都出现过），
+// 下面两个适配器把「缺失或 null」统一收敛成安全默认值，避免整份响应解析失败。
+
+/// 缺失或 null 一律读成空集合。
+pub(crate) fn vec_or_null<'de, D, T>(deserializer: D) -> std::result::Result<Vec<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+/// 缺失或 null 一律读成空字符串。
+pub(crate) fn string_or_null<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_default())
+}
 
 /// 所有 web 接口的统一外壳：`{ code, message, data }`。
 #[derive(Debug, Deserialize)]
@@ -18,12 +38,37 @@ pub struct ApiEnvelope<T> {
     pub data: Option<T>,
 }
 
+/// 大会员标签。
+///
+/// 登录后 `vip_label` 是对象（含 `text` 等），未登录时可能是字符串或缺失，
+/// 因此用无标签枚举同时兼容两种形态。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum VipLabel {
+    Object {
+        #[serde(default)]
+        text: String,
+        #[serde(default)]
+        label_theme: String,
+    },
+    Text(String),
+}
+
+impl VipLabel {
+    pub fn text(&self) -> &str {
+        match self {
+            VipLabel::Object { text, .. } => text,
+            VipLabel::Text(text) => text,
+        }
+    }
+}
+
 /// 登录态与 wbi 密钥来源。
 #[derive(Debug, Clone, Deserialize)]
 pub struct NavData {
     #[serde(default, rename = "isLogin")]
     pub is_login: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_or_null")]
     pub uname: String,
     #[serde(default)]
     pub mid: u64,
@@ -31,9 +76,16 @@ pub struct NavData {
     #[serde(default, rename = "vipStatus")]
     pub vip_status: u32,
     #[serde(default, rename = "vip_label")]
-    pub vip_label: String,
+    pub vip_label: Option<VipLabel>,
     #[serde(rename = "wbi_img")]
     pub wbi_img: WbiImg,
+}
+
+impl NavData {
+    /// 大会员标签文案，没有则为空串。
+    pub fn vip_label_text(&self) -> &str {
+        self.vip_label.as_ref().map(VipLabel::text).unwrap_or("")
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -53,18 +105,18 @@ pub struct VideoInfo {
     /// 顶层 cid 即 P1 的分 P id
     #[serde(default)]
     pub cid: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_or_null")]
     pub title: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_or_null")]
     pub desc: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_or_null")]
     pub pic: String,
     /// 秒
     #[serde(default)]
     pub duration: u64,
     #[serde(default)]
     pub owner: Owner,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "vec_or_null")]
     pub pages: Vec<Page>,
 }
 
@@ -72,7 +124,7 @@ pub struct VideoInfo {
 pub struct Owner {
     #[serde(default)]
     pub mid: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_or_null")]
     pub name: String,
 }
 
@@ -81,7 +133,7 @@ pub struct Page {
     pub cid: u64,
     #[serde(default)]
     pub page: u32,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_or_null")]
     pub part: String,
     #[serde(default)]
     pub duration: u64,
@@ -92,9 +144,13 @@ pub struct Page {
 pub struct PlayUrlData {
     #[serde(default)]
     pub quality: u32,
-    #[serde(default, rename = "accept_quality")]
+    #[serde(default, rename = "accept_quality", deserialize_with = "vec_or_null")]
     pub accept_quality: Vec<u32>,
-    #[serde(default, rename = "accept_description")]
+    #[serde(
+        default,
+        rename = "accept_description",
+        deserialize_with = "vec_or_null"
+    )]
     pub accept_description: Vec<String>,
     #[serde(default)]
     pub dash: Option<DashData>,
@@ -117,14 +173,19 @@ impl PlayUrlData {
             // 期望清晰度整体高于账号权限，降级到可用的最高档
             candidates = dash.video.iter().collect();
         }
-        candidates.sort_by_key(|s| std::cmp::Reverse(s.id));
+
+        // 先锁定最高清晰度档，再在同一档内比较编码。
+        // 若跨档位去挑 avc，会把更高的 HEVC 档（如杜比视界）白白跳过。
+        let best_id = candidates.iter().map(|s| s.id).max()?;
+        let same_quality: Vec<&MediaStream> =
+            candidates.into_iter().filter(|s| s.id == best_id).collect();
 
         if prefer_avc {
-            if let Some(avc) = candidates.iter().find(|s| s.codecs.starts_with("avc")) {
+            if let Some(avc) = same_quality.iter().find(|s| s.codecs.starts_with("avc")) {
                 return Some(avc);
             }
         }
-        candidates.first().copied()
+        same_quality.first().copied()
     }
 
     pub fn pick_audio(&self, kind: AudioKind) -> Option<&MediaStream> {
@@ -155,9 +216,9 @@ impl PlayUrlData {
 pub struct DashData {
     #[serde(default)]
     pub duration: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "vec_or_null")]
     pub video: Vec<MediaStream>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "vec_or_null")]
     pub audio: Vec<MediaStream>,
     #[serde(default)]
     pub dolby: Option<DolbyData>,
@@ -173,19 +234,19 @@ pub struct DashData {
 pub struct MediaStream {
     /// 清晰度 / 音频规格 id
     pub id: u32,
-    #[serde(rename = "baseUrl")]
+    #[serde(rename = "baseUrl", deserialize_with = "string_or_null")]
     pub base_url: String,
-    #[serde(default, rename = "backupUrl")]
+    #[serde(default, rename = "backupUrl", deserialize_with = "vec_or_null")]
     pub backup_url: Vec<String>,
     #[serde(default)]
     pub bandwidth: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_or_null")]
     pub codecs: String,
     #[serde(default)]
     pub width: u32,
     #[serde(default)]
     pub height: u32,
-    #[serde(default, rename = "mimeType")]
+    #[serde(default, rename = "mimeType", deserialize_with = "string_or_null")]
     pub mime_type: String,
 }
 
@@ -307,6 +368,114 @@ impl BiliClient {
 mod tests {
     use super::*;
 
+    /// 登录后的 nav 响应（字段取自真实响应，仅替换隐私字段）。
+    ///
+    /// 回归点：登录后 `vip_label` 是对象而非字符串，未登录时缺失——曾经因为把它
+    /// 声明成 String 导致整份响应解析失败，登录被误判为未成功。
+    #[test]
+    fn parses_logged_in_nav_response() {
+        let raw = r##"{
+            "code": 0, "message": "OK", "ttl": 1,
+            "data": {
+                "isLogin": true,
+                "email_verified": 1,
+                "face": "http://i0.hdslb.com/bfs/face/example.gif",
+                "face_nft": 0,
+                "face_nft_type": 0,
+                "level_info": {"current_level": 6, "current_min": 28800, "current_exp": 39630, "next_exp": "--"},
+                "mid": 1858731,
+                "mobile_verified": 1,
+                "money": 0,
+                "moral": 70,
+                "official": {"role": 0, "title": "", "desc": "", "type": -1},
+                "pendant": {"pid": 0, "name": "", "image": "", "expire": 0},
+                "uname": "测试用户",
+                "vipDueDate": 1760000000000,
+                "vipStatus": 1,
+                "vipType": 2,
+                "vip_pay_type": 0,
+                "vip_theme_type": 0,
+                "vip_label": {
+                    "path": "http://i0.hdslb.com/bfs/vip/label_annual.png",
+                    "text": "年度大会员",
+                    "label_theme": "annual_vip",
+                    "text_color": "#FFFFFF",
+                    "bg_style": 1
+                },
+                "vip_avatar_subscript": 1,
+                "vip": {
+                    "type": 2, "status": 1, "due_date": 1760000000000,
+                    "label": {"path": "", "text": "年度大会员", "label_theme": "annual_vip"},
+                    "avatar_subscript": 1, "nickname_color": "#FB7299", "role": 3
+                },
+                "wallet": {"mid": 1858731, "bcoin_balance": 0, "coupon_balance": 0},
+                "has_shop": false,
+                "is_jury": false,
+                "wbi_img": {
+                    "img_url": "https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png",
+                    "sub_url": "https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f01bf08b70ac45.png"
+                }
+            }
+        }"##;
+
+        let envelope: ApiEnvelope<NavData> =
+            serde_json::from_str(raw).expect("登录后的 nav 响应应能解析");
+        let nav = envelope.data.expect("应带 data");
+
+        assert!(nav.is_login);
+        assert_eq!(nav.uname, "测试用户");
+        assert_eq!(nav.mid, 1858731);
+        assert_eq!(nav.vip_status, 1);
+        assert_eq!(nav.vip_label_text(), "年度大会员");
+        assert_eq!(
+            nav.wbi_img.img_url.rsplit('/').next().unwrap(),
+            "7cd084941338484aae1ad9425b84077c.png"
+        );
+    }
+
+    #[test]
+    fn parses_logged_out_nav_without_vip_label() {
+        let raw = r#"{"code": -101, "message": "账号未登录", "ttl": 1, "data": {
+            "isLogin": false,
+            "wbi_img": {"img_url": "https://i0.hdslb.com/bfs/wbi/aaa.png", "sub_url": "https://i0.hdslb.com/bfs/wbi/bbb.png"}
+        }}"#;
+        let envelope: ApiEnvelope<NavData> = serde_json::from_str(raw).unwrap();
+        let nav = envelope.data.unwrap();
+        assert!(!nav.is_login);
+        assert_eq!(nav.vip_label_text(), "");
+    }
+
+    #[test]
+    fn tolerates_null_fields_in_playurl() {
+        let raw = r#"{
+            "code": 0, "message": "OK",
+            "data": {
+                "accept_quality": null,
+                "accept_description": null,
+                "dash": {
+                    "duration": 18,
+                    "video": [{
+                        "id": 80, "baseUrl": "https://example.com/v.m4s",
+                        "backupUrl": null, "bandwidth": 1000,
+                        "codecs": null, "mimeType": null, "width": 1920, "height": 1080
+                    }],
+                    "audio": null
+                }
+            }
+        }"#;
+        let envelope: ApiEnvelope<PlayUrlData> =
+            serde_json::from_str(raw).expect("字段为 null 时也应能解析");
+        let play = envelope.data.unwrap();
+        let picked = play.pick_video(80, true).expect("应选出视频流");
+        assert_eq!(picked.id, 80);
+        assert!(picked.backup_url.is_empty());
+        assert_eq!(picked.codecs, "");
+        assert!(
+            play.pick_audio(AudioKind::Normal).is_none(),
+            "音频为 null 应视为无音轨"
+        );
+    }
+
     fn stream(id: u32, codecs: &str) -> MediaStream {
         MediaStream {
             id,
@@ -360,6 +529,40 @@ mod tests {
             "应降级到可用的最高档"
         );
         assert_eq!(p.best_quality(), 64);
+    }
+
+    /// 回归测试：编码偏好不能跨清晰度档位生效。
+    ///
+    /// 曾经为了优先 avc 而跳过更高的 HEVC 档，导致请求杜比视界（126）时
+    /// 只拿到 1080P+（112）。
+    #[test]
+    fn higher_quality_beats_codec_preference() {
+        let p = play(
+            vec![stream(126, "hvc1.2.4.L120.90"), stream(112, "avc1.640032")],
+            vec![],
+        );
+        let picked = p.pick_video(126, true).unwrap();
+        assert_eq!(picked.id, 126, "应取最高档而不是降级去用 avc");
+        assert!(picked.codecs.starts_with("hvc"));
+    }
+
+    #[test]
+    fn codec_preference_applies_within_same_quality() {
+        let p = play(
+            vec![
+                stream(126, "hvc1.2.4.L120.90"),
+                stream(126, "dvh1.05.06"),
+                stream(112, "avc1.640032"),
+            ],
+            vec![],
+        );
+        let picked = p.pick_video(126, false).unwrap();
+        assert_eq!(picked.id, 126);
+        assert!(
+            picked.codecs.starts_with("hvc"),
+            "关掉编码偏好时取同档第一条，实际: {}",
+            picked.codecs
+        );
     }
 
     #[test]

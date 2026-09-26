@@ -190,10 +190,19 @@ async fn main() -> Result<()> {
         video.height
     );
     if video.id < cli.quality {
-        println!(
-            "         注意：请求的 {} 未获授权，已自动降级",
-            quality_name(cli.quality)
-        );
+        // 区分「视频本身没有这一档」与「账号权限不足以拿到这一档」
+        if play.accept_quality.contains(&cli.quality) {
+            println!(
+                "         注意：{} 在可得列表中但未返回，可能受大会员或内容限制",
+                quality_name(cli.quality)
+            );
+        } else {
+            println!(
+                "         注意：该视频未提供 {}，已使用其最高档 {}",
+                quality_name(cli.quality),
+                quality_name(video.id)
+            );
+        }
     }
     println!(
         "音频   : id={}  {} kbps  {}",
@@ -249,8 +258,14 @@ async fn main() -> Result<()> {
     let out_file = cli
         .out
         .join(format!("{}.mp4", sanitize_filename(&info.title)));
-    println!("合成   : -> {}", out_file.display());
-    ffmpeg::merge_video_audio(&ffmpeg_bin, &video_path, &audio_path, &out_file).await?;
+    // HEVC 需要写成 hvc1 标签，播放器兼容性才好
+    let is_hevc = video.codecs.starts_with("hev") || video.codecs.starts_with("hvc");
+    println!(
+        "合成   : -> {}（{}）",
+        out_file.display(),
+        if is_hevc { "HEVC/hvc1" } else { "直接封装" }
+    );
+    ffmpeg::merge_video_audio(&ffmpeg_bin, &video_path, &audio_path, &out_file, is_hevc).await?;
 
     if !cli.keep {
         tokio::fs::remove_dir_all(&work_dir).await.ok();
@@ -388,11 +403,8 @@ async fn run_login(client: &BiliClient, cookie_path: &Path, max_wait: Duration) 
             cookies.uname = nav.uname.clone();
             println!("登录成功: {} (mid={})", nav.uname, nav.mid);
             if nav.vip_status > 0 {
-                let label = if nav.vip_label.is_empty() {
-                    "有效"
-                } else {
-                    nav.vip_label.as_str()
-                };
+                let label = nav.vip_label_text();
+                let label = if label.is_empty() { "有效" } else { label };
                 println!("大会员: {label} —— 可下载 1080P+ / 4K / HDR / 杜比 / Hi-Res");
             } else {
                 println!("大会员: 未开通（最高 1080P）");

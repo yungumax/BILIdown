@@ -528,4 +528,38 @@ mod tests {
             poll.code
         );
     }
+
+    /// 联网测试：用磁盘上的真实登录态验证“安装 → nav 校验”这条链路。
+    ///
+    /// 手动执行：`cargo test -p bili-core -- --ignored live_verify_saved_cookies --nocapture`
+    /// 可用 `BILIDOWN_COOKIE_FILE` 指定凭据文件。
+    #[tokio::test]
+    #[ignore = "需要真实登录态文件"]
+    async fn live_verify_saved_cookies() {
+        let path = default_cookie_path();
+        let Some(cookies) = Cookies::load(&path).expect("凭据文件应能读回") else {
+            println!("{} 不存在或无效，跳过", path.display());
+            return;
+        };
+        println!(
+            "读入凭据: sessdata 长度={} bili_jct 长度={} mid={}",
+            cookies.sessdata.len(),
+            cookies.bili_jct.len(),
+            cookies.dede_user_id
+        );
+
+        let client = BiliClient::new().unwrap();
+        client.warmup().await.unwrap();
+        client.set_cookies(&cookies).unwrap();
+
+        let names = client.jar_cookie_names();
+        println!("会话中的 Cookie 名称: [{}]", names.join(", "));
+
+        let nav = client.nav().await.expect("nav 接口应可访问");
+        println!(
+            "nav 结果: isLogin={} uname={:?} mid={} vip={}",
+            nav.is_login, nav.uname, nav.mid, nav.vip_status
+        );
+        assert!(nav.is_login, "安装后的登录态应能通过 nav 校验");
+    }
 }
