@@ -411,6 +411,9 @@ pub struct SeasonMeta {
     pub name: String,
     #[serde(default)]
     pub total: u32,
+    /// 合集所属 UP 的 mid（条目里没有上传者，只能拿这个反查名字）
+    #[serde(default)]
+    pub mid: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -465,8 +468,18 @@ pub struct SpaceVideo {
 pub struct PgcSeason {
     #[serde(default, deserialize_with = "string_or_null")]
     pub title: String,
+    /// 出品方/上传者，列表里作为每集的 UP 主展示
+    #[serde(default)]
+    pub up_info: UpInfo,
     #[serde(default, deserialize_with = "vec_or_null")]
     pub episodes: Vec<PgcEpisode>,
+}
+
+/// 番剧/课程的上传者信息（只需要名字）。
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UpInfo {
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub uname: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -489,6 +502,8 @@ pub struct PgcEpisode {
 pub struct PugvSeason {
     #[serde(default, deserialize_with = "string_or_null")]
     pub title: String,
+    #[serde(default)]
+    pub up_info: UpInfo,
     #[serde(default, deserialize_with = "vec_or_null")]
     pub episodes: Vec<PugvEpisode>,
 }
@@ -550,6 +565,19 @@ fn best_normal_audio(dash: &DashData) -> Option<&MediaStream> {
         .filter(|s| !SPECIAL_AUDIO_IDS.contains(&s.id))
         .max_by_key(|s| s.bandwidth)
         .or_else(|| dash.audio.first())
+}
+
+/// 用户名片里只关心名字（合集接口只给 mid，不给每条的上传者）。
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UserCardData {
+    #[serde(default)]
+    pub card: UserCard,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UserCard {
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub name: String,
 }
 
 /// 清晰度 id → 可读名称。
@@ -625,6 +653,15 @@ impl BiliClient {
     // ---------- 批量来源：收藏夹 / 合集 / UP 空间 ----------
 
     /// 收藏夹内容（一页 20 条）。`media_id` 即链接里的 fid。
+    /// 取 UP 主名字；失败返回空字符串（列表里显示成「—」，不影响下载）。
+    pub async fn user_name(&self, mid: u64) -> String {
+        let url = format!("https://api.bilibili.com/x/web-interface/card?mid={mid}");
+        match self.fetch_json::<UserCardData>(&url).await {
+            Ok(data) => data.card.name,
+            Err(_) => String::new(),
+        }
+    }
+
     pub async fn fav_list(&self, media_id: u64, page: u32) -> Result<FavPage> {
         let url = format!(
             "{API_FAV_LIST}?media_id={media_id}&pn={page}&ps=20&order=mtime&type=2&tid=0&platform=web"

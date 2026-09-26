@@ -237,6 +237,18 @@ fn load_note(label: &str, total: usize, loaded: usize, cap: usize, exhausted: bo
     }
 }
 
+/// 条目自己没有上传者时用来源的补上（合集接口不给每条的上传者）。
+fn fill_missing_owner(items: &mut [BatchVideo], owner: &str) {
+    if owner.is_empty() {
+        return;
+    }
+    for item in items.iter_mut() {
+        if item.owner.is_empty() {
+            item.owner = owner.to_string();
+        }
+    }
+}
+
 /// 第一页返回的来源信息（后续页不再重复给）。
 struct BatchMeta {
     kind: String,
@@ -269,6 +281,7 @@ async fn fetch_batch_page(
                     cid: media.cid,
                     ep_id: None,
                     title: media.title.clone(),
+                    owner: media.upper.name.clone(),
                     duration: media.duration,
                 })
                 .collect();
@@ -279,14 +292,16 @@ async fn fetch_batch_page(
                 .seasons_archives(mid, sid, page)
                 .await
                 .map_err(describe)?;
+            // 合集条目里没有上传者，只有 meta.mid，第一页顺带查一次 UP 名字
+            let owner = if first && data.meta.mid > 0 {
+                client.user_name(data.meta.mid).await
+            } else {
+                String::new()
+            };
             let meta = first.then(|| BatchMeta {
                 kind: "collection".to_string(),
                 title: data.meta.name.clone(),
-                owner: data
-                    .archives
-                    .first()
-                    .map(|a| a.owner.name.clone())
-                    .unwrap_or_default(),
+                owner,
                 total: data.meta.total as usize,
             });
             let items = data
@@ -297,6 +312,7 @@ async fn fetch_batch_page(
                     cid: archive.cid,
                     ep_id: None,
                     title: archive.title.clone(),
+                    owner: archive.owner.name.clone(),
                     duration: archive.duration,
                 })
                 .collect();
@@ -328,6 +344,7 @@ async fn fetch_batch_page(
                             cid: 0,
                             ep_id: None,
                             title: video.title.clone(),
+                            owner: video.author.clone(),
                             duration: parse_mmss(&video.length),
                         })
                         .collect()
@@ -366,6 +383,9 @@ async fn start_batch(
     let (qualities, audios, recommended_quality, best_quality) =
         probe_media_options(client, &items[0], source).await;
 
+    let mut items = items;
+    fill_missing_owner(&mut items, &meta.owner);
+
     let exhausted = source_page_size(target) > items.len() && items.len() >= meta.total;
     Ok(BatchCache {
         kind: meta.kind,
@@ -402,6 +422,8 @@ async fn extend_batch(
             cache.exhausted = true;
             break;
         }
+        let mut items = items;
+        fill_missing_owner(&mut items, &cache.owner);
         cache.items.extend(items);
         cache.next_page = page + 1;
         if cache.items.len() >= cache.total {
@@ -583,6 +605,8 @@ async fn fetch_whole(
                     } else {
                         format!("{} {}", episode.title, episode.long_title)
                     },
+                    // 番剧每集没有上传者，用出品方（如"哔哩哔哩番剧"）
+                    owner: season.up_info.uname.clone(),
                     duration: episode.duration / 1000,
                 })
                 .collect::<Vec<_>>();
@@ -602,6 +626,7 @@ async fn fetch_whole(
                     cid: episode.cid,
                     ep_id: (episode.id > 0).then_some(episode.id),
                     title: episode.title.clone(),
+                    owner: season.up_info.uname.clone(),
                     duration: episode.duration,
                 })
                 .collect::<Vec<_>>();

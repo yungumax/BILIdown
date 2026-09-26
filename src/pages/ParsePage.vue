@@ -650,6 +650,7 @@ async function startSingle(item) {
               </th>
               <th class="col-idx">序号</th>
               <th>标题</th>
+              <th class="col-owner">UP 主</th>
               <th class="col-dur">时长</th>
             </tr>
           </thead>
@@ -664,6 +665,7 @@ async function startSingle(item) {
               </td>
               <td class="col-idx num">{{ String(index + 1).padStart(2, "0") }}</td>
               <td class="col-title" :title="entry.title">{{ entry.title }}</td>
+              <td class="col-owner" :title="entry.owner">{{ entry.owner || "—" }}</td>
               <td class="col-dur num">{{ formatDuration(entry.duration) }}</td>
             </tr>
           </tbody>
@@ -1268,6 +1270,14 @@ input:focus {
 .col-idx {
   width: 54px;
   color: var(--faint);
+}
+
+.col-owner {
+  width: 150px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .col-dur {

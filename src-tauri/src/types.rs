@@ -48,6 +48,9 @@ pub struct BatchVideo {
     pub cid: u64,
     pub ep_id: Option<u64>,
     pub title: String,
+    /// 该条目的 UP 主 / 出品方；来源没给就是空
+    #[serde(default)]
+    pub owner: String,
     /// 秒
     pub duration: u64,
 }

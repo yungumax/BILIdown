@@ -161,3 +161,17 @@ cargo test -p bilidown -- --ignored --nocapture live_incremental_loading
 `test-dl-panel.mjs` 覆盖：工具条按钮顺序（继续解析 / 下载设置 / 下载全部 / 下载所选）、
 底部只剩统计与全选、弹层含清晰度与音轨且不超出视口、步骤条状态跟着当前页面走
 （输入页：第 1 步 active 有横线、第 2 步 idle；选择页：第 1 步 done 无横线、第 2 步 active 有横线）。
+
+## 表格的 UP 主列
+
+五种来源的上传者获取方式不同，实测都拿到了值：
+
+| 来源 | 字段 |
+| --- | --- |
+| 收藏夹 | `medias[].upper.name`（每条不同） |
+| 合集 | 条目里没有，用 `meta.mid` 查一次名片拿名字（合集整体同一个 UP） |
+| UP 空间 | `vlist[].author` |
+| 番剧 | season 的 `up_info.uname`（如"哔哩哔哩番剧"） |
+| 课程 | season 的 `up_info.uname` |
+
+条目自己没有上传者时，统一用来源的上传者补齐（`fill_missing_owner`）。
