@@ -1,13 +1,20 @@
 <script setup>
 import * as api from "../api";
 
-defineProps({
+const props = defineProps({
   login: { type: Object, required: true },
   version: { type: String, default: "" },
-  /** 当前生效的外观：light / dark */
-  theme: { type: String, default: "light" },
+  /** 主题模式：light / dark / system */
+  theme: { type: String, default: "system" },
+  resolvedTheme: { type: String, default: "light" },
 });
 const emit = defineEmits(["login", "toggle-theme"]);
+
+const THEME_TITLES = {
+  light: "主题：浅色（点击切换到深色）",
+  dark: "主题：深色（点击切换到跟随系统）",
+  system: "主题：跟随系统（点击切换到浅色）",
+};
 
 /** 只有按住左键才当作拖动窗口；按钮区域不参与 */
 function onDrag(event) {
@@ -42,11 +49,8 @@ function onDrag(event) {
 
     <div class="drag-fill" @mousedown="onDrag"></div>
 
-    <button
-      class="icon-btn"
-      :title="theme === 'dark' ? '切换到浅色' : '切换到深色'"
-      @click="emit('toggle-theme')"
-    >
+    <button class="icon-btn" :title="THEME_TITLES[theme]" @click="emit('toggle-theme')">
+      <!-- 深色：月亮 -->
       <svg v-if="theme === 'dark'" viewBox="0 0 24 24" aria-hidden="true">
         <path
           d="M20 14.4A8.4 8.4 0 0 1 9.6 4 8.4 8.4 0 1 0 20 14.4Z"
@@ -56,6 +60,12 @@ function onDrag(event) {
           stroke-linejoin="round"
         />
       </svg>
+      <!-- 跟随系统：半填充对比圆 -->
+      <svg v-else-if="theme === 'system'" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="1.6" />
+        <path d="M12 3.8a8.2 8.2 0 0 1 0 16.4Z" fill="currentColor" />
+      </svg>
+      <!-- 浅色：太阳 -->
       <svg v-else viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="12" cy="12" r="3.7" fill="none" stroke="currentColor" stroke-width="1.6" />
         <path

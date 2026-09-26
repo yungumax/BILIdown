@@ -118,8 +118,26 @@ async function saveSettings(next) {
   }
 }
 
+/** 右上角按钮：浅色 → 深色 → 跟随系统 循环，切换即时保存 */
 function toggleTheme() {
-  changeSettings({ theme: resolvedTheme.value === "dark" ? "light" : "dark" });
+  const order = ["light", "dark", "system"];
+  const current = settings.value?.theme || "system";
+  const next = order[(order.indexOf(current) + 1) % order.length];
+  setTheme(next);
+}
+
+async function setTheme(theme) {
+  if (!settings.value) return;
+  const next = { ...settings.value, theme };
+  try {
+    const data = await api.updateSettings(next);
+    settingsEnv.value = data;
+    settings.value = data.settings;
+    applyTheme(data.settings.theme);
+  } catch (error) {
+    showToast(String(error));
+    await loadSettings();
+  }
 }
 
 const DEFAULT_SETTINGS = {
@@ -258,7 +276,8 @@ async function doLogout() {
     <TitleBar
       :login="login"
       :version="version"
-      :theme="resolvedTheme"
+      :theme="settings?.theme || 'system'"
+      :resolved-theme="resolvedTheme"
       @login="openLogin"
       @toggle-theme="toggleTheme"
     />
