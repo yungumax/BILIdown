@@ -612,8 +612,8 @@ async function startSingle(item) {
             </button>
           </template>
           <span v-else class="hint-text">已全部加载</span>
-          <span class="spacer"></span>
         </template>
+        <span class="spacer"></span>
 
         <!-- 清晰度/音轨收进弹层，工具条只留动作 -->
         <div ref="dlPanel" class="dl-settings">
@@ -1099,7 +1099,7 @@ input:focus {
   top: calc(100% + 6px);
   right: 0;
   z-index: 15;
-  width: 286px;
+  width: min(286px, calc(100vw - 60px));
   padding: 12px;
   text-align: left;
   background: var(--card);
