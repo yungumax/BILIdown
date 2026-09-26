@@ -26,9 +26,10 @@ export async function updateSettings(settings) {
   return invoke("update_settings", { settings });
 }
 
-export async function probeSource(input) {
+// preferCollection：批量解析模式下，单个视频链接会展开成它所在的合集
+export async function probeSource(input, preferCollection = false) {
   if (!hasTauri) return mock.probe(input);
-  return invoke("probe_source", { input });
+  return invoke("probe_source", { input, preferCollection });
 }
 
 // 继续解析：往后多拉 want 条。首次解析只给第一页，避免一上来就拉上千条。

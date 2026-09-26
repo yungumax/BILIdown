@@ -161,7 +161,8 @@ async function parse() {
 
   const probeOne = async (input) => {
     try {
-      const probe = await api.probeSource(input);
+      // 批量解析模式下，视频链接会去解析它所在的合集；单个视频模式只解析这一个
+      const probe = await api.probeSource(input, mode.value === "batch");
       if (probe.kind === "video") {
         collected.push({
           input,

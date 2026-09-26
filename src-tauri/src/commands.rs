@@ -74,9 +74,10 @@ pub async fn app_status(state: State<'_, AppState>) -> Result<AppStatus, String>
 pub async fn probe_source(
     state: State<'_, AppState>,
     input: String,
+    prefer_collection: Option<bool>,
 ) -> Result<ProbeSource, String> {
     let client = state.client();
-    probe_one(&client, &state, &input).await
+    probe_one(&client, &state, &input, prefer_collection.unwrap_or(false)).await
 }
 
 /// 继续解析：往后多拉 `want` 条。首次解析只给第一页，避免一上来就拉上千条。
@@ -549,6 +550,7 @@ async fn probe_one(
     client: &BiliClient,
     state: &AppState,
     input: &str,
+    prefer_collection: bool,
 ) -> Result<ProbeSource, String> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
@@ -564,10 +566,12 @@ async fn probe_one(
     let target = parse_target(&resolved).map_err(describe)?;
 
     match target {
-        Target::Bvid(bvid) => probe_video_bvid(client, &bvid).await,
+        Target::Bvid(bvid) => {
+            probe_video_or_collection(client, state, trimmed, &bvid, prefer_collection).await
+        }
         Target::Aid(aid) => {
             let info = client.video_info_by_aid(aid).await.map_err(describe)?;
-            probe_video_bvid(client, &info.bvid).await
+            probe_video_or_collection(client, state, trimmed, &info.bvid, prefer_collection).await
         }
 
         // ---------- 批量来源：只拉第一页 ----------
@@ -591,6 +595,35 @@ async fn probe_one(
             finish_batch(client, state, trimmed, BatchTarget::Whole, meta, items).await
         }
     }
+}
+
+/// 单个视频链接：批量解析模式下先看它属于哪个合集，属于就把整个合集拉出来；
+/// 单个视频模式（或不在合集里）就只解析这一个。
+async fn probe_video_or_collection(
+    client: &BiliClient,
+    state: &AppState,
+    key: &str,
+    bvid: &str,
+    prefer_collection: bool,
+) -> Result<ProbeSource, String> {
+    if prefer_collection {
+        if let Ok(info) = client.video_info(bvid).await {
+            let season = info.ugc_season.filter(|s| s.id > 0 && s.mid > 0);
+            if let Some(season) = season {
+                let target = BatchTarget::Collection {
+                    mid: season.mid,
+                    sid: season.id,
+                };
+                let (items, meta) = fetch_batch_page(client, target, 1).await?;
+                if let Some(meta) = meta {
+                    let mut source = finish_batch(client, state, key, target, meta, items).await?;
+                    source.note = format!("该视频属于合集「{}」，已按合集解析", season.title);
+                    return Ok(source);
+                }
+            }
+        }
+    }
+    probe_video_bvid(client, bvid).await
 }
 
 /// 分页类批量来源：拉第一页 → 建缓存 → 返回。
@@ -1811,6 +1844,7 @@ mod live_tests {
             &client,
             &app_state(),
             "https://space.bilibili.com/1858731/favlist?fid=52568231",
+            false,
         )
         .await
         .expect("解析成功");
@@ -1827,9 +1861,14 @@ mod live_tests {
     #[ignore = "需要网络与登录态"]
     async fn live_probe_space() {
         let client = client();
-        let probe = probe_one(&client, &app_state(), "https://space.bilibili.com/1858731")
-            .await
-            .expect("解析成功");
+        let probe = probe_one(
+            &client,
+            &app_state(),
+            "https://space.bilibili.com/1858731",
+            false,
+        )
+        .await
+        .expect("解析成功");
         assert_eq!(probe.kind, "space");
         assert!(probe.loaded > 0);
         println!(
@@ -1843,7 +1882,7 @@ mod live_tests {
     #[ignore = "需要网络"]
     async fn live_probe_bangumi() {
         let client = client();
-        let probe = probe_one(&client, &app_state(), "https://www.bilibili.com/bangumi/play/ss39468")
+        let probe = probe_one(&client, &app_state(), "https://www.bilibili.com/bangumi/play/ss39468", false)
             .await
             .expect("解析成功");
         assert_eq!(probe.kind, "bangumi");
@@ -1866,7 +1905,7 @@ mod live_tests {
     #[ignore = "需要网络"]
     async fn live_probe_cheese() {
         let client = client();
-        let probe = probe_one(&client, &app_state(), "https://www.bilibili.com/cheese/play/ss1")
+        let probe = probe_one(&client, &app_state(), "https://www.bilibili.com/cheese/play/ss1", false)
             .await
             .expect("解析成功");
         assert_eq!(probe.kind, "cheese");
@@ -1885,7 +1924,7 @@ mod live_tests {
         let state = app_state();
         let input = "https://space.bilibili.com/1858731/favlist?fid=52568231";
 
-        let first = probe_one(&client, &state, input).await.expect("首页解析");
+        let first = probe_one(&client, &state, input, false).await.expect("首页解析");
         println!(
             "首页 loaded={} total={} exhausted={}",
             first.loaded, first.total, first.exhausted
@@ -1936,6 +1975,7 @@ mod live_tests {
             &client,
             &app_state(),
             "https://space.bilibili.com/1858731/favlist?fid=52568231",
+            false,
         )
         .await
         .expect("收藏夹解析成功");
@@ -1954,7 +1994,7 @@ mod live_tests {
 
         // UP 空间：每页 30 条
         if let Ok(mid) = std::env::var("BILIDOWN_TEST_SPACE_MID") {
-            let space = probe_one(&client, &app_state(), &format!("https://space.bilibili.com/{mid}"))
+            let space = probe_one(&client, &app_state(), &format!("https://space.bilibili.com/{mid}"), false)
                 .await
                 .expect("空间解析成功");
             println!(
@@ -1972,7 +2012,7 @@ mod live_tests {
 
         // 合集：每页 100 条，用 BILIDOWN_TEST_COLLECTION_URL 指定
         if let Ok(url) = std::env::var("BILIDOWN_TEST_COLLECTION_URL") {
-            let collection = probe_one(&client, &app_state(), &url).await.expect("合集解析成功");
+            let collection = probe_one(&client, &app_state(), &url, false).await.expect("合集解析成功");
             println!(
                 "coll  loaded={} total={} → 至少翻了 {} 页",
                 collection.loaded,

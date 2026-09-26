@@ -135,8 +135,22 @@ pub struct VideoInfo {
     pub pubdate: u64,
     #[serde(default)]
     pub owner: Owner,
+    /// 该视频所属的合集（不在合集里时为 None）
+    #[serde(default)]
+    pub ugc_season: Option<UgcSeason>,
     #[serde(default, deserialize_with = "vec_or_null")]
     pub pages: Vec<Page>,
+}
+
+/// 视频所属的合集。批量解析时用它把"一个视频"展开成"整个合集"。
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UgcSeason {
+    #[serde(default)]
+    pub id: u64,
+    #[serde(default)]
+    pub mid: u64,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub title: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

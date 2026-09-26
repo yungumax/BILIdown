@@ -225,3 +225,15 @@ cargo test -p bilidown -- --ignored --nocapture live_incremental_loading
 折成两排（`-webkit-line-clamp: 2`），超过两排才省略。
 
 `test-multi-video.mjs` 覆盖：多视频出表格不出详情、表头与行内容、勾选计数联动。
+
+## 视频链接在两种模式下的不同行为
+
+`probe_source` 有个 `preferCollection` 开关：批量解析模式传 true，单个视频模式传 false。
+
+- 批量解析 + 视频链接：先查该视频的 `ugc_season`（所属合集），有就把整个合集拉出来
+  （kind=collection，可继续分页），并注明「该视频属于合集「X」，已按合集解析」；
+  视频不在合集里则退回解析这一个视频
+- 单个视频 + 视频链接：始终只解析这一个
+
+`test-collection-expand.mjs` 覆盖同一链接在两种模式下分别得到「合集 + 表格 35 行」
+与「视频 + 详情块」。
