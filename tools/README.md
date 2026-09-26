@@ -134,3 +134,11 @@ cargo test -p bilidown -- --ignored --nocapture live_incremental_loading
 
 踩坑：批量来源列表项是 Vue 深层响应式对象，`probe.items.push(...)` 能直接触发更新，
 但 `loaded/total/exhausted/note` 要逐个赋值（不是 computed）。
+
+## 单视频也进「选择内容」页
+
+`test-multi-source.mjs` 覆盖：一次贴两行（视频 + 收藏夹）解析后出现来源切换标签，
+第 1 个来源是视频时显示详情块（封面/标题/时长/BV号 + 清晰度音轨 + 加入下载），
+切到收藏夹时换成表格，切回来又变详情。
+
+`test-select-page.mjs` 覆盖批量来源那条路径（表格、分批加载、勾选、下载所选）。

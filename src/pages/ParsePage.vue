@@ -27,21 +27,13 @@ const KIND_LABELS = {
 
 /** 批量来源里每条的勾选状态 */
 const selected = ref(new Set());
-const batchQuality = ref(80);
-const batchAudio = ref("normal");
-
 const okItems = computed(() => items.value.filter((item) => item.ok));
-const batchProbe = computed(() => {
-  const first = okItems.value.find((item) => item.probe?.kind !== "video");
-  return first ? first.probe : null;
-});
-const batchSelected = computed(() => {
-  const batch = batchProbe.value;
-  if (!batch) return [];
-  const keyOf = (entry) => `${batch.kind}:${entry.bvid || `ep-${entry.ep_id}`}`;
-  return batch.items.filter((entry) => selected.value.has(keyOf(entry))).map(keyOf);
-});
-const isBatch = computed(() => !!batchProbe.value);
+const failedItems = computed(() => items.value.filter((item) => !item.ok));
+
+/** 已经解析出来的来源条数：视频算 1，批量来源算已加载条数 */
+function sourceCount(item) {
+  return item.probe.kind === "video" ? 1 : item.probe.items.length;
+}
 
 function itemKey(item) {
   return item.probe ? `${item.probe.kind}:${item.bvid || `ep-${item.epId}`}` : item.input;
@@ -51,7 +43,6 @@ function hasKey(key) {
 }
 
 const steps = computed(() => {
-  const batch = batchProbe.value;
   return [
     {
       index: 1,
@@ -63,12 +54,12 @@ const steps = computed(() => {
       index: 2,
       title: "选择内容",
       hint: view.value === "select"
-        ? `已选 ${selectedCount.value} / 已加载 ${loadedCount.value}`
-        : batchSources.value.length
-          ? `${batchSources.value.length} 个来源待选择`
-          : items.value.length
-            ? `已解析 ${okItems.value.length} 条`
-            : "等待解析",
+        ? activeSource.value?.probe.kind === "video"
+          ? "确认清晰度"
+          : `已选 ${selectedCount.value} / 已加载 ${loadedCount.value}`
+        : okItems.value.length
+          ? `${okItems.value.length} 个来源待选择`
+          : "等待解析",
       state: items.value.length && !parsing.value ? "active" : "idle",
     },
   ];
@@ -179,9 +170,14 @@ async function parse() {
       } else {
         // 先完成全部处理，最后才 push —— 中途出错不会留下半成品条目
         // 默认不勾选：清单可能很长，先让用户看清再挑
-        batchQuality.value = pickDefaultQuality(probe);
-        batchAudio.value = pickDefaultAudio(probe);
-        collected.push({ input, ok: true, error: "", probe });
+        collected.push({
+          input,
+          ok: true,
+          error: "",
+          probe,
+          quality: pickDefaultQuality(probe),
+          audio: pickDefaultAudio(probe),
+        });
       }
     } catch (error) {
       collected.push({ input, ok: false, error: String(error) });
@@ -203,17 +199,14 @@ async function parse() {
 
   parsing.value = false;
 
-  // 有批量来源就直接进「选择内容」页，不用在输入页里翻列表
-  const firstBatch = collected.find((item) => item.ok && item.probe.kind !== "video");
-  if (firstBatch) {
-    openSelect(firstBatch.input);
-    return;
-  }
-
   const failed = collected.filter((item) => !item.ok).length;
   if (failed) {
     emit("toast", `${collected.length - failed} 条解析成功，${failed} 条失败`);
   }
+
+  // 解析成功的一律进「选择内容」页：单视频与批量清单都在那里挑
+  const firstOk = collected.find((item) => item.ok);
+  if (firstOk) openSelect(firstOk.input);
 }
 
 function toggleItem(key) {
@@ -247,13 +240,16 @@ const batchInput = ref(""); // 当前查看的批量来源（继续解析的键�
 const batchSize = ref(50); // 一次往后拉多少条
 const loadingMore = ref(false);
 
-/** 已解析出的批量来源 */
-const batchSources = computed(() => okItems.value.filter((item) => item.probe.kind !== "video"));
+/** 已解析出的来源：单视频与批量来源都能在选择页里看 */
+const allSources = computed(() => okItems.value);
 
 const activeSource = computed(() => {
-  const list = batchSources.value;
+  const list = allSources.value;
   return list.find((item) => item.input === batchInput.value) || list[0] || null;
 });
+
+/** 当前来源是批量清单（单视频没有表格与页码） */
+const activeIsBatch = computed(() => !!activeSource.value && activeSource.value.probe.kind !== "video");
 
 function openSelect(input) {
   batchInput.value = input;
@@ -318,10 +314,16 @@ async function loadMore() {
   }
 }
 
-/** 下载所选：把这一页上勾选的条目逐个入队 */
+/** 下载：批量来源下勾选的条目，单视频直接下这一条 */
 async function downloadSelected() {
   const source = activeSource.value;
   if (!source) return;
+
+  if (source.probe.kind === "video") {
+    await startSingle(source);
+    return;
+  }
+
   const picked = source.probe.items.filter((entry) => isSelected(entry));
   if (!picked.length) {
     emit("toast", "先勾选要下载的内容");
@@ -340,8 +342,8 @@ async function downloadSelected() {
         source: source.probe.kind,
         title: entry.title,
         owner: source.probe.owner,
-        quality: batchQuality.value,
-        audio: batchAudio.value,
+        quality: source.quality,
+        audio: source.audio,
         cover: "",
         naming: batchNaming(source.probe, entry, position),
       });
@@ -354,6 +356,19 @@ async function downloadSelected() {
     emit("toast", `已加入 ${started} 个下载任务`);
     emit("goto", "transfer");
   }
+}
+
+/** 清空全部解析结果 */
+function resetParsed() {
+  items.value = [];
+  selected.value = new Set();
+  text.value = "";
+  view.value = "input";
+}
+
+function removeItem(input) {
+  const index = items.value.findIndex((item) => item.input === input);
+  if (index >= 0) items.value.splice(index, 1);
 }
 
 /** 来源类型的中文标签（复用文件开头那份，video 也在里面） */
@@ -423,58 +438,6 @@ async function startSingle(item) {
   }
 }
 
-async function startBatch(batch) {
-  const source = batch.kind;
-  let started = 0;
-  // 列表序号从 1 开始，供命名模板的 {index} / {episode_index} 使用
-  let position = 0;
-  for (const entry of batch.items) {
-    position += 1;
-    const key = `${batch.kind}:${entry.bvid || `ep-${entry.ep_id}`}`;
-    if (!selected.value.has(key)) continue;
-    try {
-      await api.startDownload({
-        bvid: entry.bvid,
-        cid: entry.cid,
-        ep_id: entry.ep_id,
-        source,
-        title: entry.title,
-        owner: batch.owner,
-        quality: batchQuality.value,
-        audio: batchAudio.value,
-        cover: "",
-        naming: batchNaming(batch, entry, position),
-      });
-      started += 1;
-    } catch (error) {
-      emit("toast", `${entry.title}: ${error}`);
-    }
-  }
-  return started;
-}
-
-async function startAll() {
-  let started = 0;
-
-  for (const item of okItems.value) {
-    if (item.probe.kind === "video") {
-      if (await startSingle(item)) started += 1;
-    }
-  }
-  if (batchProbe.value) {
-    started += await startBatch(batchProbe.value);
-  }
-
-  if (started) {
-    emit("toast", `已加入 ${started} 个下载任务`);
-    items.value = [];
-    selected.value = new Set();
-    text.value = "";
-    emit("goto", "transfer");
-  } else {
-    emit("toast", "没有勾选任何内容，先在列表里勾选要下载的条目");
-  }
-}
 </script>
 
 <template>
@@ -501,9 +464,9 @@ async function startAll() {
         </h2>
         <span class="kind-tag">{{ kindLabel(activeSource.probe.kind) }}</span>
 
-        <div v-if="batchSources.length > 1" class="source-tabs">
+        <div v-if="allSources.length > 1" class="source-tabs">
           <button
-            v-for="source in batchSources"
+            v-for="source in allSources"
             :key="source.input"
             :class="{ on: source.input === activeSource.input }"
             :title="source.probe.title"
@@ -514,32 +477,53 @@ async function startAll() {
         </div>
 
         <span class="spacer"></span>
-        <span class="loaded-hint num">
-          已加载 {{ loadedCount }} / {{ activeSource.probe.total }} 项
-        </span>
-        <label class="inline-field">
-          每批
-          <select v-model.number="batchSize">
-            <option :value="20">20</option>
-            <option :value="50">50</option>
-            <option :value="100">100</option>
-          </select>
-        </label>
+        <template v-if="activeIsBatch">
+          <span class="loaded-hint num">
+            已加载 {{ loadedCount }} / {{ activeSource.probe.total }} 项
+          </span>
+          <label class="inline-field">
+            每批
+            <select v-model.number="batchSize">
+              <option :value="20">20</option>
+              <option :value="50">50</option>
+              <option :value="100">100</option>
+            </select>
+          </label>
+          <button
+            class="ghost"
+            :disabled="loadingMore || activeSource.probe.exhausted"
+            @click="loadMore"
+          >
+            {{ activeSource.probe.exhausted ? "已全部加载" : loadingMore ? "解析中…" : "继续解析" }}
+          </button>
+        </template>
         <button
-          class="ghost"
-          :disabled="loadingMore || activeSource.probe.exhausted"
-          @click="loadMore"
+          class="primary"
+          :disabled="activeIsBatch && !selectedCount"
+          @click="downloadSelected"
         >
-          {{ activeSource.probe.exhausted ? "已全部加载" : loadingMore ? "解析中…" : "继续解析" }}
-        </button>
-        <button class="primary" :disabled="!selectedCount" @click="downloadSelected">
-          下载所选 ({{ selectedCount }})
+          {{ activeIsBatch ? `下载所选 (${selectedCount})` : "加入下载" }}
         </button>
       </header>
 
       <p v-if="activeSource.probe.note" class="note">{{ activeSource.probe.note }}</p>
 
-      <div class="table-scroll">
+      <div v-if="!activeIsBatch" class="video-detail">
+        <div class="thumb">
+          <img v-if="activeSource.probe.cover" :src="activeSource.probe.cover" alt="" />
+        </div>
+        <div class="meta">
+          <p class="title">{{ activeSource.probe.title }}</p>
+          <p class="sub">
+            <span>{{ activeSource.probe.owner }}</span>
+            <span class="num">{{ formatDuration(activeSource.probe.duration) }}</span>
+            <span class="num faint">{{ activeSource.probe.bvid }}</span>
+          </p>
+          <p v-if="activeSource.probe.note" class="note">{{ activeSource.probe.note }}</p>
+        </div>
+      </div>
+
+      <div v-if="activeIsBatch" class="table-scroll">
         <table class="batch-table">
           <thead>
             <tr>
@@ -576,7 +560,7 @@ async function startAll() {
       <footer class="select-foot">
         <label class="inline-field">
           清晰度
-          <select v-model.number="batchQuality">
+          <select v-model.number="activeSource.quality">
             <option
               v-for="quality in activeSource.probe.qualities"
               :key="quality.qn"
@@ -589,7 +573,7 @@ async function startAll() {
         </label>
         <label class="inline-field">
           音轨
-          <select v-model="batchAudio">
+          <select v-model="activeSource.audio">
             <option
               v-for="audio in activeSource.probe.audios"
               :key="audio.kind"
@@ -601,9 +585,11 @@ async function startAll() {
           </select>
         </label>
         <span class="spacer"></span>
-        <span class="num faint">已选 {{ selectedCount }} 项，共 {{ loadedCount }} 项</span>
-        <button class="mini" @click="toggleAllLoaded(true)">全选已加载</button>
-        <button class="mini" @click="selectNone">全不选</button>
+        <template v-if="activeIsBatch">
+          <span class="num faint">已选 {{ selectedCount }} 项，共 {{ loadedCount }} 项</span>
+          <button class="mini" @click="toggleAllLoaded(true)">全选已加载</button>
+          <button class="mini" @click="selectNone">全不选</button>
+        </template>
       </footer>
     </section>
 
@@ -692,106 +678,36 @@ async function startAll() {
       </div>
     </section>
 
+    <!-- 解析结果入口：成功的一律进「选择内容」页，这里只留入口与失败项 -->
     <section v-if="items.length" class="card results">
       <header class="results-head">
-        <h2>选择内容</h2>
-        <span class="count num">{{ batchSelected.length || okItems.length }}</span>
+        <h2>解析结果</h2>
+        <span class="count num">{{ okItems.length }}</span>
         <span class="spacer"></span>
-        <button class="ghost" @click="items = []">清空</button>
-        <button class="primary" :disabled="!okItems.length" @click="startAll">
-          全部加入下载
-        </button>
+        <button class="ghost" @click="resetParsed">清空</button>
       </header>
 
-      <ul class="list">
-        <li
-          v-for="(item, index) in items"
-          :key="item.input + index"
-          class="item"
-          :class="{ failed: !item.ok }"
+      <div v-if="okItems.length" class="parsed-bar">
+        <button
+          v-for="item in okItems"
+          :key="item.input"
+          class="parsed-chip"
+          :title="item.probe.title || item.input"
+          @click="openSelect(item.input)"
         >
-          <template v-if="item.ok && item.probe.kind === 'video'">
-            <div class="thumb">
-              <img v-if="item.probe.cover" :src="item.probe.cover" alt="" />
-              <svg v-else class="thumb-placeholder" viewBox="0 0 24 24" aria-hidden="true">
-                <rect
-                  x="3.2"
-                  y="5.6"
-                  width="17.6"
-                  height="12.8"
-                  rx="2.4"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                />
-                <path d="M10.4 9.6v4.8l4.3-2.4-4.3-2.4Z" fill="currentColor" />
-              </svg>
-            </div>
-            <div class="meta">
-              <p class="title">{{ item.probe.title }}</p>
-              <p class="sub">
-                <span>{{ item.probe.owner }}</span>
-                <span class="num">{{ formatDuration(item.probe.duration) }}</span>
-                <span class="num faint">{{ item.probe.bvid }}</span>
-              </p>
-              <p v-if="item.probe.note" class="note">{{ item.probe.note }}</p>
-            </div>
-            <label class="field">
-              <span>清晰度</span>
-              <select v-model.number="item.quality">
-                <option
-                  v-for="quality in item.probe.qualities"
-                  :key="quality.qn"
-                  :value="quality.qn"
-                  :disabled="!quality.available"
-                >
-                  {{ quality.label }}{{ quality.hint ? `（${quality.hint}）` : "" }}
-                </option>
-              </select>
-            </label>
-            <label class="field">
-              <span>音轨</span>
-              <select v-model="item.audio">
-                <option
-                  v-for="audio in item.probe.audios"
-                  :key="audio.kind"
-                  :value="audio.kind"
-                  :disabled="!audio.available"
-                >
-                  {{ audio.label }}{{ audio.available ? "" : "（不可用）" }}
-                </option>
-              </select>
-            </label>
-            <button class="remove" title="移除" @click="items.splice(index, 1)">✕</button>
-          </template>
+          <span class="kind">{{ KIND_LABELS[item.probe.kind] }}</span>
+          <span class="chip-title">{{ item.probe.title || item.input }}</span>
+          <span class="num faint">{{ sourceCount(item) }}</span>
+        </button>
+      </div>
 
-          <template v-else-if="item.ok">
-            <!-- 批量来源：解析结果在「选择内容」独立页里挑 -->
-            <div class="batch-entry">
-              <span class="kind">{{ KIND_LABELS[item.probe.kind] }}</span>
-              <div class="meta">
-                <p class="title">{{ item.probe.title }}</p>
-                <p class="sub">
-                  <span v-if="item.probe.owner">{{ item.probe.owner }}</span>
-                  <span class="num">
-                    已加载 {{ item.probe.loaded }} / {{ item.probe.total }} 条
-                  </span>
-                </p>
-                <p v-if="item.probe.note" class="note">{{ item.probe.note }}</p>
-              </div>
-              <span class="spacer"></span>
-              <button class="primary" @click="openSelect(item.input)">选择内容</button>
-            </div>
-            <button class="remove" title="移除" @click="items.splice(index, 1)">✕</button>
-          </template>
-
-          <template v-else>
-            <div class="meta">
-              <p class="title">{{ item.input }}</p>
-              <p class="error">{{ item.error }}</p>
-            </div>
-            <button class="remove" title="移除" @click="items.splice(index, 1)">✕</button>
-          </template>
+      <ul v-if="failedItems.length" class="list">
+        <li v-for="item in failedItems" :key="item.input" class="item failed">
+          <div class="meta">
+            <p class="title">{{ item.input }}</p>
+            <p class="error">{{ item.error }}</p>
+          </div>
+          <button class="remove" title="移除" @click="removeItem(item.input)">✕</button>
         </li>
       </ul>
 
@@ -969,6 +885,53 @@ input:focus {
   width: 14px;
   height: 14px;
   color: var(--accent);
+}
+
+/* 输入页里的"已解析来源"入口 */
+.parsed-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.parsed-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.parsed-chip:hover {
+  border-color: var(--accent-line);
+  background: var(--raised);
+}
+
+.parsed-chip .chip-title {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 选择页里的单视频详情 */
+.video-detail {
+  display: flex;
+  gap: 14px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.video-detail .thumb {
+  flex: none;
+  width: 132px;
+  height: 84px;
 }
 
 /* 选择内容页：解析结果独立成一页，表格 + 分批加载 */
