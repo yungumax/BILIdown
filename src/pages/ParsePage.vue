@@ -1431,12 +1431,15 @@ input:focus {
   min-height: 100%;
 }
 
-/* 解析链接卡：输入框吃掉剩下的高度 */
+/* 解析链接卡：随内容，同时吃一点多余高度（输入框跟着长） */
 .parse-page:not(.fill-height) > .card {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  min-height: 260px;
+  /* 下限必须小于上限，否则 min-height 优先、上限失效 */
+  min-height: 320px;
+  /* 别把结果卡挤到折线以下：输入卡最多占视口的一半少一点 */
+  max-height: 40vh;
 }
 
 .parse-page:not(.fill-height) > .card textarea {
@@ -1444,10 +1447,14 @@ input:focus {
   min-height: 108px;
 }
 
-/* 解析结果卡：明细列表在卡内吃掉剩下的高度 */
+/* 解析结果卡：高度**只由分配决定**（flex-basis: 0），不被明细列表的内容撑高。
+   只有这样，卡片内的高度才是确定的，列表才能在里面滚动而不是把整页顶长。 */
 .parse-page:not(.fill-height) > .results {
-  flex: 1 1 auto;
-  min-height: 180px;
+  /* grow 比输入卡大一倍：多出来的高度优先给结果卡（输入框够用就行），
+     这样标准窗口下也不用整页滚动 */
+  flex: 2 1 0;
+  /* 下限要兼顾：太小明细框会溢出卡片，太大又把整页顶出去 */
+  min-height: 160px;
 }
 
 .parse-page:not(.fill-height) > .results .skipped-box {
@@ -1459,7 +1466,7 @@ input:focus {
 
 .parse-page:not(.fill-height) > .results .skipped-list {
   flex: 1 1 auto;
-  min-height: 44px;
+  min-height: 30px;
   max-height: none;
 }
 
