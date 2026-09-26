@@ -8,6 +8,7 @@ use reqwest::{Client, StatusCode};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
@@ -31,6 +32,8 @@ pub struct DownloadOptions {
     pub concurrency: usize,
     pub chunk_size: u64,
     pub retries: usize,
+    /// 全局限速（字节/秒），None 或 0 表示不限速
+    pub speed_limit_bps: u64,
 }
 
 impl Default for DownloadOptions {
@@ -39,6 +42,46 @@ impl Default for DownloadOptions {
             concurrency: DEFAULT_CONCURRENCY,
             chunk_size: DEFAULT_CHUNK_SIZE,
             retries: DEFAULT_RETRIES,
+            speed_limit_bps: 0,
+        }
+    }
+}
+
+/// 跨连接共享的全局限速器。
+///
+/// 采用"预约时隙"策略：每个分片按字节数预约未来的一段时间窗，超前的连接睡眠等待。
+/// 实现简单且在多连接下仍然公平；限速精度为分片级别（秒级平均速率准确）。
+#[derive(Debug)]
+pub struct Throttle {
+    limit_bps: f64,
+    next_slot: Mutex<Instant>,
+}
+
+impl Throttle {
+    /// 限速为 `limit_bps` 字节/秒；传入 0 返回 None（不限速）。
+    pub fn new(limit_bps: u64) -> Option<std::sync::Arc<Self>> {
+        (limit_bps > 0).then(|| {
+            std::sync::Arc::new(Self {
+                limit_bps: limit_bps as f64,
+                next_slot: Mutex::new(Instant::now()),
+            })
+        })
+    }
+
+    /// 为 `bytes` 字节等待对应的时隙。
+    pub async fn acquire(&self, bytes: u64) {
+        if bytes == 0 {
+            return;
+        }
+        let wait_until = {
+            let mut next = self.next_slot.lock().unwrap_or_else(|e| e.into_inner());
+            let start = (*next).max(Instant::now());
+            *next = start + Duration::from_secs_f64(bytes as f64 / self.limit_bps);
+            start
+        };
+        let now = Instant::now();
+        if wait_until > now {
+            tokio::time::sleep(wait_until - now).await;
         }
     }
 }
@@ -52,6 +95,19 @@ pub async fn download(
     opts: &DownloadOptions,
     progress: ProgressFn,
 ) -> Result<()> {
+    download_with_throttle(http, url, backup_urls, dest, opts, progress, None).await
+}
+
+/// 带全局限速器的下载入口。
+pub async fn download_with_throttle(
+    http: &Client,
+    url: &str,
+    backup_urls: &[String],
+    dest: &Path,
+    opts: &DownloadOptions,
+    progress: ProgressFn,
+    throttle: Option<&std::sync::Arc<Throttle>>,
+) -> Result<()> {
     if let Some(parent) = dest.parent() {
         if !parent.as_os_str().is_empty() {
             tokio::fs::create_dir_all(parent).await?;
@@ -64,8 +120,21 @@ pub async fn download(
     let reporter = spawn_reporter(downloaded.clone(), total, progress.clone());
 
     let result = if range_supported && total > opts.chunk_size {
-        download_chunked(http, &chosen_url, dest, total, opts, downloaded.clone()).await
+        download_chunked(
+            http,
+            &chosen_url,
+            dest,
+            total,
+            opts,
+            throttle,
+            downloaded.clone(),
+        )
+        .await
     } else {
+        if let Some(t) = throttle {
+            // 顺序下载同样按总量预约时隙
+            t.acquire(total).await;
+        }
         download_sequential(http, &chosen_url, dest, downloaded.clone()).await
     };
 
@@ -140,6 +209,7 @@ async fn download_chunked(
     dest: &Path,
     total: u64,
     opts: &DownloadOptions,
+    throttle: Option<&std::sync::Arc<Throttle>>,
     downloaded: Arc<AtomicU64>,
 ) -> Result<()> {
     // 预分配：文件尺寸立即等于总长度，并发写入各占独立区间
@@ -170,12 +240,16 @@ async fn download_chunked(
         let dest = dest.to_path_buf();
         let downloaded = downloaded.clone();
         let retries = opts.retries;
+        let throttle = throttle.cloned();
 
         tasks.spawn(async move {
             let _permit = permit;
             let range = format!("bytes={offset}-{end}");
             let data = fetch_range(&http, &url, &range, retries).await?;
             let len = data.len() as u64;
+            if let Some(t) = throttle {
+                t.acquire(len).await;
+            }
             write_at(&dest, offset, data).await?;
             downloaded.fetch_add(len, Ordering::Relaxed);
             Ok::<(), BiliError>(())

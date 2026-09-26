@@ -67,6 +67,9 @@ pub struct DownloadRequest {
     pub bvid: String,
     pub cid: u64,
     pub title: String,
+    /// UP 主名，用于命名模板的 {owner}
+    #[serde(default)]
+    pub owner: String,
     pub quality: u32,
     /// normal / dolby / flac
     pub audio: String,

@@ -23,6 +23,11 @@ pub fn run() {
             commands::choose_output_dir,
             commands::set_output_dir,
             commands::open_path,
+            commands::pick_ffmpeg,
+            commands::cleanup_temp,
+            commands::cleanup_cache,
+            commands::export_diagnostics,
+            commands::check_updates,
         ])
         .run(tauri::generate_context!())
         .expect("BILIdown 启动失败");

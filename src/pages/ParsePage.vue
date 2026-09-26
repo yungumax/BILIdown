@@ -80,14 +80,19 @@ async function parse() {
   const inputs = lines();
   if (!inputs.length || parsing.value) return;
 
-  // 逐条解析：单条失败不影响其他，并且能实时显示进度
+  // 按解析节奏分批：批内并发、批间等待、每 N 条休息，降低触发风控的概率
   parsing.value = true;
   items.value = [];
   done.value = 0;
   total.value = inputs.length;
 
   const collected = [];
-  for (const input of inputs) {
+  const batch = Math.max(1, props.settings?.parse_batch ?? 8);
+  const batchWait = props.settings?.parse_batch_wait_ms ?? 1000;
+  const restEvery = Math.max(1, props.settings?.parse_rest_every ?? 100);
+  const restMs = props.settings?.parse_rest_ms ?? 3000;
+
+  const probeOne = async (input) => {
     try {
       const probe = await api.probeVideo(input);
       collected.push({
@@ -103,6 +108,17 @@ async function parse() {
     }
     done.value += 1;
     items.value = [...collected];
+  };
+
+  for (let start = 0; start < inputs.length; start += batch) {
+    await Promise.all(inputs.slice(start, start + batch).map(probeOne));
+    const finished = start + batch;
+    if (finished >= inputs.length) break;
+    if (finished % restEvery === 0 && restMs > 0) {
+      await new Promise((r) => setTimeout(r, restMs));
+    } else if (batchWait > 0) {
+      await new Promise((r) => setTimeout(r, batchWait));
+    }
   }
 
   parsing.value = false;
@@ -123,6 +139,7 @@ async function startAll() {
         bvid: item.probe.bvid,
         cid: item.probe.cid,
         title: item.probe.title,
+        owner: item.probe.owner,
         quality: item.quality ?? item.probe.recommended_quality,
         audio: item.audio ?? "normal",
         cover: item.probe.cover,

@@ -66,6 +66,32 @@ export async function setOutputDir(dir) {
   return invoke("set_output_dir", { dir });
 }
 
+export async function pickFfmpeg() {
+  if (!hasTauri) return "";
+  return invoke("pick_ffmpeg");
+}
+
+export async function cleanupTemp() {
+  if (!hasTauri) return 0;
+  return invoke("cleanup_temp");
+}
+
+export async function cleanupCache() {
+  if (!hasTauri) return;
+  return invoke("cleanup_cache");
+}
+
+export async function exportDiagnostics() {
+  if (!hasTauri) return "";
+  return invoke("export_diagnostics");
+}
+
+export async function checkUpdates() {
+  if (!hasTauri)
+    return { current: "0.1.0", latest: "", up_to_date: true, error: "" };
+  return invoke("check_updates");
+}
+
 export async function openPath(path) {
   if (!hasTauri) return;
   return invoke("open_path", { path });
@@ -147,6 +173,26 @@ const mock = (() => {
       chunk_mb: 4,
       keep_temp: false,
       naming: "title",
+      naming_template: "{title}",
+      rename_conflict: "skip",
+      container: "mp4",
+      codec_pref: "auto",
+      quality_fallback: "nearest",
+      embed_cover: false,
+      embed_subtitles: false,
+      retry_count: 3,
+      speed_limit_mib: 0,
+      auto_refresh_urls: true,
+      resume_on_start: false,
+      parse_preset: "标准",
+      parse_batch: 8,
+      parse_batch_wait_ms: 1000,
+      parse_rest_every: 100,
+      parse_rest_ms: 3000,
+      ffmpeg_path: "",
+      update_check: false,
+      log_level: "info",
+      data_dir: "",
       default_quality: 0,
       default_audio: "normal",
       proxy: "",

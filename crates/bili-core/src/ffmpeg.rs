@@ -60,16 +60,36 @@ pub async fn probe_version(ffmpeg: &Path) -> Result<String> {
         .to_string())
 }
 
-/// 用 `-c copy` 直接封装，不做重编码，通常几秒内完成。
+/// 封装格式。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Container {
+    Mp4,
+    Mkv,
+}
+
+impl Container {
+    /// 从设置值解析；未知值回退 MP4。
+    pub fn parse(value: &str) -> Self {
+        if value == "mkv" {
+            Self::Mkv
+        } else {
+            Self::Mp4
+        }
+    }
+}
+
+/// 把音视频合成到 `out`，`-c copy` 直接封装不做重编码，通常几秒内完成。
 ///
-/// `tag_hvc1`：视频是 HEVC 时置 true。ffmpeg 默认写成 `hev1` 标签，多数播放器
-/// （含 Windows 自带播放器）识别不了，改用 `hvc1` 兼容性最好。
+/// - MP4：HEVC 写成 `hvc1` 标签（默认 `hev1` 多数播放器不识别），加 faststart
+/// - MKV：无 faststart；`cover` 传入封面图时作为附件嵌入（播放器显示为海报）
 pub async fn merge_video_audio(
     ffmpeg: &Path,
     video: &Path,
     audio: &Path,
     out: &Path,
-    tag_hvc1: bool,
+    container: Container,
+    hevc: bool,
+    cover: Option<(&Path, &str)>,
 ) -> Result<()> {
     let mut command = Command::new(ffmpeg);
     command
@@ -88,13 +108,25 @@ pub async fn merge_video_audio(
         .arg("-c")
         .arg("copy");
 
-    if tag_hvc1 {
-        command.arg("-tag:v").arg("hvc1");
+    match container {
+        Container::Mp4 => {
+            if hevc {
+                command.arg("-tag:v").arg("hvc1");
+            }
+            command.arg("-movflags").arg("+faststart");
+        }
+        Container::Mkv => {
+            if let Some((cover_path, mime)) = cover {
+                command
+                    .arg("-attach")
+                    .arg(cover_path)
+                    .arg("-metadata:s:t")
+                    .arg(format!("mimetype={mime}"));
+            }
+        }
     }
 
     let output = command
-        .arg("-movflags")
-        .arg("+faststart")
         .arg(out)
         .output()
         .await

@@ -104,15 +104,14 @@ async function loadSettings() {
 }
 
 /** 改动即时保存；失败则回读一次，避免界面与磁盘不一致 */
-async function changeSettings(patch) {
-  if (!settings.value) return;
-  const next = { ...settings.value, ...patch };
-  settings.value = next;
-  applyTheme(next.theme);
+/** 设置页点「保存」：整份提交，成功后同步主题 */
+async function saveSettings(next) {
   try {
     const data = await api.updateSettings(next);
     settingsEnv.value = data;
     settings.value = data.settings;
+    applyTheme(data.settings.theme);
+    showToast("设置已保存");
   } catch (error) {
     showToast(String(error));
     await loadSettings();
@@ -128,7 +127,26 @@ const DEFAULT_SETTINGS = {
   chunk_concurrency: 4,
   chunk_mb: 4,
   keep_temp: false,
-  naming: "title",
+  naming_template: "{title}",
+  rename_conflict: "skip",
+  container: "mp4",
+  codec_pref: "auto",
+  quality_fallback: "nearest",
+  embed_cover: false,
+  embed_subtitles: false,
+  retry_count: 3,
+  speed_limit_mib: 0,
+  auto_refresh_urls: true,
+  resume_on_start: false,
+  parse_preset: "标准",
+  parse_batch: 8,
+  parse_batch_wait_ms: 1000,
+  parse_rest_every: 100,
+  parse_rest_ms: 3000,
+  ffmpeg_path: "",
+  update_check: false,
+  log_level: "info",
+  data_dir: "",
   default_quality: 0,
   default_audio: "normal",
   proxy: "",
@@ -137,7 +155,7 @@ const DEFAULT_SETTINGS = {
 
 async function resetSettings() {
   if (!settings.value) return;
-  await changeSettings({ ...DEFAULT_SETTINGS, output_dir: settings.value.output_dir });
+  await saveSettings({ ...DEFAULT_SETTINGS, output_dir: settings.value.output_dir });
   showToast("已恢复默认设置（保存位置不变）");
 }
 
@@ -275,7 +293,7 @@ async function doLogout() {
           @toast="showToast"
           @login="openLogin"
           @logout="doLogout"
-          @change="changeSettings"
+          @save="saveSettings"
           @reload="loadSettings"
           @reset="resetSettings"
         />

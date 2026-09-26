@@ -175,7 +175,7 @@ async fn main() -> Result<()> {
     }
 
     let video = play
-        .pick_video(cli.quality, true)
+        .pick_video(cli.quality, "avc")
         .ok_or_else(|| anyhow!("未找到可用视频流"))?;
     let audio = play
         .pick_audio(audio_kind)
@@ -265,7 +265,16 @@ async fn main() -> Result<()> {
         out_file.display(),
         if is_hevc { "HEVC/hvc1" } else { "直接封装" }
     );
-    ffmpeg::merge_video_audio(&ffmpeg_bin, &video_path, &audio_path, &out_file, is_hevc).await?;
+    ffmpeg::merge_video_audio(
+        &ffmpeg_bin,
+        &video_path,
+        &audio_path,
+        &out_file,
+        ffmpeg::Container::Mp4,
+        is_hevc,
+        None,
+    )
+    .await?;
 
     if !cli.keep {
         tokio::fs::remove_dir_all(&work_dir).await.ok();

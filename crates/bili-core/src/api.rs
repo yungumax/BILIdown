@@ -160,9 +160,9 @@ pub struct PlayUrlData {
 }
 
 impl PlayUrlData {
-    /// 按期望清晰度挑选视频流：优先 `codecs` 为 avc（兼容性最好），
-    /// 期望值不可用时自动降级到不高于它的最高清晰度。
-    pub fn pick_video(&self, qn: u32, prefer_avc: bool) -> Option<&MediaStream> {
+    /// 按期望清晰度挑选视频流：先锁定不高于期望值的最高档，再按编码偏好
+    /// 在同档内挑选（avc 兼容性最好 / hevc 压缩率最高 / auto 取首条）。
+    pub fn pick_video(&self, qn: u32, codec_pref: &str) -> Option<&MediaStream> {
         let dash = self.dash.as_ref()?;
         if dash.video.is_empty() {
             return None;
@@ -180,10 +180,21 @@ impl PlayUrlData {
         let same_quality: Vec<&MediaStream> =
             candidates.into_iter().filter(|s| s.id == best_id).collect();
 
-        if prefer_avc {
-            if let Some(avc) = same_quality.iter().find(|s| s.codecs.starts_with("avc")) {
-                return Some(avc);
+        match codec_pref {
+            "avc" => {
+                if let Some(avc) = same_quality.iter().find(|s| s.codecs.starts_with("avc")) {
+                    return Some(avc);
+                }
             }
+            "hevc" => {
+                if let Some(hevc) = same_quality
+                    .iter()
+                    .find(|s| s.codecs.starts_with("hev") || s.codecs.starts_with("hvc"))
+                {
+                    return Some(hevc);
+                }
+            }
+            _ => {}
         }
         same_quality.first().copied()
     }
@@ -466,7 +477,7 @@ mod tests {
         let envelope: ApiEnvelope<PlayUrlData> =
             serde_json::from_str(raw).expect("字段为 null 时也应能解析");
         let play = envelope.data.unwrap();
-        let picked = play.pick_video(80, true).expect("应选出视频流");
+        let picked = play.pick_video(80, "avc").expect("应选出视频流");
         assert_eq!(picked.id, 80);
         assert!(picked.backup_url.is_empty());
         assert_eq!(picked.codecs, "");
@@ -515,7 +526,7 @@ mod tests {
             ],
             vec![],
         );
-        let picked = p.pick_video(80, true).unwrap();
+        let picked = p.pick_video(80, "avc").unwrap();
         assert_eq!(picked.id, 80);
         assert!(picked.codecs.starts_with("avc"));
     }
@@ -524,7 +535,7 @@ mod tests {
     fn downgrades_when_requested_quality_unavailable() {
         let p = play(vec![stream(32, "avc1"), stream(64, "avc1")], vec![]);
         assert_eq!(
-            p.pick_video(120, true).unwrap().id,
+            p.pick_video(120, "avc").unwrap().id,
             64,
             "应降级到可用的最高档"
         );
@@ -541,7 +552,7 @@ mod tests {
             vec![stream(126, "hvc1.2.4.L120.90"), stream(112, "avc1.640032")],
             vec![],
         );
-        let picked = p.pick_video(126, true).unwrap();
+        let picked = p.pick_video(126, "avc").unwrap();
         assert_eq!(picked.id, 126, "应取最高档而不是降级去用 avc");
         assert!(picked.codecs.starts_with("hvc"));
     }
@@ -556,7 +567,7 @@ mod tests {
             ],
             vec![],
         );
-        let picked = p.pick_video(126, false).unwrap();
+        let picked = p.pick_video(126, "auto").unwrap();
         assert_eq!(picked.id, 126);
         assert!(
             picked.codecs.starts_with("hvc"),

@@ -4,12 +4,15 @@ use crate::state::{AppState, TaskEntry};
 use crate::types::*;
 use base64::Engine;
 use bili_core::api::{quality_name, AudioKind};
-use bili_core::download::{download, DownloadOptions, Progress, ProgressFn};
+use bili_core::download::{
+    download_with_throttle, DownloadOptions, Progress, ProgressFn, Throttle,
+};
 use bili_core::error::BiliError;
+use bili_core::ffmpeg::Container;
 use bili_core::login::{self, Cookies, LoginState};
 use bili_core::parser::{is_short_link, parse_target, Target};
 use bili_core::{ffmpeg, BiliClient};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
@@ -290,6 +293,10 @@ pub async fn start_download(
     let shared_for_task = shared.clone();
     let task_app = app.clone();
 
+    state
+        .settings()
+        .log("info", &format!("任务入队: {}（{task_id}）", req.title));
+
     let handle = tokio::spawn(async move {
         let result = run_download(
             task_app.clone(),
@@ -350,8 +357,21 @@ async fn run_download(
     let play = client.playurl(&req.bvid, req.cid, req.quality).await?;
     let kind = AudioKind::parse(&req.audio).unwrap_or(AudioKind::Normal);
     let video = play
-        .pick_video(req.quality, true)
+        .pick_video(req.quality, &settings.codec_pref)
         .ok_or(BiliError::QualityNotFound(req.quality))?;
+
+    // 「目标质量不可用」策略：fail 时请求档位没拿到就直接失败
+    if settings.quality_fallback == "fail" && video.id < req.quality {
+        settings.log(
+            "warn",
+            &format!(
+                "任务失败：{} 未提供 qn={}（{}）",
+                req.title, req.quality, req.bvid
+            ),
+        );
+        return Err(BiliError::QualityNotFound(req.quality));
+    }
+
     let audio = play
         .pick_audio(kind)
         .ok_or_else(|| BiliError::Unavailable("未找到可用音轨".to_string()))?;
@@ -367,16 +387,45 @@ async fn run_download(
         t.quality_label = video_label.clone();
     });
 
+    // 目标文件：命名模板 + 封装格式 + 重名处理
+    tokio::fs::create_dir_all(&output_dir).await?;
+    let out_file = output_dir.join(settings.output_filename(
+        &req.title,
+        &req.bvid,
+        quality_name(video.id),
+        &req.owner,
+    ));
+    let out_file = match settings.rename_conflict.as_str() {
+        "overwrite" => out_file,
+        "auto" => find_free_name(out_file).await,
+        _ => {
+            if out_file.exists() {
+                let path = out_file.to_string_lossy().to_string();
+                settings.log("info", &format!("文件已存在，跳过任务: {path}"));
+                mutate(&shared, &app, |t| {
+                    t.status = TaskStatus::Done;
+                    t.video_pct = 100.0;
+                    t.audio_pct = 100.0;
+                    t.output_path = path.clone();
+                    t.message = "文件已存在，跳过下载".to_string();
+                });
+                return Ok(());
+            }
+            out_file
+        }
+    };
+
     let work_dir = output_dir.join(".bilitmp").join(&req.bvid);
     tokio::fs::create_dir_all(&work_dir).await?;
     let video_path = work_dir.join("video.m4s");
     let audio_path = work_dir.join("audio.m4s");
-    // 分片大小与并发来自设置，默认 4MB × 4
     let opts = DownloadOptions {
         concurrency: settings.chunk_concurrency,
         chunk_size: settings.chunk_mb * 1024 * 1024,
-        ..DownloadOptions::default()
+        retries: settings.retry_count as usize,
+        speed_limit_bps: settings.speed_limit_mib as u64 * 1024 * 1024,
     };
+    let throttle = Throttle::new(opts.speed_limit_bps);
 
     let video_url = video.base_url.clone();
     let video_backup = video.backup_url.clone();
@@ -394,13 +443,14 @@ async fn run_download(
                 t.recalc();
             });
         });
-        download(
+        download_with_throttle(
             &client.http,
             &video_url,
             &video_backup,
             &video_path,
             &opts,
             on_progress,
+            throttle.as_ref(),
         )
         .await?;
     }
@@ -420,13 +470,14 @@ async fn run_download(
                 t.recalc();
             });
         });
-        download(
+        download_with_throttle(
             &client.http,
             &audio_url,
             &audio_backup,
             &audio_path,
             &opts,
             on_progress,
+            throttle.as_ref(),
         )
         .await?;
     }
@@ -437,14 +488,37 @@ async fn run_download(
         t.message = "合成中".to_string();
     });
 
-    let ffmpeg_bin = ffmpeg::find_ffmpeg(None).ok_or_else(|| {
-        BiliError::FfmpegUnavailable("未找到 ffmpeg，请安装到 PATH 或放入程序目录".to_string())
-    })?;
+    let ffmpeg_bin =
+        ffmpeg::find_ffmpeg(explicit_ffmpeg(&settings).as_deref()).ok_or_else(|| {
+            BiliError::FfmpegUnavailable("未找到 ffmpeg：可在「编码与处理」里指定路径".to_string())
+        })?;
 
-    tokio::fs::create_dir_all(&output_dir).await?;
-    let out_file =
-        output_dir.join(settings.output_filename(&req.title, &req.bvid, quality_name(video.id)));
-    ffmpeg::merge_video_audio(&ffmpeg_bin, &video_path, &audio_path, &out_file, is_hevc).await?;
+    // MKV 且开启嵌入封面时，把解析阶段取到的封面 data URL 落盘
+    let container = Container::parse(&settings.container);
+    let cover = if container == Container::Mkv && settings.embed_cover && !req.cover.is_empty() {
+        match save_cover(&req.cover, &work_dir).await {
+            Ok(pair) => Some(pair),
+            Err(e) => {
+                settings.log("warn", &format!("封面获取失败（继续合成）: {e}"));
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    ffmpeg::merge_video_audio(
+        &ffmpeg_bin,
+        &video_path,
+        &audio_path,
+        &out_file,
+        container,
+        is_hevc,
+        cover
+            .as_ref()
+            .map(|(path, mime)| (path.as_path(), mime.as_str())),
+    )
+    .await?;
     if !settings.keep_temp {
         tokio::fs::remove_dir_all(&work_dir).await.ok();
     }
@@ -458,8 +532,65 @@ async fn run_download(
         t.output_path = out_path.clone();
         t.message = "已完成".to_string();
     });
+    settings.log("info", &format!("下载完成: {} -> {out_path}", req.title));
 
     Ok(())
+}
+
+/// 设置里指定了 ffmpeg 路径就交给查找逻辑优先使用。
+fn explicit_ffmpeg(settings: &crate::state::Settings) -> Option<PathBuf> {
+    let path = settings.ffmpeg_path.trim();
+    (!path.is_empty()).then(|| PathBuf::from(path))
+}
+
+/// 「自动重命名」：在 `名字 (n).扩展名` 里找第一个不存在的序号。
+async fn find_free_name(path: PathBuf) -> PathBuf {
+    if !path.exists() {
+        return path;
+    }
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let ext = path
+        .extension()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
+
+    for n in 1..1000u32 {
+        let candidate = dir.join(format!("{stem} ({n}).{ext}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    path
+}
+
+/// 把 data URL 封面落盘，返回 (路径, MIME)。按 data URL 声明的类型决定扩展名。
+async fn save_cover(data_url: &str, dir: &Path) -> Result<(PathBuf, String), BiliError> {
+    let (mime, b64) = data_url
+        .split_once(",")
+        .and_then(|(head, payload)| {
+            head.strip_prefix("data:")
+                .and_then(|head| head.strip_suffix(";base64"))
+                .map(|mime| (mime.to_string(), payload))
+        })
+        .ok_or_else(|| BiliError::Decode("封面 data URL 格式异常".into()))?;
+
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| BiliError::Decode(format!("封面解码失败: {e}")))?;
+
+    let ext = match mime.as_str() {
+        "image/png" => "png",
+        "image/webp" => "webp",
+        _ => "jpg",
+    };
+    let path = dir.join(format!("cover.{ext}"));
+    tokio::fs::write(&path, &bytes).await?;
+    Ok((path, mime))
 }
 
 #[tauri::command]
@@ -595,4 +726,180 @@ pub async fn open_path(path: String) -> Result<(), String> {
         .spawn()
         .map_err(describe)?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn pick_ffmpeg(app: AppHandle) -> Result<String, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("选择 ffmpeg 可执行文件")
+        .add_filter("可执行文件", &["exe"])
+        .pick_file(move |file| {
+            let _ = tx.send(file);
+        });
+
+    match rx.await.map_err(describe)? {
+        Some(file) => Ok(file.to_string()),
+        None => Ok(String::new()),
+    }
+}
+
+/// 清理下载临时目录（未完成任务的分轨缓存）。
+#[tauri::command]
+pub async fn cleanup_temp(state: State<'_, AppState>) -> Result<u64, String> {
+    let dir = state.output_dir().join(".bilitmp");
+    let mut removed: Vec<std::fs::DirEntry> = Vec::new();
+    if dir.exists() {
+        for entry in std::fs::read_dir(&dir).map_err(describe)? {
+            let entry = entry.map_err(describe)?;
+            if entry.path().is_dir() {
+                removed.push(entry);
+            }
+        }
+    }
+    let count = removed.len() as u64;
+    for entry in removed {
+        std::fs::remove_dir_all(entry.path()).map_err(describe)?;
+    }
+    state
+        .settings()
+        .log("info", &format!("清理临时文件 {count} 项"));
+    Ok(count)
+}
+
+/// 清理网络缓存：重置会话（wbi 密钥等随之重建）。
+#[tauri::command]
+pub async fn cleanup_cache(state: State<'_, AppState>) -> Result<(), String> {
+    state.reset_client().map_err(describe)?;
+    state.settings().log("info", "已清理网络缓存（会话重建）");
+    Ok(())
+}
+
+/// 导出诊断信息到用户选择的文件。
+#[tauri::command]
+pub async fn export_diagnostics(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let settings = state.settings();
+    let ffmpeg_info = match ffmpeg::find_ffmpeg(explicit_ffmpeg(&settings).as_deref()) {
+        Some(path) => match ffmpeg::probe_version(&path).await {
+            Ok(version) => format!("已就绪：{version}"),
+            Err(e) => format!("异常：{e}"),
+        },
+        None => "未找到".to_string(),
+    };
+
+    let task_count = state.tasks.lock().unwrap_or_else(|e| e.into_inner()).len();
+    let body = format!(
+        "BILIdown 诊断信息
+====================
+版本: {}
+系统: Windows
+
+设置（不含敏感信息）:
+{}
+ffmpeg: {ffmpeg_info}
+任务记录: {task_count} 条
+登录凭据存在: {}
+",
+        env!("CARGO_PKG_VERSION"),
+        serde_json::to_string_pretty(&settings).unwrap_or_default(),
+        state.cookies_path().exists(),
+    );
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("导出诊断信息")
+        .set_file_name("bilidown-diagnostics.txt")
+        .save_file(move |file| {
+            let _ = tx.send(file);
+        });
+
+    match rx.await.map_err(|e| format!("通道异常: {e}"))? {
+        Some(file) => {
+            let path = file.to_string();
+            let path = if path.ends_with(".txt") {
+                path
+            } else {
+                format!("{path}.txt")
+            };
+            std::fs::write(&path, &body).map_err(describe)?;
+            Ok(path)
+        }
+        None => Ok(String::new()),
+    }
+}
+
+/// 检查更新：比对 GitHub 最新 Release 与当前版本。
+#[derive(serde::Serialize)]
+pub struct UpdateInfo {
+    pub current: String,
+    pub latest: String,
+    pub up_to_date: bool,
+    pub error: String,
+}
+
+#[tauri::command]
+pub async fn check_updates(state: State<'_, AppState>) -> Result<UpdateInfo, String> {
+    let current = env!("CARGO_PKG_VERSION").to_string();
+    let client = state.client();
+    let resp = client
+        .http
+        .get("https://api.github.com/repos/yungumax/BILIdown/releases/latest")
+        .send()
+        .await
+        .map_err(|e| format!("网络请求失败: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let hint = if status.as_u16() == 404 {
+            "仓库不可访问（私有仓库或尚未发布 Release）"
+        } else {
+            "GitHub 接口不可达"
+        };
+        return Ok(UpdateInfo {
+            current,
+            latest: String::new(),
+            up_to_date: false,
+            error: format!("{hint}（HTTP {status}）"),
+        });
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Release {
+        #[serde(rename = "tag_name")]
+        tag: String,
+    }
+
+    let release: Release = resp
+        .json()
+        .await
+        .map_err(|e| format!("响应解析失败: {e}"))?;
+    let latest = release.tag.trim_start_matches('v').to_string();
+    let up_to_date = version_cmp(&current, &latest) != std::cmp::Ordering::Less;
+
+    Ok(UpdateInfo {
+        current,
+        latest,
+        up_to_date,
+        error: String::new(),
+    })
+}
+
+/// 简化 semver 比较：逐段按数值比，段数不足补零。
+fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let parse = |v: &str| -> Vec<u64> {
+        v.split('.')
+            .map(|part| part.trim().parse::<u64>().unwrap_or(0))
+            .collect()
+    };
+    let mut left = parse(a);
+    let mut right = parse(b);
+    let len = left.len().max(right.len());
+    left.resize(len, 0);
+    right.resize(len, 0);
+    left.cmp(&right)
 }
