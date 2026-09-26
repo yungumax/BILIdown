@@ -259,101 +259,26 @@ const isSelectView = computed(() => view.value === "select" && !!activeSource.va
 /** 当前来源是批量清单（单视频没有表格与页码） */
 const activeIsBatch = computed(() => !!activeSource.value && activeSource.value.probe.kind !== "video");
 
-/** 单视频的文件名预览：与落盘共用同一个渲染器 */
-const fileNames = ref([]);
-let nameSeq = 0;
 
-async function refreshNames() {
-  const source = activeSource.value;
-  const seq = ++nameSeq;
-  if (!source) {
-    fileNames.value = [];
-    return;
+/** 表头：只有一个来源就显示它自己，多个来源显示来源数 */
+const headerTitle = computed(() => {
+  if (allSources.value.length === 1) return activeSource.value?.probe.title ?? "";
+  if (videosOnly.value.length === allSources.value.length) {
+    return `${allSources.value.length} 个单视频`;
   }
-  try {
-    const date = localDate();
-    const ext = props.settings?.container === "mkv" ? "mkv" : "mp4";
-    let names;
-    if (source.probe.kind === "video") {
-      names = await api.previewNames(
-        [{ title: source.probe.title, bvid: source.probe.bvid, cid: source.probe.cid, naming: singleNaming(source.probe) }],
-        source.quality,
-        date,
-        ext
-      );
-    } else {
-      names = await api.previewNames(
-        source.probe.items.map((entry, index) => ({
-          title: entry.title,
-          bvid: entry.bvid,
-          cid: entry.cid,
-          naming: batchNaming(source.probe, entry, index + 1),
-        })),
-        source.quality,
-        date,
-        ext
-      );
-    }
-    if (seq === nameSeq) fileNames.value = names;
-  } catch {
-    if (seq === nameSeq) fileNames.value = [];
-  }
-}
-
-// 来源、已加载条数、所选清晰度、命名模板变化都要重算文件名
-watch(
-  () => [
-    activeSource.value?.input,
-    activeIsBatch.value ? activeSource.value?.probe.items.length : 0,
-    activeSource.value?.quality,
-    props.settings?.naming_template,
-    props.settings?.container,
-  ],
-  refreshNames,
-  { immediate: true }
-);
-
-
-function openSelect(input) {
-  batchInput.value = input;
-  view.value = "select";
-}
-
-function entryKey(probe, entry) {
-  return `${probe.kind}:${entry.bvid || `ep-${entry.ep_id}`}`;
-}
-
-/** 多个单视频时把它们并成一个清单看（不再一个个切标签） */
-const videosOnly = computed(() => okItems.value.filter((item) => item.probe.kind === "video"));
-const multiVideos = computed(() => videosOnly.value.length > 1);
-
-/** 表格行：批量来源是它的条目，多个单视频就是这些视频本身 */
-const tableRows = computed(() => {
-  if (multiVideos.value) {
-    return videosOnly.value.map((item, index) => ({
-      key: item.input,
-      index: index + 1,
-      title: item.probe.title,
-      owner: item.probe.owner,
-      duration: item.probe.duration,
-      source: item,
-    }));
-  }
-  const source = activeSource.value;
-  if (!source || source.probe.kind === "video") return [];
-  return source.probe.items.map((entry, index) => ({
-    key: entryKey(source.probe, entry),
-    index: index + 1,
-    title: entry.title,
-    owner: entry.owner,
-    duration: entry.duration,
-    entry,
-    source,
-  }));
+  return `${allSources.value.length} 个来源`;
 });
 
-/** 有表格可看（批量来源，或多个单视频） */
-const hasTable = computed(() => tableRows.value.length > 0);
+const headerTag = computed(() => {
+  if (allSources.value.length === 1) return kindLabel(activeSource.value?.probe.kind ?? "");
+  return videosOnly.value.length === allSources.value.length ? "视频" : "";
+});
+
+/** 行悬停显示该行将落盘的文件名（与下载共用后端渲染器） */
+function fileNameOf(row) {
+  const name = fileNames.value[row.seq - 1];
+  return name ? `${row.title}  |  文件名：${name}` : row.title;
+}
 
 function isSelected(row) {
   return selected.value.has(row.key);
@@ -387,41 +312,131 @@ const multiQuality = ref(0);
 const multiAudio = ref("normal");
 
 const dlQuality = computed({
-  get: () =>
-    multiVideos.value ? multiQuality.value : activeSource.value?.quality ?? 0,
+  get: () => (useShared.value ? multiQuality.value : activeSource.value?.quality ?? 0),
   set: (value) => {
-    if (multiVideos.value) multiQuality.value = value;
+    if (useShared.value) multiQuality.value = value;
     else if (activeSource.value) activeSource.value.quality = value;
   },
 });
 
 const dlAudio = computed({
-  get: () => (multiVideos.value ? multiAudio.value : activeSource.value?.audio ?? "normal"),
+  get: () => (useShared.value ? multiAudio.value : activeSource.value?.audio ?? "normal"),
   set: (value) => {
-    if (multiVideos.value) multiAudio.value = value;
+    if (useShared.value) multiAudio.value = value;
     else if (activeSource.value) activeSource.value.audio = value;
   },
 });
 
 const dlQualities = computed(() =>
-  multiVideos.value
-    ? videosOnly.value[0]?.probe.qualities ?? []
+  useShared.value
+    ? allSources.value[0]?.probe.qualities ?? []
     : activeSource.value?.probe.qualities ?? []
 );
 
 const dlAudios = computed(() =>
-  multiVideos.value
-    ? videosOnly.value[0]?.probe.audios ?? []
+  useShared.value
+    ? allSources.value[0]?.probe.audios ?? []
     : activeSource.value?.probe.audios ?? []
 );
 
-// 有多个单视频时，默认档位取第一个视频的推荐值
-watch(videosOnly, () => {
-  const first = videosOnly.value[0];
+// 多个来源时，共享档位默认取第一个来源的推荐值
+watch(allSources, () => {
+  const first = allSources.value[0];
   if (!first) return;
   multiQuality.value = pickDefaultQuality(first.probe);
   multiAudio.value = pickDefaultAudio(first.probe);
 });
+
+/** 有内容可列就出表（现在单视频也是表里的一行） */
+const hasTable = computed(() => tableRows.value.length > 0);
+
+function openSelect(input) {
+  batchInput.value = input;
+  view.value = "select";
+}
+
+function entryKey(probe, entry) {
+  return `${probe.kind}:${entry.bvid || `ep-${entry.ep_id}`}`;
+}
+
+const videosOnly = computed(() => okItems.value.filter((item) => item.probe.kind === "video"));
+/** 多个来源时清晰度/音轨共用一个档位 */
+const useShared = computed(() => allSources.value.length > 1);
+
+/**
+ * 所有来源都摊成同一张表：批量来源出它的每条内容，单视频出它自己这一行。
+ * 合集与单视频混着贴也是同一张表，不再按来源切来切去。
+ *
+ * `seq` 是它在表里的序号（给人看），`index` 是它在**自己来源里**的序号（给命名模板的
+ * {index} / {episode_index} 用）——单视频没有"第几条"的概念，固定 0（渲染成空）。
+ */
+const tableRows = computed(() => {
+  const rows = [];
+  for (const source of allSources.value) {
+    if (source.probe.kind === "video") {
+      rows.push({
+        key: source.input,
+        seq: rows.length + 1,
+        index: 0,
+        title: source.probe.title,
+        owner: source.probe.owner,
+        duration: source.probe.duration,
+        source,
+      });
+      continue;
+    }
+    source.probe.items.forEach((entry, position) => {
+      rows.push({
+        key: entryKey(source.probe, entry),
+        seq: rows.length + 1,
+        index: position + 1,
+        title: entry.title,
+        owner: entry.owner,
+        duration: entry.duration,
+        entry,
+        source,
+      });
+    });
+  }
+  return rows;
+});
+
+/** 行悬停时显示该行将落盘的文件名：由后端用与下载同一个渲染器算出 */
+const fileNames = ref([]);
+let nameSeq = 0;
+
+async function refreshNames() {
+  const rows = tableRows.value;
+  const seq = ++nameSeq;
+  if (!rows.length) {
+    fileNames.value = [];
+    return;
+  }
+  try {
+    const names = await api.previewNames(
+      rows.map((row) => ({
+        title: row.title,
+        bvid: row.entry ? row.entry.bvid : row.source.probe.bvid,
+        cid: row.entry ? row.entry.cid : row.source.probe.cid,
+        naming: row.entry
+          ? batchNaming(row.source.probe, row.entry, row.index)
+          : singleNaming(row.source.probe),
+      })),
+      useShared.value ? multiQuality.value : activeSource.value?.quality ?? 0,
+      localDate(),
+      props.settings?.container === "mkv" ? "mkv" : "mp4"
+    );
+    if (seq === nameSeq) fileNames.value = names;
+  } catch {
+    if (seq === nameSeq) fileNames.value = [];
+  }
+}
+
+watch(
+  () => [tableRows.value.length, props.settings?.naming_template, props.settings?.container],
+  refreshNames,
+  { immediate: true }
+);
 
 async function loadMore() {
   const source = activeSource.value;
@@ -448,7 +463,7 @@ async function startRows(rows) {
   for (const row of rows) {
     try {
       if (!row.entry) {
-        // 多个单视频：每一个都是独立来源，用共享的清晰度/音轨
+        // 单视频行：每一个都是独立来源，多个来源时用共享的清晰度/音轨
         await api.startDownload({
           bvid: row.source.probe.bvid,
           cid: row.source.probe.cid,
@@ -645,36 +660,14 @@ async function startSingle(item) {
             />
           </svg>
         </button>
-        <h2
-          class="select-title"
-          :title="multiVideos ? `${loadedCount} 个单视频` : activeSource.probe.title"
-        >
-          {{ multiVideos ? `${loadedCount} 个单视频` : activeSource.probe.title }}
-        </h2>
-        <span class="kind-tag">
-          {{ multiVideos ? "视频" : kindLabel(activeSource.probe.kind) }}
-        </span>
-
-        <span class="spacer"></span>
-
-        <!-- 多个单视频时列表已经全展示了，切换标签就没有意义了 -->
-        <div v-if="allSources.length > 1 && !multiVideos" class="source-tabs">
-          <button
-            v-for="source in allSources"
-            :key="source.input"
-            :class="{ on: source.input === activeSource.input }"
-            :title="source.probe.title"
-            @click="batchInput = source.input"
-          >
-            {{ source.probe.title }}
-          </button>
-        </div>
-
+        <h2 class="select-title" :title="headerTitle">{{ headerTitle }}</h2>
+        <span v-if="headerTag" class="kind-tag">{{ headerTag }}</span>
         </div>
 
         <div class="bar-actions">
-        <template v-if="multiVideos">
-          <span class="loaded-hint num">共 {{ loadedCount }} 个视频</span>
+        <template v-if="useShared">
+          <span class="loaded-hint num">共 {{ loadedCount }} 条</span>
+          <span class="spacer"></span>
         </template>
         <template v-else-if="activeIsBatch">
           <span class="loaded-hint num">
@@ -762,27 +755,6 @@ async function startSingle(item) {
 
       <p v-if="activeSource.probe.note" class="note">{{ activeSource.probe.note }}</p>
 
-      <div v-if="!hasTable" class="video-detail">
-        <div class="thumb">
-          <img v-if="activeSource.probe.cover" :src="activeSource.probe.cover" alt="" />
-        </div>
-        <div class="meta">
-          <p class="title">{{ activeSource.probe.title }}</p>
-          <p class="sub">
-            <span class="owner">{{ activeSource.probe.owner }}</span>
-            <span class="dot-sep">·</span>
-            <span class="num">{{ formatDuration(activeSource.probe.duration) }}</span>
-            <span class="dot-sep">·</span>
-            <span class="num">{{ activeSource.probe.bvid }}</span>
-          </p>
-          <p v-if="fileNames[0]" class="file-line" :title="fileNames[0]">
-            <span class="file-label">文件名</span>
-            <code>{{ fileNames[0] }}</code>
-          </p>
-          <p v-if="activeSource.probe.note" class="note">{{ activeSource.probe.note }}</p>
-        </div>
-      </div>
-
       <div v-if="hasTable" class="table-scroll">
         <table class="batch-table">
           <thead>
@@ -802,12 +774,17 @@ async function startSingle(item) {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in tableRows" :key="row.key" :class="{ on: isSelected(row) }">
+            <tr
+              v-for="row in tableRows"
+              :key="row.key"
+              :class="{ on: isSelected(row) }"
+              :title="fileNameOf(row)"
+            >
               <td class="col-check">
                 <input type="checkbox" :checked="isSelected(row)" @change="toggleEntry(row)" />
               </td>
-              <td class="col-idx num">{{ String(row.index).padStart(2, "0") }}</td>
-              <td class="col-title" :title="row.title">{{ row.title }}</td>
+              <td class="col-idx num">{{ String(row.seq).padStart(2, "0") }}</td>
+              <td class="col-title">{{ row.title }}</td>
               <td class="col-owner" :title="row.owner">{{ row.owner || "—" }}</td>
               <td class="col-dur num">{{ formatDuration(row.duration) }}</td>
             </tr>
@@ -1221,81 +1198,6 @@ input:focus {
   color: var(--faint);
 }
 
-/* 选择页里的单视频详情 */
-.video-detail {
-  display: flex;
-  gap: 16px;
-  padding: 16px;
-  border-bottom: 1px solid var(--line-soft);
-}
-
-.video-detail .thumb {
-  flex: none;
-  width: 168px;
-  height: 94px;
-  border: 1px solid var(--line-soft);
-}
-
-.video-detail .meta {
-  min-width: 0;
-}
-
-.video-detail .title {
-  font-size: 14.5px;
-  font-weight: 700;
-  line-height: 1.4;
-}
-
-.video-detail .sub {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 5px;
-  font-size: 12.5px;
-  color: var(--faint);
-}
-
-.video-detail .sub .owner {
-  color: var(--muted);
-}
-
-.dot-sep {
-  color: var(--line);
-}
-
-/* 文件名是补充信息：收成一行，悬停看全，不跟标题抢注意力 */
-.video-detail .file-line {
-  display: flex;
-  gap: 7px;
-  margin-top: 7px;
-  min-width: 0;
-  font-size: 12px;
-}
-
-.file-label {
-  flex: none;
-  padding: 1px 6px;
-  font-size: 11px;
-  color: var(--faint);
-  background: var(--raised);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-sm);
-}
-
-/* 一行放不下就折成两排，超过两排才省略（文件名往往很长） */
-.video-detail .file-line code {
-  flex: 1;
-  min-width: 0;
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  color: var(--muted);
-  overflow: hidden;
-  white-space: normal;
-  word-break: break-all;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
 .video-detail .file-line {
   align-items: flex-start;
 }
@@ -1311,12 +1213,6 @@ input:focus {
 .fill-height .select-page {
   flex: 1;
   min-height: 0;
-}
-
-.fill-height .video-detail {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
 }
 
 /* 选择内容页：解析结果独立成一页，表格 + 分批加载 */
@@ -1425,32 +1321,6 @@ input:focus {
   background: var(--field);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-}
-
-/* 一次解析了多个批量来源时用来切换 */
-.source-tabs {
-  display: flex;
-  flex: 0 1 auto;
-  gap: 4px;
-  max-width: 40%;
-  overflow-x: auto;
-}
-
-.source-tabs button {
-  flex: none;
-  max-width: 140px;
-  padding: 4px 9px;
-  font-size: 12px;
-  color: var(--muted);
-  border-radius: 999px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.source-tabs button.on {
-  color: var(--accent);
-  background: var(--accent-soft);
 }
 
 .table-scroll {
