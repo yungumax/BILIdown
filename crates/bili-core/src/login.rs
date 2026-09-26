@@ -86,22 +86,13 @@ pub struct Cookies {
 }
 
 impl Cookies {
-    /// 从 `poll` 成功返回的跳转地址中提取 Cookie（query 值已是解码后的原文）。
+    /// 从 `poll` 成功返回的地址中提取 Cookie。
+    ///
+    /// 各版本流程的下发位置不一致：可能直接在 query、在 fragment、或被整段编码在
+    /// `gourl` 一类参数里，因此这里做多层扫描 + 百分号解码。
     pub fn from_success_url(url: &str) -> Result<Self> {
-        let parsed =
-            Url::parse(url).map_err(|e| BiliError::Decode(format!("登录跳转地址解析失败: {e}")))?;
-
         let mut cookies = Cookies::default();
-        for (key, value) in parsed.query_pairs() {
-            match key.as_ref() {
-                "SESSDATA" => cookies.sessdata = value.into_owned(),
-                "bili_jct" => cookies.bili_jct = value.into_owned(),
-                "DedeUserID" => cookies.dede_user_id = value.into_owned(),
-                "DedeUserID__ckMd5" => cookies.dede_user_id_ck_md5 = value.into_owned(),
-                "sid" => cookies.sid = value.into_owned(),
-                _ => {}
-            }
-        }
+        harvest(url, &mut cookies, 3);
 
         if !cookies.is_valid() {
             return Err(BiliError::Decode(
@@ -109,6 +100,29 @@ impl Cookies {
             ));
         }
         Ok(cookies)
+    }
+
+    /// 仅在该字段尚未取到值时写入，先到先得。
+    pub(crate) fn set_if_empty(&mut self, name: &str, value: String) {
+        match name {
+            "SESSDATA" if self.sessdata.is_empty() => self.sessdata = value,
+            "bili_jct" if self.bili_jct.is_empty() => self.bili_jct = value,
+            "DedeUserID" if self.dede_user_id.is_empty() => self.dede_user_id = value,
+            "DedeUserID__ckMd5" if self.dede_user_id_ck_md5.is_empty() => {
+                self.dede_user_id_ck_md5 = value
+            }
+            "sid" if self.sid.is_empty() => self.sid = value,
+            _ => {}
+        }
+    }
+
+    /// 同一份登录态的“解码变体”：Cookie 罐原样保留，地址解析则已解码，
+    /// 两者哪个能被服务端接受由调用方实际验证决定。
+    pub fn decoded_variant(&self) -> Self {
+        let mut variant = self.clone();
+        variant.sessdata = percent_decode(&self.sessdata);
+        variant.bili_jct = percent_decode(&self.bili_jct);
+        variant
     }
 
     pub fn is_valid(&self) -> bool {
@@ -168,6 +182,46 @@ impl Cookies {
     }
 }
 
+/// 从任意文本中扫出登录 Cookie。
+///
+/// 按 `&`/`;` 切分键值对，键名允许带有前置噪声（URL 前缀、`#` 片段），
+/// 值里的嵌套 URL 会再递归解析一层，覆盖“Cookie 被编码在 gourl 参数里”的形态。
+fn harvest(text: &str, cookies: &mut Cookies, depth: u8) {
+    if depth == 0 || text.is_empty() {
+        return;
+    }
+
+    let normalized = text.replace(';', "&");
+    for (key, value) in url::form_urlencoded::parse(normalized.as_bytes()) {
+        let name = key
+            .rsplit(['?', '#', '/'])
+            .next()
+            .unwrap_or(&key)
+            .to_string();
+        cookies.set_if_empty(&name, value.to_string());
+
+        if value.contains('=') {
+            harvest(&value, cookies, depth - 1);
+        }
+    }
+}
+
+/// 百分号解码；不含 `%` 时原样返回。
+fn percent_decode(value: &str) -> String {
+    if !value.contains('%') {
+        return value.to_string();
+    }
+    url::form_urlencoded::parse(format!("v={value}").as_bytes())
+        .next()
+        .map(|(_, decoded)| decoded.into_owned())
+        .unwrap_or_else(|| value.to_string())
+}
+
+/// poll 接口地址。登录流程中真正请求过的地址，也可用于按路径探测 Cookie。
+pub fn poll_url(qrcode_key: &str) -> String {
+    format!("{API_QR_POLL}?qrcode_key={qrcode_key}")
+}
+
 /// 默认登录态存放路径。
 ///
 /// 当前按用户环境约定放在 D 盘；Tauri 版改为应用数据目录（M2 处理）。
@@ -188,7 +242,7 @@ impl BiliClient {
 
     /// 查询二维码状态。该接口在未确认时 data 依然存在，因此用宽松模式。
     pub async fn qrcode_poll(&self, qrcode_key: &str) -> Result<PollData> {
-        let url = format!("{API_QR_POLL}?qrcode_key={qrcode_key}");
+        let url = poll_url(qrcode_key);
         self.fetch_json_lenient(&url).await
     }
 
@@ -200,6 +254,81 @@ impl BiliClient {
             self.add_cookie(&format!("{name}={value}"), &origin);
         }
         Ok(())
+    }
+}
+
+/// 登录确认后取回并验证登录态。
+///
+/// Cookie 可能由 poll 响应的 Set-Cookie 下发，也可能写在跳转地址里，且编码形态不定：
+/// - Set-Cookie 的值要**原样**回送（浏览器语义）
+/// - 地址里的值经过 URL 编码，需要解码后回送
+///
+/// 因此这里把可能的形态都试装一遍，用 `nav` 接口实测，取第一个真正生效的。
+async fn confirm_cookies(
+    client: &BiliClient,
+    qrcode_key: &str,
+    success_url: &str,
+) -> Result<Cookies> {
+    let probes: Vec<String> = [poll_url(qrcode_key), success_url.to_string()]
+        .into_iter()
+        .filter(|u| !u.is_empty())
+        .collect();
+
+    // 第一轮：直接用当前会话里已有的 Cookie（Set-Cookie 或地址解析）
+    for cookies in collect_candidates(client, &probes, success_url) {
+        if verify_cookies(client, &cookies).await {
+            return Ok(cookies);
+        }
+    }
+
+    // 第二轮：有些流程要在成功地址上再发一次请求，才会把登录态下发下来
+    if !success_url.is_empty() {
+        let _ = client.http.get(success_url).send().await;
+        for cookies in collect_candidates(client, &probes, success_url) {
+            if verify_cookies(client, &cookies).await {
+                return Ok(cookies);
+            }
+        }
+    }
+
+    let names = client.jar_cookie_names_with(&probes);
+    Err(BiliError::Login(format!(
+        "登录已确认，但未能取得可用的登录态；跳转地址: {}；会话已有 Cookie: [{}]",
+        if success_url.is_empty() {
+            "<空>"
+        } else {
+            success_url
+        },
+        if names.is_empty() {
+            "无".to_string()
+        } else {
+            names.join(", ")
+        }
+    )))
+}
+
+/// 汇总裁剪出所有可能的登录态形态（按可信度排序，去重）。
+fn collect_candidates(client: &BiliClient, probes: &[String], success_url: &str) -> Vec<Cookies> {
+    let mut candidates: Vec<Cookies> = Vec::new();
+
+    let from_jar = client.cookies_from_jar_with(probes);
+    push_candidate(&mut candidates, from_jar.clone());
+    if let Ok(from_url) = Cookies::from_success_url(success_url) {
+        push_candidate(&mut candidates, from_url.decoded_variant());
+    }
+    push_candidate(&mut candidates, from_jar.decoded_variant());
+
+    candidates
+}
+
+/// 装上候选登录态并用 `nav` 接口实测是否真的登录成功。
+async fn verify_cookies(client: &BiliClient, cookies: &Cookies) -> bool {
+    client.set_cookies(cookies).is_ok() && matches!(client.nav().await, Ok(nav) if nav.is_login)
+}
+
+fn push_candidate(candidates: &mut Vec<Cookies>, cookies: Cookies) {
+    if cookies.is_valid() && !candidates.iter().any(|c| c.sessdata == cookies.sessdata) {
+        candidates.push(cookies);
     }
 }
 
@@ -229,7 +358,7 @@ where
         }
 
         match state {
-            LoginState::Confirmed => return Cookies::from_success_url(&poll.url),
+            LoginState::Confirmed => return confirm_cookies(client, qrcode_key, &poll.url).await,
             LoginState::Expired => {
                 return Err(BiliError::Login("二维码已过期，请重新执行登录".into()))
             }
@@ -273,6 +402,62 @@ mod tests {
     fn rejects_url_without_sessdata() {
         let err = Cookies::from_success_url("https://example.com/cb?foo=1").unwrap_err();
         assert!(err.to_string().contains("SESSDATA"), "实际错误: {err}");
+    }
+
+    #[test]
+    fn parses_cookies_placed_in_fragment() {
+        let cookies = Cookies::from_success_url(
+            "https://www.bilibili.com/#SESSDATA=frag%2Cvalue&bili_jct=j1",
+        )
+        .unwrap();
+        assert_eq!(cookies.sessdata, "frag,value");
+        assert_eq!(cookies.bili_jct, "j1");
+    }
+
+    #[test]
+    fn parses_cookies_nested_in_encoded_gourl() {
+        // Cookie 被整段编码在 gourl 参数里（再嵌套一层百分号编码）
+        let url = "https://passport.bilibili.com/cb?gourl=https%3A%2F%2Fwww.bilibili.com%2F%3FSESSDATA%3Dnested%252Cval%26bili_jct%3Dnested_jct";
+        let cookies = Cookies::from_success_url(url).unwrap();
+        assert_eq!(cookies.sessdata, "nested,val");
+        assert_eq!(cookies.bili_jct, "nested_jct");
+    }
+
+    #[test]
+    fn decoded_variant_only_decodes_encoded_values() {
+        let plain = Cookies {
+            sessdata: "plain,value*ok==".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            plain.decoded_variant().sessdata,
+            "plain,value*ok==",
+            "已是明文时不应改动"
+        );
+
+        let encoded = Cookies {
+            sessdata: "abc%2Cdef%2Ag%3D%3D".into(),
+            ..Default::default()
+        };
+        assert_eq!(encoded.decoded_variant().sessdata, "abc,def*g==");
+    }
+
+    #[test]
+    fn jar_reading_keeps_values_verbatim() {
+        let client = BiliClient::new().unwrap();
+        let origin = Url::parse("https://www.bilibili.com/").unwrap();
+        client.add_cookie("SESSDATA=abc%2Cdef%2Ag%3D%3D", &origin);
+        client.add_cookie("bili_jct=token-123", &origin);
+
+        let cookies = client.cookies_from_jar();
+        assert!(cookies.is_valid());
+        assert_eq!(
+            cookies.sessdata, "abc%2Cdef%2Ag%3D%3D",
+            "Cookie 罐的值应按浏览器语义原样保留"
+        );
+        assert_eq!(cookies.bili_jct, "token-123");
+        assert!(client.jar_cookie_names().contains(&"SESSDATA".to_string()));
+        assert_eq!(cookies.decoded_variant().sessdata, "abc,def*g==");
     }
 
     #[test]

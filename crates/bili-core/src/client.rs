@@ -2,8 +2,9 @@
 
 use crate::api::ApiEnvelope;
 use crate::error::{explain_code, BiliError, Result};
+use crate::login::Cookies;
 use crate::wbi::{key_from_url, WbiKeys};
-use reqwest::cookie::Jar;
+use reqwest::cookie::{CookieStore, Jar};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_LANGUAGE, ORIGIN, REFERER, USER_AGENT};
 use reqwest::{Client, Url};
 use serde::de::DeserializeOwned;
@@ -15,6 +16,14 @@ use tokio::sync::RwLock;
 pub const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 pub const REFERER_VALUE: &str = "https://www.bilibili.com/";
 const WBI_TTL: Duration = Duration::from_secs(1800);
+
+/// 读取会话 Cookie 时探测的站点。
+const JAR_ORIGINS: [&str; 4] = [
+    "https://www.bilibili.com/",
+    "https://api.bilibili.com/",
+    "https://passport.bilibili.com/",
+    "https://account.bilibili.com/",
+];
 
 pub struct BiliClient {
     pub http: Client,
@@ -51,6 +60,64 @@ impl BiliClient {
     /// 向会话中写入一条 Cookie，后续请求自动携带。
     pub fn add_cookie(&self, cookie: &str, url: &Url) {
         self.jar.add_cookie_str(cookie, url);
+    }
+
+    /// 从会话 Cookie 罐中取出登录相关 Cookie。
+    ///
+    /// 扫码登录成功后，poll 响应会以 Set-Cookie 下发 SESSDATA 等。这里按浏览器的语义
+    /// **原样保留 Cookie 值**（不做百分号解码），因为浏览器发送 Cookie 时也不会解码。
+    pub fn cookies_from_jar(&self) -> Cookies {
+        self.cookies_from_jar_with(&[])
+    }
+
+    /// `extra_urls` 用于覆盖 Cookie 受路径限制的情况：Cookie 可能只挂在某个具体路径下，
+    /// 此时按站点根探测不到，需要用在这次登录流程里真正请求过的地址再探一次。
+    pub fn cookies_from_jar_with(&self, extra_urls: &[String]) -> Cookies {
+        let mut cookies = Cookies::default();
+        for url in self.jar_probe_urls(extra_urls) {
+            if let Some(header) = self.jar.cookies(&url) {
+                let Ok(text) = header.to_str() else { continue };
+                for pair in text.split(';') {
+                    if let Some((name, value)) = pair.trim().split_once('=') {
+                        cookies.set_if_empty(name.trim(), value.trim().to_string());
+                    }
+                }
+            }
+        }
+        cookies
+    }
+
+    /// 仅用于诊断：列出会话中已有的 Cookie 名称（不含值，避免凭据泄漏）。
+    pub fn jar_cookie_names(&self) -> Vec<String> {
+        self.jar_cookie_names_with(&[])
+    }
+
+    pub fn jar_cookie_names_with(&self, extra_urls: &[String]) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        for url in self.jar_probe_urls(extra_urls) {
+            if let Some(header) = self.jar.cookies(&url) {
+                let Ok(text) = header.to_str() else { continue };
+                for pair in text.split(';') {
+                    let Some((name, _)) = pair.trim().split_once('=') else {
+                        continue;
+                    };
+                    let name = name.trim().to_string();
+                    if !names.contains(&name) {
+                        names.push(name);
+                    }
+                }
+            }
+        }
+        names
+    }
+
+    fn jar_probe_urls(&self, extra_urls: &[String]) -> Vec<Url> {
+        JAR_ORIGINS
+            .iter()
+            .map(|origin| origin.to_string())
+            .chain(extra_urls.iter().cloned())
+            .filter_map(|candidate| Url::parse(&candidate).ok())
+            .collect()
     }
 
     /// 注入 SESSDATA；1080P 及以上清晰度需要登录态。
