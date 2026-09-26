@@ -689,12 +689,15 @@ async function startSingle(item) {
         <div class="meta">
           <p class="title">{{ activeSource.probe.title }}</p>
           <p class="sub">
-            <span>{{ activeSource.probe.owner }}</span>
+            <span class="owner">{{ activeSource.probe.owner }}</span>
+            <span class="dot-sep">·</span>
             <span class="num">{{ formatDuration(activeSource.probe.duration) }}</span>
-            <span class="num faint">{{ activeSource.probe.bvid }}</span>
+            <span class="dot-sep">·</span>
+            <span class="num">{{ activeSource.probe.bvid }}</span>
           </p>
-          <p v-if="fileNames[0]" class="file-line">
-            文件名：<code>{{ fileNames[0] }}</code>
+          <p v-if="fileNames[0]" class="file-line" :title="fileNames[0]">
+            <span class="file-label">文件名</span>
+            <code>{{ fileNames[0] }}</code>
           </p>
           <p v-if="activeSource.probe.note" class="note">{{ activeSource.probe.note }}</p>
         </div>
@@ -736,13 +739,12 @@ async function startSingle(item) {
         </table>
       </div>
 
-      <footer class="select-foot">
-        <template v-if="activeIsBatch">
-          <span class="foot-count">已选 <b class="num">{{ selectedCount }}</b> 项</span>
-          <span class="foot-count">共 <b class="num">{{ loadedCount }}</b> 项</span>
-          <span class="spacer"></span>
-          <button class="mini" @click="toggleAllLoaded(true)">全选已加载</button>
-        </template>
+      <!-- 底部统计只对批量清单有意义，单视频不渲染这条空栏 -->
+      <footer v-if="activeIsBatch" class="select-foot">
+        <span class="foot-count">已选 <b class="num">{{ selectedCount }}</b> 项</span>
+        <span class="foot-count">共 <b class="num">{{ loadedCount }}</b> 项</span>
+        <span class="spacer"></span>
+        <button class="mini" @click="toggleAllLoaded(true)">全选已加载</button>
       </footer>
     </section>
 
@@ -1143,29 +1145,75 @@ input:focus {
   color: var(--faint);
 }
 
-.file-line {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.file-line code {
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  color: var(--text);
-}
-
 /* 选择页里的单视频详情 */
 .video-detail {
   display: flex;
-  gap: 14px;
-  padding: 14px;
+  gap: 16px;
+  padding: 16px;
   border-bottom: 1px solid var(--line-soft);
 }
 
 .video-detail .thumb {
   flex: none;
-  width: 132px;
-  height: 84px;
+  width: 168px;
+  height: 94px;
+  border: 1px solid var(--line-soft);
+}
+
+.video-detail .meta {
+  min-width: 0;
+}
+
+.video-detail .title {
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.video-detail .sub {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 5px;
+  font-size: 12.5px;
+  color: var(--faint);
+}
+
+.video-detail .sub .owner {
+  color: var(--muted);
+}
+
+.dot-sep {
+  color: var(--line);
+}
+
+/* 文件名是补充信息：收成一行，悬停看全，不跟标题抢注意力 */
+.video-detail .file-line {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-top: 7px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.file-label {
+  flex: none;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--faint);
+  background: var(--raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+}
+
+.video-detail .file-line code {
+  min-width: 0;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 选择页占满可用高度：顶部工具条与底部统计不随滚动移动 */
