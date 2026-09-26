@@ -358,6 +358,20 @@ const tableGroups = computed(() => {
   return groups;
 });
 
+/** 折叠的分组（按来源输入记）：点分组行收起/展开该来源的行 */
+const collapsed = ref(new Set());
+
+function isCollapsed(input) {
+  return collapsed.value.has(input);
+}
+
+function toggleGroup(input) {
+  const next = new Set(collapsed.value);
+  if (next.has(input)) next.delete(input);
+  else next.add(input);
+  collapsed.value = next;
+}
+
 /** 只有一个来源时不必分组（表头已经写了它是谁） */
 const showGroups = computed(() => allSources.value.length > 1);
 
@@ -789,8 +803,24 @@ async function startSingle(item) {
           </thead>
           <tbody>
             <template v-for="group in tableGroups" :key="group.source.input">
-              <tr v-if="showGroups" class="group-row">
+              <tr
+                v-if="showGroups"
+                class="group-row"
+                :class="{ folded: isCollapsed(group.source.input) }"
+                :title="isCollapsed(group.source.input) ? '展开这个来源' : '收起这个来源'"
+                @click="toggleGroup(group.source.input)"
+              >
                 <td colspan="5">
+                  <svg class="fold-arrow" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="m9 6 6 6-6 6"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
                   <span class="group-kind">{{ kindLabel(group.source.probe.kind) }}</span>
                   <span class="group-title" :title="group.source.probe.title">
                     {{ group.source.probe.title }}
@@ -800,6 +830,7 @@ async function startSingle(item) {
               </tr>
               <tr
                 v-for="row in group.rows"
+                v-show="!isCollapsed(group.source.input)"
                 :key="row.key"
                 :class="{ on: isSelected(row) }"
                 :title="fileNameOf(row)"
@@ -1374,6 +1405,33 @@ input:focus {
 }
 
 /* 分组行：多来源时用它把各组分开，一眼看出哪几行属于哪个来源 */
+.batch-table tr.group-row {
+  cursor: pointer;
+  user-select: none;
+}
+
+.fold-arrow {
+  width: 13px;
+  height: 13px;
+  margin-right: 4px;
+  color: var(--faint);
+  vertical-align: -2px;
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+
+.batch-table tr.group-row.folded .fold-arrow {
+  transform: rotate(0deg);
+}
+
+.batch-table tr.group-row.folded .group-title {
+  color: var(--muted);
+}
+
+.batch-table tr.group-row:hover .fold-arrow {
+  color: var(--accent);
+}
+
 .batch-table tr.group-row td {
   padding: 7px 10px 6px;
   background: var(--raised);
