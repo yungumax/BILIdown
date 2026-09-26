@@ -193,6 +193,21 @@ const FAV_MAX_ITEMS: usize = 500;
 const COLLECTION_MAX_ITEMS: usize = 500;
 const SPACE_MAX_ITEMS: usize = 300;
 
+/// 批量来源的加载说明。
+///
+/// `total > loaded` 有两种完全不同的原因，用户该做的事也不同：
+/// 到了单次解析上限（应该分批解析）与部分内容拿不到（失效/受限，分批也没用）。
+/// 实测收藏夹就是后者：total=130 而实际只能拿到 129 条。
+fn load_note(label: &str, total: usize, loaded: usize, cap: usize) -> String {
+    if loaded >= cap && total > loaded {
+        format!("{label}共 {total} 条，已达单次解析上限 {cap} 条，分批解析可继续")
+    } else if total > loaded {
+        format!("{label}共 {total} 条，其中 {loaded} 条可下载（其余可能已失效或受限）")
+    } else {
+        String::new()
+    }
+}
+
 /// 解析一条来源：短链展开 → 识别目标 → 单视频取详情，批量来源逐页拉清单。
 async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, String> {
     let trimmed = input.trim();
@@ -254,11 +269,7 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, Stri
             let (qualities, audios, recommended_quality, best_quality) =
                 probe_media_options(client, &items[0], "video").await;
             let loaded = items.len();
-            let note = if total > loaded {
-                format!("收藏夹共 {total} 条，已加载前 {loaded} 条")
-            } else {
-                String::new()
-            };
+            let note = load_note("收藏夹", total, loaded, FAV_MAX_ITEMS);
 
             Ok(ProbeSource {
                 kind: "fav".to_string(),
@@ -331,11 +342,7 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, Stri
             let (qualities, audios, recommended_quality, best_quality) =
                 probe_media_options(client, &items[0], "video").await;
             let loaded = items.len();
-            let note = if total > loaded {
-                format!("合集共 {total} 条，已加载前 {loaded} 条")
-            } else {
-                String::new()
-            };
+            let note = load_note("合集", total, loaded, COLLECTION_MAX_ITEMS);
 
             Ok(ProbeSource {
                 kind: "collection".to_string(),
@@ -408,11 +415,7 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, Stri
             let (qualities, audios, recommended_quality, best_quality) =
                 probe_media_options(client, &items[0], "video").await;
             let loaded = items.len();
-            let note = if total > loaded {
-                format!("共 {total} 条投稿，已加载前 {loaded} 条")
-            } else {
-                String::new()
-            };
+            let note = load_note("投稿", total, loaded, SPACE_MAX_ITEMS);
 
             Ok(ProbeSource {
                 kind: "space".to_string(),
@@ -1569,6 +1572,21 @@ mod naming_tests {
             "AV1"
         );
     }
+
+    #[test]
+    fn load_note_distinguishes_cap_from_unavailable() {
+        // 真的到了单次上限：该提示分批解析
+        let capped = load_note("收藏夹", 900, 500, 500);
+        assert!(capped.contains("上限"), "{capped}");
+
+        // 没到上限却少几条：是有内容拿不到，不能写成"已加载前 N 条"让人以为被截断
+        let partial = load_note("收藏夹", 130, 129, 500);
+        assert!(partial.contains("可下载"), "{partial}");
+        assert!(!partial.contains("上限"), "{partial}");
+
+        // 全部拿到：不提示
+        assert!(load_note("收藏夹", 129, 129, 500).is_empty());
+    }
 }
 
 #[cfg(test)]
@@ -1657,5 +1675,70 @@ mod live_tests {
             "cheese: {} loaded={} 首条={:?}",
             probe.title, probe.loaded, probe.items[0].title
         );
+    }
+
+    /// 分页验证：拿一条真的超过单页的批量来源，确认确实逐页拉全。
+    ///
+    /// 单页条数是固定的（收藏夹 20、UP 空间 30、合集 100），所以 `loaded` 超过
+    /// 单页条数就只可能是翻了页——这比"看代码是循环"有说服力。
+    /// UP 空间默认用环境变量 `BILIDOWN_TEST_SPACE_MID` 指定的 mid（需有 30 条以上投稿）。
+    #[tokio::test]
+    #[ignore = "需要网络与登录态"]
+    async fn live_paging_multi_page() {
+        let client = client();
+
+        // 收藏夹：每页 20 条
+        let fav = probe_one(
+            &client,
+            "https://space.bilibili.com/1858731/favlist?fid=52568231",
+        )
+        .await
+        .expect("收藏夹解析成功");
+        println!(
+            "fav   loaded={} total={} → 至少翻了 {} 页 | note={:?}",
+            fav.loaded,
+            fav.total,
+            fav.loaded.div_ceil(20),
+            fav.note
+        );
+        assert!(
+            fav.loaded > 20,
+            "收藏夹只有 {} 条，不足以证明翻页",
+            fav.loaded
+        );
+
+        // UP 空间：每页 30 条
+        if let Ok(mid) = std::env::var("BILIDOWN_TEST_SPACE_MID") {
+            let space = probe_one(&client, &format!("https://space.bilibili.com/{mid}"))
+                .await
+                .expect("空间解析成功");
+            println!(
+                "space loaded={} total={} → 至少翻了 {} 页",
+                space.loaded,
+                space.total,
+                space.loaded.div_ceil(30)
+            );
+            assert!(
+                space.loaded > 30,
+                "空间只有 {} 条，不足以证明翻页（换个投稿更多的 mid）",
+                space.loaded
+            );
+        }
+
+        // 合集：每页 100 条，用 BILIDOWN_TEST_COLLECTION_URL 指定
+        if let Ok(url) = std::env::var("BILIDOWN_TEST_COLLECTION_URL") {
+            let collection = probe_one(&client, &url).await.expect("合集解析成功");
+            println!(
+                "coll  loaded={} total={} → 至少翻了 {} 页",
+                collection.loaded,
+                collection.total,
+                collection.loaded.div_ceil(100)
+            );
+            assert!(
+                collection.loaded > 100,
+                "合集只有 {} 条，不足以证明翻页（换个条目更多的合集）",
+                collection.loaded
+            );
+        }
     }
 }

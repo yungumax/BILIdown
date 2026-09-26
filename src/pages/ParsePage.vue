@@ -383,10 +383,7 @@ async function startAll() {
         @keydown.enter="parse"
       />
 
-      <p class="hint">
-        每行一个来源；支持 BV 号、av 号、完整链接、b23.tv 短链，以及收藏夹 / 合集 / UP
-        空间 / 番剧 / 课程链接。
-      </p>
+      <p class="hint">每行一个来源；合集、收藏夹与 UP 空间会按页加载。</p>
 
       <div class="actions">
         <button class="ghost" @click="pasteFromClipboard">

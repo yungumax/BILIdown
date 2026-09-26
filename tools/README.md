@@ -86,3 +86,25 @@ DOM 层、窗口几何层、应用窗口截图层全都不可见——子进程�
 `test-prefs-save.mjs` 覆盖闭环：界面改顺序 → 点保存 → 从后端读回，确认顺序与编码
 真的落盘（不是只改了界面）。`test-prefs-ui.mjs` 覆盖并排布局与添加/上移/下移。
 注意两个脚本都会改动设置页草稿，跑完重载页面即可丢弃未保存的改动。
+
+## 批量来源分页的联网验证
+
+`live_paging_multi_page` 断言 `loaded` 超过单页条数——单页条数是固定的
+（收藏夹 20、UP 空间 30、合集 100），所以超过它只可能是真的翻了页。
+
+```bash
+BILIDOWN_TEST_SPACE_MID=946974 \
+BILIDOWN_TEST_COLLECTION_URL="https://space.bilibili.com/927587/lists/108434" \
+  cargo test -p bilidown -- --ignored --nocapture live_paging_multi_page
+```
+
+2026-09-26 的实测结果：
+
+```
+fav   loaded=129 total=130 → 至少翻了 7 页
+space loaded=300 total=932 → 至少翻了 10 页   （300 是设定的单次上限）
+coll  loaded=129 total=129 → 至少翻了 2 页
+```
+
+踩坑：`seasons_series_list` 的 `page_size` 超过 20 会返回 `-400 请求错误`，
+别误当成风控或"该 UP 没有合集"。
