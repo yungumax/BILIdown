@@ -130,6 +130,9 @@ pub struct VideoInfo {
     /// 秒
     #[serde(default)]
     pub duration: u64,
+    /// B 站发布时间的 Unix 秒，用于命名模板的 {publish_date}
+    #[serde(default)]
+    pub pubdate: u64,
     #[serde(default)]
     pub owner: Owner,
     #[serde(default, deserialize_with = "vec_or_null")]
@@ -502,6 +505,19 @@ pub fn quality_name(qn: u32) -> &'static str {
         126 => "杜比视界",
         127 => "8K",
         _ => "未知",
+    }
+}
+
+/// 编码名：判断依据是 DASH 流的 codecs 字段（avc1.640033 / hev1.1.6 / av01.0.12M.08）。
+pub fn codec_name(codecs: &str) -> &'static str {
+    if codecs.starts_with("hev") || codecs.starts_with("hvc") {
+        "HEVC"
+    } else if codecs.starts_with("av01") {
+        "AV1"
+    } else if codecs.starts_with("avc") {
+        "AVC"
+    } else {
+        "未知"
     }
 }
 

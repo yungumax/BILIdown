@@ -205,6 +205,48 @@ function selectNone() {
   selected.value = new Set();
 }
 
+/** 本地时区的 YYYY-MM-DD；不带参数即今天 */
+function localDate(unixSecs) {
+  const d = unixSecs ? new Date(unixSecs * 1000) : new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** 单视频的命名变量：分 P 信息来自解析结果，批量专属的留空 */
+function singleNaming(probe) {
+  return {
+    part_title: probe.part_title || probe.title,
+    part_index: probe.part_index || 1,
+    aid: probe.aid || 0,
+    owner_mid: probe.owner_mid || 0,
+    series_title: "",
+    episode_index: 0,
+    episode_title: "",
+    collection_title: "",
+    index: 0,
+    date: localDate(),
+    publish_date: localDate(probe.pubdate),
+  };
+}
+
+/** 批量条目的命名变量：番剧/课程用剧集信息，其余用合集信息 + 列表序号 */
+function batchNaming(batch, entry, position) {
+  const episode = batch.kind === "bangumi" || batch.kind === "cheese";
+  return {
+    part_title: "",
+    part_index: 0,
+    aid: 0,
+    owner_mid: 0,
+    series_title: episode ? batch.title : "",
+    episode_index: episode ? position : 0,
+    episode_title: episode ? entry.title : "",
+    collection_title: episode ? "" : batch.title,
+    index: position,
+    date: localDate(),
+    publish_date: "",
+  };
+}
+
 async function startSingle(item) {
   try {
     await api.startDownload({
@@ -216,6 +258,7 @@ async function startSingle(item) {
       quality: item.quality ?? item.probe.recommended_quality,
       audio: item.audio ?? "normal",
       cover: item.probe.cover,
+      naming: singleNaming(item.probe),
     });
     return true;
   } catch (error) {
@@ -227,7 +270,10 @@ async function startSingle(item) {
 async function startBatch(batch) {
   const source = batch.kind;
   let started = 0;
+  // 列表序号从 1 开始，供命名模板的 {index} / {episode_index} 使用
+  let position = 0;
   for (const entry of batch.items) {
+    position += 1;
     const key = `${batch.kind}:${entry.bvid || `ep-${entry.ep_id}`}`;
     if (!selected.value.has(key)) continue;
     try {
@@ -241,6 +287,7 @@ async function startBatch(batch) {
         quality: batchQuality.value,
         audio: batchAudio.value,
         cover: "",
+        naming: batchNaming(batch, entry, position),
       });
       started += 1;
     } catch (error) {

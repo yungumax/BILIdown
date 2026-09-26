@@ -3,7 +3,7 @@
 use crate::state::{AppState, TaskEntry};
 use crate::types::*;
 use base64::Engine;
-use bili_core::api::{quality_name, AudioKind};
+use bili_core::api::{codec_name, quality_name, AudioKind};
 use bili_core::download::{
     download_with_throttle, DownloadOptions, Progress, ProgressFn, Throttle,
 };
@@ -156,6 +156,38 @@ pub async fn ffmpeg_status(
     Ok(state.set_ffmpeg_status(status))
 }
 
+/// 「魔法变量」面板的数据源：界面直接渲染这份清单，不再手写第二份可能和后端脱节的表。
+#[tauri::command]
+pub async fn naming_variables() -> Result<Vec<crate::types::NamingVariable>, String> {
+    Ok(crate::naming::VARIABLES
+        .iter()
+        .map(|(token, label)| crate::types::NamingVariable {
+            token: (*token).to_string(),
+            label: (*label).to_string(),
+        })
+        .collect())
+}
+
+/// 文件名预览：与真实落盘共用同一个渲染器，预览不会和结果对不上。
+/// `date` / `publish_date` 由前端按本地时区算好传进来。
+#[tauri::command]
+pub async fn preview_naming(
+    state: State<'_, AppState>,
+    template: String,
+    date: Option<String>,
+    publish_date: Option<String>,
+    ext: Option<String>,
+) -> Result<String, String> {
+    let mut ctx = crate::naming::NamingContext::sample();
+    ctx.date = date.unwrap_or_default();
+    ctx.publish_date = publish_date.unwrap_or_default();
+    let ext = ext.unwrap_or_else(|| state.settings().container_ext().to_string());
+    // 用 / 显示，和用户在模板里打的保持一致（Windows 的 PathBuf 会显示成 \）
+    Ok(crate::naming::render(&template, &ctx, &ext)
+        .to_string_lossy()
+        .replace('\\', "/"))
+}
+
 /// 分页拉取上限，避免超大收藏夹一次解析上千条。
 const FAV_MAX_ITEMS: usize = 500;
 const COLLECTION_MAX_ITEMS: usize = 500;
@@ -236,6 +268,12 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, Stri
                 note,
                 bvid: String::new(),
                 cid: 0,
+                aid: 0,
+                owner_mid: 0,
+                pubdate: 0,
+                // 批量条目没有"分 P"这个概念，part_* 留空由 {index}/{series_title} 承担
+                part_index: 0,
+                part_title: String::new(),
                 duration: 0,
                 page_count: 1,
                 total,
@@ -307,6 +345,12 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, Stri
                 note,
                 bvid: String::new(),
                 cid: 0,
+                aid: 0,
+                owner_mid: 0,
+                pubdate: 0,
+                // 批量条目没有"分 P"这个概念，part_* 留空由 {index}/{series_title} 承担
+                part_index: 0,
+                part_title: String::new(),
                 duration: 0,
                 page_count: 1,
                 total,
@@ -378,6 +422,12 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, Stri
                 note,
                 bvid: String::new(),
                 cid: 0,
+                aid: 0,
+                owner_mid: 0,
+                pubdate: 0,
+                // 批量条目没有"分 P"这个概念，part_* 留空由 {index}/{series_title} 承担
+                part_index: 0,
+                part_title: String::new(),
                 duration: 0,
                 page_count: 1,
                 total,
@@ -427,6 +477,12 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, Stri
                 note: String::new(),
                 bvid: String::new(),
                 cid: 0,
+                aid: 0,
+                owner_mid: 0,
+                pubdate: 0,
+                // 批量条目没有"分 P"这个概念，part_* 留空由 {index}/{series_title} 承担
+                part_index: 0,
+                part_title: String::new(),
                 duration: 0,
                 page_count: 1,
                 total: items.len(),
@@ -469,6 +525,12 @@ async fn probe_one(client: &BiliClient, input: &str) -> Result<ProbeSource, Stri
                 note: "付费课程需要已购买并登录才能下载".to_string(),
                 bvid: String::new(),
                 cid: 0,
+                aid: 0,
+                owner_mid: 0,
+                pubdate: 0,
+                // 批量条目没有"分 P"这个概念，part_* 留空由 {index}/{series_title} 承担
+                part_index: 0,
+                part_title: String::new(),
                 duration: 0,
                 page_count: 1,
                 total: items.len(),
@@ -503,6 +565,13 @@ async fn probe_video_bvid(client: &BiliClient, bvid: &str) -> Result<ProbeSource
         String::new()
     };
 
+    // 首页分 P：单 P 视频的 part 常常就是标题，取不到时退回标题
+    let first_page = info.pages.first();
+    let part_title = first_page
+        .map(|p| p.part.clone())
+        .filter(|part| !part.is_empty())
+        .unwrap_or_else(|| info.title.clone());
+
     Ok(ProbeSource {
         kind: "video".to_string(),
         title: info.title.clone(),
@@ -511,6 +580,11 @@ async fn probe_video_bvid(client: &BiliClient, bvid: &str) -> Result<ProbeSource
         note,
         bvid: info.bvid.clone(),
         cid: info.cid,
+        aid: info.aid,
+        owner_mid: info.owner.mid,
+        pubdate: info.pubdate,
+        part_index: first_page.map(|p| p.page).unwrap_or(1),
+        part_title,
         duration: info.duration,
         page_count: info.pages.len(),
         total: 1,
@@ -670,6 +744,36 @@ fn parse_mmss(length: &str) -> u64 {
         seconds = seconds * 60 + part.trim().parse::<u64>().unwrap_or(0);
     }
     seconds
+}
+
+/// 把下载请求 + 本次实际选到的流，拼成命名模板的取值。
+///
+/// 单独拎出来是为了可测：这里把字段接错（比如 part_index 接了标题）不会报错，
+/// 只会静默生成错误的文件名。
+fn naming_context(
+    req: &DownloadRequest,
+    codecs: &str,
+    quality: &str,
+) -> crate::naming::NamingContext {
+    crate::naming::NamingContext {
+        title: req.title.clone(),
+        part_title: req.naming.part_title.clone(),
+        part_index: req.naming.part_index,
+        bvid: req.bvid.clone(),
+        aid: req.naming.aid,
+        cid: req.cid,
+        owner_name: req.owner.clone(),
+        owner_mid: req.naming.owner_mid,
+        series_title: req.naming.series_title.clone(),
+        episode_index: req.naming.episode_index,
+        episode_title: req.naming.episode_title.clone(),
+        collection_title: req.naming.collection_title.clone(),
+        index: req.naming.index,
+        quality: quality.to_string(),
+        codec: codec_name(codecs).to_string(),
+        date: req.naming.date.clone(),
+        publish_date: req.naming.publish_date.clone(),
+    }
 }
 
 fn quality_hint(qn: u32, available: bool) -> String {
@@ -841,24 +945,20 @@ async fn run_download(
         .ok_or_else(|| BiliError::Unavailable("未找到可用音轨".to_string()))?;
 
     let is_hevc = video.codecs.starts_with("hev") || video.codecs.starts_with("hvc");
-    let video_label = format!(
-        "{} {}",
-        quality_name(video.id),
-        if is_hevc { "HEVC" } else { "AVC" }
-    );
+    let codec = codec_name(&video.codecs);
+    let video_label = format!("{} {}", quality_name(video.id), codec);
 
     mutate(&shared, &app, |t| {
         t.quality_label = video_label.clone();
     });
 
     // 目标文件：命名模板 + 封装格式 + 重名处理
-    tokio::fs::create_dir_all(&output_dir).await?;
-    let out_file = output_dir.join(settings.output_filename(
-        &req.title,
-        &req.bvid,
-        quality_name(video.id),
-        &req.owner,
-    ));
+    // 模板里的 `/` 会成为子目录，所以还要把中间目录建出来
+    let naming = naming_context(req, &video.codecs, quality_name(video.id));    tokio::fs::create_dir_all(&output_dir).await?;
+    let out_file = output_dir.join(settings.output_filename(&naming));
+    if let Some(parent) = out_file.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
     let out_file = match settings.rename_conflict.as_str() {
         "overwrite" => out_file,
         "auto" => find_free_name(out_file).await,
@@ -1382,6 +1482,70 @@ fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     left.resize(len, 0);
     right.resize(len, 0);
     left.cmp(&right)
+}
+
+#[cfg(test)]
+mod naming_tests {
+    use super::*;
+
+    fn request() -> DownloadRequest {
+        DownloadRequest {
+            bvid: "BV1xx411c7mD".to_string(),
+            cid: 67890,
+            title: "标题".to_string(),
+            source: "video".to_string(),
+            ep_id: None,
+            owner: "UP主".to_string(),
+            quality: 116,
+            audio: "normal".to_string(),
+            cover: String::new(),
+            naming: crate::types::NamingMeta {
+                part_title: "P1 标题".to_string(),
+                part_index: 1,
+                aid: 12345,
+                owner_mid: 999,
+                series_title: "系列".to_string(),
+                episode_index: 3,
+                episode_title: "第三集".to_string(),
+                collection_title: "合集".to_string(),
+                index: 7,
+                date: "2026-09-26".to_string(),
+                publish_date: "2026-01-02".to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn maps_every_field_to_the_right_variable() {
+        let ctx = naming_context(&request(), "avc1.640033", "1080P60");
+
+        assert_eq!(ctx.title, "标题");
+        assert_eq!(ctx.part_title, "P1 标题");
+        assert_eq!(ctx.part_index, 1);
+        assert_eq!(ctx.bvid, "BV1xx411c7mD");
+        assert_eq!(ctx.aid, 12345);
+        assert_eq!(ctx.cid, 67890);
+        assert_eq!(ctx.owner_name, "UP主");
+        assert_eq!(ctx.owner_mid, 999);
+        assert_eq!(ctx.series_title, "系列");
+        assert_eq!(ctx.episode_index, 3);
+        assert_eq!(ctx.episode_title, "第三集");
+        assert_eq!(ctx.collection_title, "合集");
+        assert_eq!(ctx.index, 7);
+        assert_eq!(ctx.quality, "1080P60");
+        assert_eq!(ctx.codec, "AVC");
+        assert_eq!(ctx.date, "2026-09-26");
+        assert_eq!(ctx.publish_date, "2026-01-02");
+    }
+
+    #[test]
+    fn codec_comes_from_the_stream_not_the_setting() {
+        assert_eq!(naming_context(&request(), "hev1.1.6", "1080P").codec, "HEVC");
+        assert_eq!(
+            naming_context(&request(), "av01.0.12M.08", "1080P").codec,
+            "AV1"
+        );
+    }
 }
 
 #[cfg(test)]

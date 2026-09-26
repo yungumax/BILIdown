@@ -1,6 +1,7 @@
 //! BILIdown 桌面端：把 `bili-core` 的能力通过命令暴露给界面。
 
 mod commands;
+mod naming;
 mod state;
 mod types;
 
@@ -96,6 +97,8 @@ pub fn run() {
             commands::open_path,
             commands::pick_ffmpeg,
             commands::ffmpeg_status,
+            commands::naming_variables,
+            commands::preview_naming,
             commands::cleanup_temp,
             commands::cleanup_cache,
             commands::export_diagnostics,

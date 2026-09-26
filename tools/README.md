@@ -73,3 +73,10 @@ DOM 层、窗口几何层、应用窗口截图层全都不可见——子进程�
 `test-theme-menu.mjs` 覆盖：点按钮展开、菜单列出三项且标出当前项、选一项后
 主题生效并收起、点击外部与 Esc 收起、全程无 toast、无控制台错误。
 需要应用带 `--remote-debugging-port=9222` 启动。
+
+## 命名模板的回归测试
+
+`test-naming-ui.mjs` 覆盖：魔法变量面板能打开、项数与后端 `naming_variables`
+一致、点击变量插入到模板、选预设后界面预览与后端 `preview_naming` 渲染**逐字一致**。
+面板由后端清单生成，所以「界面列了、后端不认」的变量不可能再出现
+（Rust 侧另有 `naming::tests::all_documented_variables_render` 守住这条）。

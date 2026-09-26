@@ -244,41 +244,11 @@ impl Settings {
     }
 
     /// 按命名模板渲染输出文件名（不含目录）。
-    pub fn output_filename(
-        &self,
-        title: &str,
-        bvid: &str,
-        quality_label: &str,
-        owner: &str,
-    ) -> String {
-        let render = |token: &str| match token {
-            "title" => bili_core::sanitize_filename(title),
-            "bvid" => bvid.to_string(),
-            "quality" => bili_core::sanitize_filename(quality_label),
-            "owner" => bili_core::sanitize_filename(owner),
-            other => format!("{{{other}}}"),
-        };
-
-        let mut out = String::new();
-        let mut rest = self.naming_template.as_str();
-        while let Some(start) = rest.find('{') {
-            out.push_str(&rest[..start]);
-            let after = &rest[start..];
-            match after.find('}') {
-                Some(end) => {
-                    out.push_str(&render(&after[1..end]));
-                    rest = &after[end + 1..];
-                }
-                None => {
-                    out.push_str(after);
-                    rest = "";
-                }
-            }
-        }
-        out.push_str(rest);
-
-        let cleaned = bili_core::sanitize_filename(&out);
-        format!("{}.{}", cleaned, self.container_ext())
+    /// 按命名模板渲染输出相对路径（可含子目录）。
+    ///
+    /// 变量清单与渲染规则都在 [`crate::naming`]，界面面板由同一份清单生成。
+    pub fn output_filename(&self, ctx: &crate::naming::NamingContext) -> PathBuf {
+        crate::naming::render(&self.naming_template, ctx, self.container_ext())
     }
 
     /// 日志目录：自定义数据目录优先，否则用默认数据目录。

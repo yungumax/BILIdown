@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import * as api from "../api";
 
 const props = defineProps({
@@ -41,8 +41,13 @@ const BUILTIN_PRESETS = [
   { name: "默认", template: "{title}" },
   { name: "标题_BV号", template: "{title}_{bvid}" },
   { name: "标题_清晰度", template: "{title}_{quality}" },
-  { name: "标题_UP主", template: "{title}_{owner}" },
+  { name: "标题_UP主", template: "{title}_{owner_name}" },
   { name: "完整信息", template: "{title}_{quality}_{bvid}" },
+  { name: "分P视频", template: "{title}/P{part_index} - {part_title}.{ext}" },
+  { name: "合集分集", template: "{collection_title}/{index} - {title}.{ext}" },
+  { name: "番剧分集", template: "{series_title}/第{episode_index}集 - {episode_title}.{ext}" },
+  { name: "UP主目录", template: "{owner_name}/{title}" },
+  { name: "带下载日期", template: "{title}_{date}" },
 ];
 
 const selectedPreset = ref("");
@@ -143,30 +148,92 @@ const dataDirValue = computed({
   set: (value) => (dataDirDraft.value = value),
 });
 
-const namingPreview = computed(() => {
-  const tpl = draft.value?.naming_template || "{title}";
-  const render = (token) =>
-    ({ title: "示例视频", bvid: "BV1Vkag6TExf", quality: "1080P60", owner: "示例UP主" })[token] ??
-    `{{{token}}}`;
-  let out = "";
-  let rest = tpl;
-  while (true) {
-    const start = rest.indexOf("{");
-    if (start === -1) {
-      out += rest;
-      break;
-    }
-    out += rest.slice(0, start);
-    const end = rest.indexOf("}", start);
-    if (end === -1) {
-      out += rest.slice(start);
-      break;
-    }
-    out += render(rest.slice(start + 1, end));
-    rest = rest.slice(end + 1);
+/** 本地时区的 YYYY-MM-DD；不带参数即今天 */
+function localDate(unixSecs) {
+  const d = unixSecs === undefined ? new Date() : new Date(unixSecs * 1000);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// 预览走后端同一个渲染器：预览里能出什么，落盘就能出什么
+const namingPreview = ref("");
+let previewSeq = 0;
+
+async function refreshPreview() {
+  const template = draft.value?.naming_template ?? "";
+  const seq = ++previewSeq;
+  try {
+    const text = await api.previewNaming(template, {
+      date: localDate(),
+      publish_date: "2026-01-02",
+      ext: draft.value?.container === "mkv" ? "mkv" : "mp4",
+    });
+    // 连续敲键会有多次请求，只认最后一次的结果
+    if (seq === previewSeq) namingPreview.value = text;
+  } catch {
+    if (seq === previewSeq) namingPreview.value = "";
   }
-  const ext = draft.value?.container === "mkv" ? "mkv" : "mp4";
-  return `${out}.${ext}`;
+}
+
+watch(
+  () => [draft.value?.naming_template, draft.value?.container],
+  refreshPreview,
+  { immediate: true }
+);
+
+// 变量清单与插入面板
+const variables = ref([]);
+const pickingVar = ref(false);
+const varPicker = ref(null);
+const templateInput = ref(null);
+
+async function loadVariables() {
+  try {
+    const list = await api.namingVariables();
+    // 显示文本在这里拼好：模板里直接写 `{...}` 会和 Vue 的插值定界符打架
+    variables.value = list.map((item) => ({ ...item, text: `{${item.token}}` }));
+  } catch {
+    variables.value = [];
+  }
+}
+
+/** 插到光标处；没有焦点时追加到末尾，插完把光标放到标记之后 */
+function insertToken(token) {
+  if (!draft.value) return;
+  const snippet = `{${token}}`;
+  const el = templateInput.value;
+  if (!el) {
+    draft.value.naming_template = `${draft.value.naming_template ?? ""}${snippet}`;
+    return;
+  }
+  const start = el.selectionStart ?? el.value.length;
+  const end = el.selectionEnd ?? start;
+  draft.value.naming_template = el.value.slice(0, start) + snippet + el.value.slice(end);
+  nextTick(() => {
+    el.focus();
+    const caret = start + snippet.length;
+    el.setSelectionRange(caret, caret);
+  });
+}
+
+function onVarDocumentDown(event) {
+  if (!pickingVar.value) return;
+  if (varPicker.value && !varPicker.value.contains(event.target)) pickingVar.value = false;
+}
+
+function onVarKeydown(event) {
+  if (event.key === "Escape") pickingVar.value = false;
+}
+
+onMounted(() => {
+  loadVariables();
+  document.addEventListener("mousedown", onVarDocumentDown);
+  document.addEventListener("keydown", onVarKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener("mousedown", onVarDocumentDown);
+  document.removeEventListener("keydown", onVarKeydown);
 });
 
 const parsePaceNote = computed(() => {
@@ -609,10 +676,47 @@ async function open(path) {
             <div class="field full">
               <label>命名模板</label>
               <div class="row-flex">
-                <input v-model="draft.naming_template" spellcheck="false" />
-                <span class="token-hint">
-                  可用标记：{title} {bvid} {quality} {owner}
-                </span>
+                <input ref="templateInput" v-model="draft.naming_template" spellcheck="false" />
+                <div ref="varPicker" class="var-picker">
+                  <button
+                    class="ghost"
+                    :class="{ on: pickingVar }"
+                    title="插入变量"
+                    aria-haspopup="menu"
+                    :aria-expanded="pickingVar"
+                    @click="pickingVar = !pickingVar"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M12 5.6v12.8M5.6 12h12.8"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                  </button>
+
+                  <Transition name="picker">
+                    <div v-if="pickingVar" class="var-panel">
+                      <div class="var-head">
+                        <b>魔法变量</b>
+                        <span>点击后插入到光标位置</span>
+                      </div>
+                      <div class="var-grid">
+                        <button
+                          v-for="item in variables"
+                          :key="item.token"
+                          class="var-item"
+                          @click="insertToken(item.token)"
+                        >
+                          <code>{{ item.text }}</code>
+                          <span>{{ item.label }}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </Transition>
+                </div>
               </div>
               <p class="note">
                 文件名预览：<b>{{ namingPreview }}</b>
@@ -1097,6 +1201,80 @@ input::placeholder {
   font-size: 11px;
   color: var(--faint);
   white-space: nowrap;
+}
+
+/* 变量插入：按钮 + 面板共用定位上下文 */
+.var-picker {
+  position: relative;
+  flex: none;
+}
+
+.var-picker .ghost {
+  padding: 8px 10px;
+}
+
+.var-picker .ghost.on {
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
+
+.var-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 15;
+  width: 396px;
+  padding: 10px;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 30px rgba(20, 12, 16, 0.24);
+}
+
+.var-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 4px 9px;
+  font-size: 12.5px;
+}
+
+.var-head span {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.var-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  max-height: 292px;
+  overflow-y: auto;
+}
+
+.var-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  text-align: left;
+  border-radius: var(--radius-sm);
+}
+
+.var-item:hover {
+  background: var(--hover);
+}
+
+.var-item code {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.var-item span {
+  font-size: 11px;
+  color: var(--faint);
 }
 
 .checks {

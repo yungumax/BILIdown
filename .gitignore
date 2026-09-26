@@ -33,3 +33,4 @@ tools/*.log
 tools/*.txt
 tools/*.json
 tools/*shots*/
+tools/*.png

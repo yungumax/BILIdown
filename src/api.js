@@ -79,6 +79,18 @@ export async function ffmpegStatus(refresh = false) {
   return invoke("ffmpeg_status", { refresh });
 }
 
+// 「魔法变量」清单由后端提供，界面不再自己写一份——否则界面会列出后端不支持的变量。
+export async function namingVariables() {
+  if (!hasTauri) return mock.namingVariables();
+  return invoke("naming_variables");
+}
+
+// 文件名预览走后端同一个渲染器，预览与真实落盘不会不一致。
+export async function previewNaming(template, { date, publish_date, ext } = {}) {
+  if (!hasTauri) return mock.previewNaming(template, ext);
+  return invoke("preview_naming", { template, date, publish_date, ext });
+}
+
 export async function cleanupTemp() {
   if (!hasTauri) return 0;
   return invoke("cleanup_temp");
@@ -419,5 +431,105 @@ const mock = (() => {
     return () => listeners.delete(handler);
   };
 
-  return { status, settings, updateSettings, probe, start, cancel, qrcode, poll, onUpdate };
+  // 仅浏览器预览用的兜底：真值在 Rust 的 naming::VARIABLES，
+  // 桌面端一律走 naming_variables 命令，这份副本只影响脱离桌面壳的预览。
+  const VARIABLES = [
+    ["title", "视频或条目标题"],
+    ["part_title", "分P标题"],
+    ["part_index", "分P序号"],
+    ["bvid", "BV号"],
+    ["aid", "AV号"],
+    ["cid", "CID"],
+    ["owner_name", "UP主名称"],
+    ["owner_mid", "UP主MID"],
+    ["series_title", "番剧/课程/系列名"],
+    ["episode_index", "集序号"],
+    ["episode_title", "集标题"],
+    ["collection_title", "合集名"],
+    ["index", "列表序号"],
+    ["quality", "清晰度"],
+    ["codec", "编码"],
+    ["date", "下载日期（任务创建日）"],
+    ["publish_date", "发布时间（B站发布日期）"],
+    ["ext", "扩展名"],
+  ];
+
+  const SAMPLE = {
+    title: "示例视频",
+    part_title: "分P标题",
+    part_index: 1,
+    bvid: "BV1xx411c7mD",
+    aid: 12345,
+    cid: 67890,
+    owner_name: "示例UP主",
+    owner_mid: 1234567,
+    series_title: "示例系列",
+    episode_index: 3,
+    episode_title: "第 3 集",
+    collection_title: "示例合集",
+    index: 7,
+    quality: "1080P60",
+    codec: "AVC",
+    date: "2026-09-26",
+    publish_date: "2026-01-02",
+  };
+
+  const namingVariables = () => VARIABLES.map(([token, label]) => ({ token, label }));
+
+  const previewNaming = (template, ext = "mp4") => {
+    const segments = [];
+    let usedExt = false;
+    for (const raw of String(template ?? "").split(/[/\\]/)) {
+      let out = "";
+      let rest = raw;
+      while (true) {
+        const start = rest.indexOf("{");
+        if (start === -1) {
+          out += rest;
+          break;
+        }
+        out += rest.slice(0, start);
+        const end = rest.indexOf("}", start);
+        if (end === -1) {
+          out += rest.slice(start);
+          break;
+        }
+        const token = rest.slice(start + 1, end);
+        if (token === "ext") {
+          usedExt = true;
+          out += ext;
+        } else if (token in SAMPLE) {
+          out += SAMPLE[token] === "" ? "" : String(SAMPLE[token]);
+        } else {
+          out += `{${token}}`;
+        }
+        rest = rest.slice(end + 1);
+      }
+      const cleaned = out
+        .replace(/[\\/:*?"<>|]/g, "_")
+        .trim()
+        .replace(/\.+$/, "")
+        .trim();
+      if (cleaned && cleaned !== "." && cleaned !== "..") segments.push(cleaned);
+    }
+    if (!usedExt) {
+      if (segments.length) segments[segments.length - 1] += `.${ext}`;
+      else segments.push(`video.${ext}`);
+    }
+    return segments.join("/");
+  };
+
+  return {
+    status,
+    settings,
+    updateSettings,
+    probe,
+    start,
+    cancel,
+    qrcode,
+    poll,
+    onUpdate,
+    namingVariables,
+    previewNaming,
+  };
 })();

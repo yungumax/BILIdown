@@ -67,6 +67,13 @@ pub struct ProbeSource {
     /// 单视频：BV 号
     pub bvid: String,
     pub cid: u64,
+    /// 单视频：AV 号 / UP 主 mid / 发布时间（Unix 秒）；批量来源为 0
+    pub aid: u64,
+    pub owner_mid: u64,
+    pub pubdate: u64,
+    /// 单视频首页分 P 的序号与标题（单 P 时即 P1），用于 {part_index} {part_title}
+    pub part_index: u32,
+    pub part_title: String,
     /// 单视频时长（秒）
     pub duration: u64,
     /// 多 P 视频的分 P 数
@@ -94,7 +101,7 @@ pub struct DownloadRequest {
     /// 番剧 ep_id / 课程 ep_id
     #[serde(default)]
     pub ep_id: Option<u64>,
-    /// UP 主名，用于命名模板的 {owner}
+    /// UP 主名
     #[serde(default)]
     pub owner: String,
     pub quality: u32,
@@ -103,6 +110,35 @@ pub struct DownloadRequest {
     /// 封面 data URL，仅用于任务行展示
     #[serde(default)]
     pub cover: String,
+    /// 命名模板的其余变量取值，前端从解析结果带过来
+    #[serde(default)]
+    pub naming: NamingMeta,
+}
+
+/// 命名模板里前端能提供的变量取值。取不到的留空——空值在文件名里直接消失。
+/// 清晰度、编码、扩展名由后端在任务执行时补齐。
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct NamingMeta {
+    pub part_title: String,
+    pub part_index: u32,
+    pub aid: u64,
+    pub owner_mid: u64,
+    pub series_title: String,
+    pub episode_index: u32,
+    pub episode_title: String,
+    pub collection_title: String,
+    pub index: u32,
+    /// 已经按本地时间格式化好的 YYYY-MM-DD
+    pub date: String,
+    pub publish_date: String,
+}
+
+/// 「魔法变量」面板的一项。
+#[derive(Debug, Clone, Serialize)]
+pub struct NamingVariable {
+    pub token: String,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
