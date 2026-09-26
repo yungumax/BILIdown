@@ -45,7 +45,14 @@ const BUILTIN_PRESETS = [
   { name: "直接保存到下载目录", template: "{title}_{quality}.{ext}" },
 ];
 
-const selectedPreset = ref("");
+/** 预设名由模板反推：改了模板下拉就跟着变，不会停留在旧预设名上 */
+const selectedPreset = computed(() => {
+  const template = draft.value?.naming_template ?? "";
+  const builtin = BUILTIN_PRESETS.find((preset) => preset.template === template);
+  if (builtin) return builtin.name;
+  const saved = (draft.value?.naming_presets ?? []).find((preset) => preset.template === template);
+  return saved ? saved.name : "";
+});
 const presetName = ref("");
 
 const proxyDraft = ref("");
@@ -281,9 +288,8 @@ function removePref(key, index) {
   draft.value[key] = list;
 }
 
-/** 选预设：内置或用户保存的，选中即填入模板 */
+/** 选预设：内置或用户保存的，选中即填入模板（下拉显示什么由模板决定） */
 function selectPreset(name) {
-  selectedPreset.value = name;
   if (!name || !draft.value) return;
   const builtin = BUILTIN_PRESETS.find((preset) => preset.name === name);
   if (builtin) {
@@ -309,7 +315,7 @@ function savePreset() {
     presets.push({ name, template: draft.value.naming_template });
   }
   draft.value.naming_presets = presets;
-  selectedPreset.value = name;
+  // 不用手动设下拉：下拉是从模板反推的，这里替换进清单后它自己就会显示这个名字
   presetName.value = "";
   emit("toast", `预设「${name}」已加入，点上方「保存」生效`);
 }
@@ -774,7 +780,7 @@ async function open(path) {
             <div class="field full">
               <label>命名预设</label>
               <select :value="selectedPreset" @change="selectPreset($event.target.value)">
-                <option value="">自定义…</option>
+                <option value="">自定义模板</option>
                 <optgroup label="内置">
                   <option v-for="preset in BUILTIN_PRESETS" :key="preset.name" :value="preset.name">
                     {{ preset.name }}

@@ -49,6 +49,7 @@ const steps = computed(() => {
       title: "解析来源",
       hint: parsing.value ? `解析中 ${done.value}/${total.value}` : "输入链接",
       state: items.value.length && !parsing.value ? "done" : "active",
+      to: "input",
     },
     {
       index: 2,
@@ -61,6 +62,8 @@ const steps = computed(() => {
           ? `${okItems.value.length} 个来源待选择`
           : "等待解析",
       state: items.value.length && !parsing.value ? "active" : "idle",
+      // 有解析结果时第 2 步才可跳
+      to: items.value.length && !parsing.value ? "select" : "",
     },
   ];
 });
@@ -361,6 +364,17 @@ async function downloadSelected() {
   }
 }
 
+/** 步骤条点击跳转 */
+function gotoStep(target) {
+  if (target === "input") {
+    view.value = "input";
+    return;
+  }
+  if (target === "select" && okItems.value.length) {
+    openSelect(batchInput.value || okItems.value[0].input);
+  }
+}
+
 /** 清空全部解析结果 */
 function resetParsed() {
   items.value = [];
@@ -445,7 +459,7 @@ async function startSingle(item) {
 
 <template>
   <div :class="{ 'fill-height': isSelectView }">
-    <StepHeader :steps="steps" />
+    <StepHeader :steps="steps" @select="gotoStep" />
 
     <!-- 选择内容：解析后的独立一页 -->
     <section v-if="view === 'select' && activeSource" class="card select-page">

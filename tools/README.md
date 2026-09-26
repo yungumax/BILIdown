@@ -148,3 +148,10 @@ cargo test -p bilidown -- --ignored --nocapture live_incremental_loading
 `test-scroll.mjs` 断言：外层内容区不可滚（scrollHeight == clientHeight）、表体可滚、
 滚表体后顶部工具条与底部统计的位置不变。曾经的问题是整页在滚——工具条和底部
 统计会跟着走，现在只有中间的表体滚。
+
+## 命名预设下拉与步骤条
+
+`probe-naming.mjs` 覆盖：选预设 → 模板填入且下拉显示预设名；手改模板 → 下拉立刻
+变「自定义模板」（不再是停留在旧预设名上骗人）；保存后依然一致。
+
+步骤条（解析来源 / 选择内容）可点击跳转，当前步不可点。

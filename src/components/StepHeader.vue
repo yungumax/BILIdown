@@ -2,11 +2,25 @@
 defineProps({
   steps: { type: Array, required: true },
 });
+const emit = defineEmits(["select"]);
+
+/** 能跳的步骤才可点：没有可去的地方时保持普通展示 */
+function go(step) {
+  if (!step.to) return;
+  emit("select", step.to);
+}
 </script>
 
 <template>
   <ol class="steps">
-    <li v-for="step in steps" :key="step.title" :class="step.state">
+    <li
+      v-for="step in steps"
+      :key="step.title"
+      :class="[step.state, { clickable: !!step.to && step.state !== 'active' }]"
+      :role="step.to ? 'button' : null"
+      :title="step.to && step.state !== 'active' ? `回到「${step.title}」` : null"
+      @click="go(step)"
+    >
       <span class="dot">
         <svg v-if="step.state === 'done'" viewBox="0 0 24 24" aria-hidden="true">
           <path
@@ -74,6 +88,19 @@ li.done {
 .dot svg {
   width: 14px;
   height: 14px;
+}
+
+li.clickable {
+  cursor: pointer;
+}
+
+li.clickable:hover {
+  color: var(--text);
+}
+
+li.clickable:hover .dot {
+  border-color: var(--accent-line);
+  color: var(--accent);
 }
 
 li.active .dot {
