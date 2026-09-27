@@ -1356,7 +1356,7 @@ async function startSingle(item) {
     </section>
 
     <!-- 解析结果入口：成功的一律进「选择内容」页，这里只留入口与失败项 -->
-    <section v-if="items.length" class="card results">
+    <section v-if="items.length" class="card results page-in">
       <header class="results-head">
         <h2>解析结果</h2>
         <span class="count num">{{ okItems.length }}</span>

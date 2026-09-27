@@ -12,16 +12,15 @@
   --line: #e9e4e7;
   --line-soft: #f1edef;
 
-  /* 次要/弱化文字都按"正文级对比度"取值（浅色底上 ≥4.5:1），
-     原来是 3.6:1 与 2.4:1——好看但读不清。 */
+  /* 四档文字都按正文级对比度取（浅色底 ≥4.5:1） */
   --text: #24242a;
   --muted: #5f5f6a;
   --faint: #74747f;
 
   --accent: #fb7299;
   --accent-dark: #f25c86;
-  /* 主色当"文字色"时用这一档：粉色原色在白底只有 2.6:1，读不清。
-     图标、描边、面仍用 --accent，只有文字换用 --accent-ink。 */
+  /* 主色当文字色时用这档：粉色原色在白底只有 2.6:1，读不清。
+     图标、描边、面仍用 --accent。 */
   --accent-ink: #b52a5c;
   --accent-soft: #fdeef3;
   --accent-line: #f8c9d9;
@@ -43,18 +42,9 @@
   --scroll-hover: #c9c2c6;
   --shade: rgba(38, 30, 34, 0.34);
 
-  --radius-lg: 16px;
-  --radius: 14px;
-  --radius-sm: 10px;
-
-  /* 设计 v2：投影、聚焦环、主色渐变、表头纱 */
-  --shadow-1: 0 1px 2px rgba(38, 30, 34, 0.04), 0 8px 22px -12px rgba(38, 30, 34, 0.16);
-  --shadow-2: 0 2px 8px rgba(38, 30, 34, 0.06), 0 22px 48px -22px rgba(38, 30, 34, 0.22);
-  --shadow-accent: 0 6px 18px -9px rgba(251, 114, 153, 0.75);
-  --ring: 0 0 0 3px rgba(251, 114, 153, 0.22);
-  --accent-grad: linear-gradient(135deg, #ff92b4 0%, #fb7299 52%, #ef5486 100%);
-  --header-veil: rgba(255, 255, 255, 0.86);
-  --card-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --radius-lg: 14px;
+  --radius: 10px;
+  --radius-sm: 8px;
 
   --font: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC",
     -apple-system, "Segoe UI", system-ui, sans-serif;
@@ -72,16 +62,16 @@
   --card: #17181a;
   --raised: #1e2022;
 
-  --line: #272a2d;
-  --line-soft: #1f2123;
+  --line: #282a2d;
+  --line-soft: #202224;
 
   --text: #e8e9ea;
   --muted: #a2a6ab;
   --faint: #8b8e93;
 
   --accent: #fb7299;
-  --accent-dark: #ff86a8;
   --accent-ink: #ff9ec0;
+  --accent-dark: #ff86a8;
   --accent-soft: rgba(251, 114, 153, 0.15);
   --accent-line: #553b45;
 
@@ -101,15 +91,6 @@
   --scroll: #2f3236;
   --scroll-hover: #3b3f43;
   --shade: rgba(4, 5, 6, 0.66);
-
-  --shadow-1: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 2px 6px rgba(0, 0, 0, 0.32),
-    0 18px 40px -24px rgba(0, 0, 0, 0.6);
-  --shadow-2: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 4px 12px rgba(0, 0, 0, 0.42),
-    0 30px 60px -28px rgba(0, 0, 0, 0.7);
-  --shadow-accent: 0 8px 22px -10px rgba(251, 114, 153, 0.6);
-  --ring: 0 0 0 3px rgba(251, 114, 153, 0.28);
-  --header-veil: rgba(23, 24, 26, 0.88);
-  --card-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 /* 跟随系统：显式 data-theme="system"、以及属性完全缺失时都走这里。
@@ -124,16 +105,16 @@
     --card: #17181a;
     --raised: #1e2022;
 
-    --line: #272a2d;
-    --line-soft: #1f2123;
+    --line: #282a2d;
+    --line-soft: #202224;
 
     --text: #e8e9ea;
     --muted: #a2a6ab;
     --faint: #8b8e93;
 
     --accent: #fb7299;
-    --accent-dark: #ff86a8;
     --accent-ink: #ff9ec0;
+    --accent-dark: #ff86a8;
     --accent-soft: rgba(251, 114, 153, 0.15);
     --accent-line: #553b45;
 
@@ -153,15 +134,6 @@
     --scroll: #2f3236;
     --scroll-hover: #3b3f43;
     --shade: rgba(4, 5, 6, 0.66);
-
-    --shadow-1: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 2px 6px rgba(0, 0, 0, 0.32),
-      0 18px 40px -24px rgba(0, 0, 0, 0.6);
-    --shadow-2: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 4px 12px rgba(0, 0, 0, 0.42),
-      0 30px 60px -28px rgba(0, 0, 0, 0.7);
-    --shadow-accent: 0 8px 22px -10px rgba(251, 114, 153, 0.6);
-    --ring: 0 0 0 3px rgba(251, 114, 153, 0.28);
-    --header-veil: rgba(23, 24, 26, 0.88);
-    --card-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.035);
   }
 }
 
@@ -290,7 +262,7 @@ input[type="checkbox"]:disabled {
   --motion: 220ms;
   --motion-slow: 340ms;
   --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
-  /* 指数缓出：物品是减速停下的，不做回弹。检测器把弹性缓动判为过时。 */
+  /* 指数缓出：物体是减速停下的，不做回弹（检测器把弹性缓动判为过时） */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -298,17 +270,6 @@ input[type="checkbox"]:disabled {
   from {
     opacity: 0;
     transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes row-in {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
   }
   to {
     opacity: 1;
@@ -342,10 +303,7 @@ input[type="checkbox"]:disabled {
 }
 
 /* 列表行：逐行淡入；延迟最多累计 10 行，长清单不会等出几秒 */
-.row-in {
-  animation: row-in var(--motion) var(--ease-out) both;
-  animation-delay: calc(min(var(--row-i, 0), 10) * 14ms);
-}
+
 
 /* 弹层/对话框出现 */
 .pop-in {
@@ -368,7 +326,7 @@ button:not(:disabled):active {
 
 /* 勾选框：选中时弹一下 */
 input[type="checkbox"]:checked {
-  animation: check-pop 180ms var(--ease-out-expo);
+  animation: check-pop 200ms var(--ease-out-expo);
 }
 
 /* 主题切换：颜色平滑过渡。只在挂载后生效（html.ready），
@@ -384,73 +342,77 @@ html.ready .content {
     border-color var(--motion) var(--ease-out);
 }
 
-/* ============ 设计层 v2 ============
-   只动观感（配色/圆角/投影/层次/字距），不动排版：不改宽高、间距与栅格。
-   选择器统一带 body 前缀：页面内的 scoped 样式带 [data-v-*]，
-   特异性更高，不加前缀的覆盖会被它们压掉。 */
+/* ============ 平面化设计层 ============
+   层次用"面色分层 + 发丝线"表达，不用投影、渐变、模糊。
+   只动观感，不动排版（宽高间距一概不碰）。 */
 
-/* 背景：主色在左上角一层很淡的洗色，纯色底也有纵深 */
-body {
-  background-image: radial-gradient(1100px 520px at 12% -12%, var(--accent-soft), transparent 68%);
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-}
-
-/* 卡片：更低对比的描边 + 柔和投影（深色下再加一条顶部高光） */
+/* 面色分层：底 → 卡片 → 抬起，三档拉开；深浅两套都成立 */
 body .content .card,
 body .content .results {
   border-color: var(--line);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--card-highlight), var(--shadow-1);
+  border-radius: var(--radius);
 }
 
-/* 标题：收紧字距，层级更清楚 */
-body .content .card h1 {
+/* 卡片标题：用字重与字距建立层级，不加装饰 */
+body .content .card > h1 {
   font-weight: 600;
   letter-spacing: -0.02em;
 }
 
-body .content .card h2,
-body .content .group-title,
-body .content .results-head h2 {
+body .content .card > h2,
+body .content .group-title {
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 
-/* 主按钮：主色渐变 + 光晕，悬停再抬一点 */
-body .primary {
-  background-image: var(--accent-grad);
+/* 导航激活态：平色染面（平面化的正确做法），不用描边加重 */
+body .sidebar .nav-item.active {
+  background: var(--accent-soft);
   border-color: transparent;
-  box-shadow: var(--shadow-accent);
 }
 
-body .primary:hover:not(:disabled) {
-  box-shadow: var(--shadow-accent), var(--shadow-1);
-  transform: translateY(-1px);
+body .sidebar .nav-item.active .icon,
+body .sidebar .nav-item.active .label {
+  color: var(--accent-ink);
 }
 
-/* 幽灵按钮：悬停时给一点主色倾向，不再只是描边变色 */
-body .ghost:hover:not(:disabled),
-body .compact:hover:not(:disabled) {
+body .sidebar .nav-item.active .hint {
+  color: var(--muted);
+}
+
+/* 表格：行分隔用发丝线（inset 阴影，不占排版），悬停/选中用平色 */
+body .content .batch-table tbody tr > td {
+  box-shadow: inset 0 -1px 0 var(--line-soft);
+}
+
+body .content .batch-table tbody tr:hover > td {
   background: var(--hover);
 }
 
-/* 可点的小卡片（解析结果入口）：悬停轻微抬起 */
-body .parsed-chip:hover {
-  box-shadow: var(--shadow-1);
-  transform: translateY(-1px);
+body .content .batch-table thead th {
+  background: var(--card);
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
-/* 数字列等宽，表格读数不跳格 */
+/* 数字列等宽，读数不跳格 */
 .num,
 .col-idx,
 .col-dur,
-.count {
+.count,
+.loaded-hint {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
 }
 
-/* 浏览器自带的那几处也从调色板取值：选中高亮、文本光标 */
+/* 主色当文字时用更深一档（粉色原色对比度不够） */
+body .content .tabs button.active,
+body .content .kind-tag,
+body .content .group-row .group-kind {
+  color: var(--accent-ink);
+}
+
+/* 浏览器自带界面也从调色板取值：选中高亮、文本光标、键盘聚焦环 */
 ::selection {
   background: var(--accent-soft);
   color: var(--text);
@@ -462,100 +424,16 @@ textarea {
   caret-color: var(--accent);
 }
 
-/* 键盘聚焦：统一的主色聚焦环（鼠标点击不出现，避免噪声） */
 body :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/* 输入类控件圆角与卡片一致 */
-body .content input:not([type="checkbox"]),
-body .content select,
-body .content textarea {
-  border-radius: var(--radius-sm);
-}
-
-/* 表头：半透明纱 + 字距，滚动时压在内容之上更有层次 */
-body .content .batch-table thead th {
-  background: var(--header-veil);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-/* 表格行：悬停更柔，选中态用主色左侧条而不是整行重色 */
-body .content .batch-table tbody tr:hover > td {
-  background: var(--hover);
-}
-
-/* 滚动条：更细更圆 */
-body ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-body ::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: 99px;
-  background-clip: content-box;
-}
-
-/* 侧栏：激活项用主色面 + 左侧主色条（伪元素绝对定位，不占排版） */
+/* 状态变更要"立刻看得见"：快、平、只动颜色与透明度 */
+body .content .batch-table tbody tr > td,
 body .sidebar .nav-item {
-  position: relative;
-  border-color: transparent;
-  background: transparent;
-}
-
-body .sidebar .nav-item.active {
-  color: var(--text);
-  background: var(--card);
-  border-color: var(--line);
-  box-shadow: var(--card-highlight), var(--shadow-1);
-}
-
-/* 激活项不用 >1px 的彩色侧边条：改成主色染面 + 主色图标 */
-body .sidebar .nav-item.active {
-  background: linear-gradient(180deg, var(--accent-soft), transparent 70%), var(--card);
-}
-
-body .sidebar .nav-item.active .icon {
-  color: var(--accent);
-}
-
-body .sidebar .nav-item.active .label {
-  color: var(--text);
-}
-
-body .sidebar .nav-item.active .hint {
-  color: var(--muted);
-}
-
-body .sidebar .nav-item .hint {
-  letter-spacing: 0.01em;
-}
-
-/* 标题栏：底部发丝线 + 极淡的上高光，和内容区分层 */
-body .titlebar {
-  border-bottom: 1px solid var(--line-soft);
-  background-image: linear-gradient(180deg, var(--card), transparent);
-}
-
-/* 步骤条：当前步的圆点用主色渐变，已完成步用主色描边 */
-body .steps .dot,
-body .steps li .index {
-  background-image: var(--accent-grad);
-}
-
-/* 主色当文字时换用更深的同色系（对比度达标），图标与描边不变 */
-body .content .tabs button.active {
-  color: var(--accent-ink);
-}
-
-body .content .kind-tag,
-body .content .parsed-chip .kind {
-  color: var(--accent-ink);
-}
-
-body .content .group-row .group-kind {
-  color: var(--accent-ink);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
 }
