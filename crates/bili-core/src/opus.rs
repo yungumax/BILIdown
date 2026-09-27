@@ -78,6 +78,21 @@ pub fn parse_page(html: &str) -> Result<OpusPost> {
                 post.pub_time = text_of(module.pointer("/module_author/pub_time"));
                 post.author = text_of(module.pointer("/module_author/name"));
             }
+            // 图片集形式的图文：图片挂在置顶模块的 album 里，正文段落是纯文本
+            k if k.contains("TOP") => {
+                if let Some(pics) = module
+                    .pointer("/module_top/display/album/pics")
+                    .and_then(|v| v.as_array())
+                {
+                    for pic in pics {
+                        if let Ok(image) = serde_json::from_value::<OpusImage>(pic.clone()) {
+                            if !image.url.is_empty() && !post.images.contains(&image) {
+                                post.images.push(image);
+                            }
+                        }
+                    }
+                }
+            }
             k if k.contains("STAT") => {
                 post.like = module
                     .pointer("/module_stat/like/count")
@@ -287,6 +302,23 @@ window.__INITIAL_STATE__={"detail":{"basic":{"title":"t"},"modules":[
         let post = parse_page(&PAGE.replace("第一段", "带 } 和 { 还有 \\\" 引号")).expect("解析成功");
         assert!(post.text.starts_with("带 } 和 {"));
         assert_eq!(post.images.len(), 2, "后面的图片仍然要解出来");
+    }
+
+    /// 图片集形式：图片在 module_top.display.album.pics，正文段落里没有图。
+    #[test]
+    fn parses_album_style_post_images() {
+        const PAGE: &str = r##"<html><script>
+window.__INITIAL_STATE__={"detail":{"modules":[
+{"module_type":"MODULE_TYPE_TOP","module_top":{"display":{"type":1,"album":{"pics":[
+ {"url":"http://i0.hdslb.com/bfs/new_dyn/a.jpg","width":1440,"height":1080},
+ {"url":"http://i0.hdslb.com/bfs/new_dyn/b.jpg","width":1440,"height":1080},
+ {"url":"http://i0.hdslb.com/bfs/new_dyn/c.jpg","width":1440,"height":1080}]}}}},
+{"module_type":"MODULE_TYPE_CONTENT","module_content":{"paragraphs":[
+ {"para_type":1,"text":{"nodes":[{"word":{"words":"只有文字"}}]}}]}}]}};</script></html>"##;
+        let post = parse_page(PAGE).expect("解析成功");
+        assert_eq!(post.text, "只有文字");
+        assert_eq!(post.images.len(), 3, "图片集里的三张图要都取到");
+        assert_eq!(post.images[0].url, "http://i0.hdslb.com/bfs/new_dyn/a.jpg");
     }
 
     #[test]
