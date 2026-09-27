@@ -41,7 +41,7 @@ watch(() => props.qr, draw);
 
 <template>
   <div class="backdrop" @click.self="emit('close')">
-    <div class="dialog" role="dialog" aria-modal="true">
+    <div class="dialog pop-in" role="dialog" aria-modal="true">
       <header class="head">
         <h2>{{ login.logged_in ? "账号" : "扫码登录" }}</h2>
         <button class="close" title="关闭" @click="emit('close')">✕</button>

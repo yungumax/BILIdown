@@ -940,7 +940,7 @@ async function startSingle(item) {
                 </svg>
               </button>
               <Transition name="picker">
-                <div v-if="pickingBatch" class="batch-pop">
+                <div v-if="pickingBatch" class="batch-pop pop-in">
                   <button
                     v-for="n in BATCH_SIZES"
                     :key="n"
@@ -978,7 +978,7 @@ async function startSingle(item) {
                 </svg>
               </button>
               <Transition name="picker">
-                <div v-if="pickingParse" class="parse-pop">
+                <div v-if="pickingParse" class="parse-pop pop-in">
                   <button class="parse-item" @click="parseAll">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path
@@ -1067,7 +1067,7 @@ async function startSingle(item) {
                 </svg>
               </button>
               <Transition name="picker">
-                <div v-if="pickingParse" class="parse-pop">
+                <div v-if="pickingParse" class="parse-pop pop-in">
                   <button v-if="!pickingRange" class="parse-item" @click="openRange">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path
@@ -1128,7 +1128,7 @@ async function startSingle(item) {
           </button>
 
           <Transition name="picker">
-            <div v-if="pickingDl" class="dl-pop">
+            <div v-if="pickingDl" class="dl-pop pop-in">
               <label class="pop-field">
                 <span>清晰度</span>
                 <select v-model.number="dlQuality">
@@ -1196,7 +1196,7 @@ async function startSingle(item) {
             <template v-for="group in tableGroups" :key="group.source.input">
               <tr
                 v-if="showGroups"
-                class="group-row"
+                class="group-row row-in"
                 :class="{ folded: isCollapsed(group.source.input) }"
                 :title="isCollapsed(group.source.input) ? '展开这个来源' : '收起这个来源'"
                 @click="toggleGroup(group.source.input)"
@@ -1232,7 +1232,9 @@ async function startSingle(item) {
                 v-for="row in group.rows"
                 v-show="!isCollapsed(group.source.input)"
                 :key="row.key"
+                class="row-in"
                 :class="{ on: isSelected(row) }"
+                :style="{ '--row-i': Math.min(row.seq, 10) }"
                 :title="fileNameOf(row)"
               >
                 <td class="col-check">

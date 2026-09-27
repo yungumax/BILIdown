@@ -39,6 +39,8 @@ const queue = computed(() => {
 });
 
 onMounted(async () => {
+  // 首帧之后再开颜色过渡：启动时要的是"立刻正确"，不是"渐变色"
+  requestAnimationFrame(() => document.documentElement.classList.add("ready"));
   try {
     const status = await api.appStatus();
     login.value = status.login;
@@ -295,6 +297,7 @@ async function doLogout() {
              其余页面按需挂载，所以这里不用 v-else-if 链。 -->
         <ParsePage
           v-show="page === 'parse'"
+          :class="{ 'page-in': page === 'parse' }"
           :login="login"
           :settings="settings"
           @toast="showToast"
@@ -302,6 +305,7 @@ async function doLogout() {
         />
         <TransferPage
           v-if="page === 'transfer'"
+          :class="{ 'page-in': page === 'transfer' }"
           :tasks="tasks"
           @cancel="cancelTask"
           @open="openPath"
@@ -309,6 +313,7 @@ async function doLogout() {
         />
         <SettingsPage
           v-if="page === 'settings'"
+          :class="{ 'page-in': page === 'settings' }"
           :login="login"
           :settings="settings"
           :env="settingsEnv"
@@ -319,8 +324,8 @@ async function doLogout() {
           @reload="loadSettings"
           @reset="resetSettings"
         />
-        <AboutPage v-if="page === 'about'" :version="version" />
-        <LibraryPage v-if="page === 'library'" @goto="page = $event" />
+        <AboutPage v-if="page === 'about'" class="page-in" :version="version" />
+        <LibraryPage v-if="page === 'library'" class="page-in" @goto="page = $event" />
       </main>
     </div>
 

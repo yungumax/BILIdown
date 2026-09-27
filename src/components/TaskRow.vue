@@ -246,6 +246,11 @@ function human(bytes) {
   opacity: 0.55;
 }
 
+/* 进度推进要平滑：后端每几百毫秒推一次，直接跳格像卡顿 */
+.seg .fill {
+  transition: width var(--motion) linear;
+}
+
 /* 合成阶段没有百分比，用流动填充表示进行中 */
 .seg.indeterminate .fill {
   width: 100%;

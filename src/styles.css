@@ -247,3 +247,107 @@ input[type="checkbox"]:disabled {
     animation: none !important;
   }
 }
+
+/* ============ 动效层 ============
+   全站一套节奏与缓动，避免各组件各用一套时长。
+   关闭方式统一在下面的 prefers-reduced-motion 里（已在文件上方定义）。 */
+:root {
+  --motion-fast: 130ms;
+  --motion: 220ms;
+  --motion-slow: 340ms;
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.32, 0.64, 1);
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes check-pop {
+  0% {
+    transform: scale(0.74);
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* 栏目切换：整页淡入 + 轻微上浮 */
+.page-in {
+  animation: page-in var(--motion) var(--ease-out) both;
+}
+
+/* 列表行：逐行淡入；延迟最多累计 10 行，长清单不会等出几秒 */
+.row-in {
+  animation: row-in var(--motion) var(--ease-out) both;
+  animation-delay: calc(min(var(--row-i, 0), 10) * 14ms);
+}
+
+/* 弹层/对话框出现 */
+.pop-in {
+  animation: pop-in var(--motion-fast) var(--ease-out) both;
+}
+
+/* 按钮：悬停/按下的过渡统一，按下给一点位移反馈 */
+button {
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px) scale(0.995);
+}
+
+/* 勾选框：选中时弹一下 */
+input[type="checkbox"]:checked {
+  animation: check-pop 200ms var(--ease-spring);
+}
+
+/* 主题切换：颜色平滑过渡。只在挂载后生效（html.ready），
+   否则启动首帧会从默认配色渐变过来，反而更显眼。 */
+html.ready body,
+html.ready .sidebar,
+html.ready .titlebar,
+html.ready .card,
+html.ready .content {
+  transition:
+    background-color var(--motion) var(--ease-out),
+    color var(--motion) var(--ease-out),
+    border-color var(--motion) var(--ease-out);
+}
