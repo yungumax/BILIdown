@@ -2376,7 +2376,7 @@ pub async fn rename_downloaded(
         } else {
             settings.output_filename(&ctx)
         };
-        let wanted = wanted
+        let mut wanted = wanted
             .file_name()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_default();
@@ -2384,7 +2384,18 @@ pub async fn rename_downloaded(
             continue;
         }
 
-        match find_downloaded(&output_dir, &item.title, &wanted).await {
+        let found = find_downloaded(&output_dir, &item.title, &wanted).await;
+        // 扩展名沿用原文件：音频是 m4a、视频是 mp4/mkv，按封装去猜会把音频改成 .mp4
+        if let Some(found) = &found {
+            if let (Some(old_ext), Some(_)) = (found.extension(), Path::new(&wanted).extension()) {
+                let old_ext = old_ext.to_string_lossy().to_string();
+                if !old_ext.is_empty() {
+                    wanted = format!("{}.{old_ext}", Path::new(&wanted).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default());
+                }
+            }
+        }
+
+        match found {
             Some(found) => {
                 if found.file_name().map(|s| s.to_string_lossy() == wanted).unwrap_or(false) {
                     plan.skipped += 1;
