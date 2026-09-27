@@ -760,15 +760,18 @@ async function startSingle(item) {
           <span class="loaded-hint num">共 {{ loadedCount }} 条</span>
         </template>
         <template v-else-if="activeIsBatch">
-          <span class="loaded-hint num" title="已加载 / 总数">
-            {{ loadedCount }} / {{ activeSource.probe.total }} 项
+          <span class="loaded-hint num">
+            已加载 {{ loadedCount }} / {{ activeSource.probe.total }} 项
           </span>
-          <template v-if="!activeSource.probe.exhausted">
-            <button class="ghost" :disabled="loadingMore" @click="loadMore">
-              {{ loadingMore ? "解析中…" : "继续解析" }}
-            </button>
-          </template>
-          <span v-else class="hint-text">已全部加载</span>
+          <!-- 拉到底就不再给加载控件：只留计数与下载动作（照着「解析完全」的样子） -->
+          <button
+            v-if="!activeSource.probe.exhausted"
+            class="ghost"
+            :disabled="loadingMore"
+            @click="loadMore"
+          >
+            {{ loadingMore ? "解析中…" : "继续解析" }}
+          </button>
         </template>
         <span class="spacer"></span>
 
@@ -1530,6 +1533,8 @@ input:focus {
 
 .kind-tag {
   flex: none;
+  /* 和标题靠拢：整行 gap 是 10px，这里收掉 4px */
+  margin-left: -4px;
   padding: 2px 8px;
   font-size: 11px;
   color: var(--accent);
@@ -1714,12 +1719,6 @@ input:focus {
 .foot-count b {
   color: var(--text);
   font-weight: 600;
-}
-
-/* 已经拉到底时给一行灰字，不用禁用的按钮假装还能点 */
-.hint-text {
-  font-size: 12px;
-  color: var(--faint);
 }
 
 /* 输入页里的批量来源条目：点它进选择页 */
