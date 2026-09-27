@@ -1106,7 +1106,7 @@ h1 {
 .tabs {
   display: flex;
   gap: 8px;
-  margin: 20px 0 14px;
+  margin: 12px 0 12px;
 }
 
 .tabs button {
@@ -1225,8 +1225,8 @@ input:focus {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 16px;
-  margin-top: 20px;
-  padding-top: 15px;
+  margin-top: 14px;
+  padding-top: 13px;
   border-top: 1px solid var(--line-soft);
   font-size: 12px;
   color: var(--muted);
@@ -1307,9 +1307,10 @@ input:focus {
 /* 输入页里的"已解析来源"入口 */
 .parsed-bar {
   display: flex;
+  /* 与上面的标题行贴合：标题行自身 38px 高，再加外边距就显得空 */
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 0;
 }
 
 .parsed-chip {
@@ -1755,7 +1756,7 @@ input:focus {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
 }
 
 h2 {
