@@ -619,13 +619,30 @@ async function downloadAll() {
 const pickingDl = ref(false);
 const dlPanel = ref(null);
 
+// 工具条上的窄版「每批 N」：自定义菜单，原生 select 的去不掉的箭头会占宽
+const BATCH_SIZES = [20, 50, 100];
+const pickingBatch = ref(false);
+const batchPanel = ref(null);
+
+function chooseBatchSize(size) {
+  batchSize.value = size;
+  pickingBatch.value = false;
+}
+
 function onDlDocumentDown(event) {
-  if (!pickingDl.value) return;
-  if (dlPanel.value && !dlPanel.value.contains(event.target)) pickingDl.value = false;
+  if (pickingDl.value && dlPanel.value && !dlPanel.value.contains(event.target)) {
+    pickingDl.value = false;
+  }
+  if (pickingBatch.value && batchPanel.value && !batchPanel.value.contains(event.target)) {
+    pickingBatch.value = false;
+  }
 }
 
 function onDlKeydown(event) {
-  if (event.key === "Escape") pickingDl.value = false;
+  if (event.key === "Escape") {
+    pickingDl.value = false;
+    pickingBatch.value = false;
+  }
 }
 
 onMounted(() => {
@@ -764,6 +781,24 @@ async function startSingle(item) {
             已加载 {{ loadedCount }} / {{ activeSource.probe.total }} 项
           </span>
           <!-- 拉到底就不再给加载控件：只留计数与下载动作（照着「解析完全」的样子） -->
+          <div v-if="!activeSource.probe.exhausted" ref="batchPanel" class="batch-picker">
+            <button class="ghost compact" :class="{ on: pickingBatch }" @click="pickingBatch = !pickingBatch">
+              每批 {{ batchSize }}
+            </button>
+            <Transition name="picker">
+              <div v-if="pickingBatch" class="batch-pop">
+                <button
+                  v-for="n in BATCH_SIZES"
+                  :key="n"
+                  class="batch-item"
+                  :class="{ on: n === batchSize }"
+                  @click="chooseBatchSize(n)"
+                >
+                  每批 {{ n }}
+                </button>
+              </div>
+            </Transition>
+          </div>
           <button
             v-if="!activeSource.probe.exhausted"
             class="ghost"
@@ -807,15 +842,6 @@ async function startSingle(item) {
                   </option>
                 </select>
               </label>
-              <label v-if="activeIsBatch" class="pop-field">
-                <span>每次继续解析加载条数</span>
-                <select v-model.number="batchSize">
-                  <option :value="20">20 条</option>
-                  <option :value="50">50 条</option>
-                  <option :value="100">100 条</option>
-                </select>
-              </label>
-
               <label class="pop-field">
                 <span>音轨</span>
                 <select v-model="dlAudio">
@@ -1492,10 +1518,59 @@ input:focus {
 
 .select-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--line-soft);
+}
+
+/* 窄版"每批 N"：不带下拉箭头（原生 select 的箭头去不掉，所以自绘菜单） */
+.batch-picker {
+  position: relative;
+  flex: none;
+}
+
+.ghost.compact {
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+
+.ghost.compact.on {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--raised);
+}
+
+.batch-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 15;
+  min-width: 108px;
+  padding: 4px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 28px rgba(20, 12, 16, 0.24);
+}
+
+.batch-item {
+  display: block;
+  width: 100%;
+  padding: 6px 9px;
+  font-size: 12.5px;
+  color: var(--text);
+  text-align: left;
+  border-radius: var(--radius-sm);
+}
+
+.batch-item:hover {
+  background: var(--hover);
+}
+
+.batch-item.on {
+  color: var(--accent);
 }
 
 .back {
@@ -1522,7 +1597,8 @@ input:focus {
 /* 一行布局下标题可伸缩：优先吃掉空白，实在放不下才省略（悬停看全名） */
 .select-title {
   flex: 1 1 auto;
-  min-width: 0;
+  /* 下限保证标题至少能读；一行实在放不下时工具条整行换行兜底 */
+  min-width: 110px;
   margin: 0;
   font-size: 14px;
   font-weight: 700;
