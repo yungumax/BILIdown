@@ -515,24 +515,13 @@ const tableRows = computed(() => {
   for (const source of allSources.value) {
     // 按序号加载时这批的第一条不是来源里的第 1 条；abs 记来源内的真实位置
     const fromIndex = source.probe.from_index || 1;
-    // 编号 = **在来源里的绝对序号**（1 = 来源里最旧的那条），不是"批内位置"。
-    // 这样先解析 30 条、再解析 30 条，同一条内容的编号不会从 30 变成 60。
+    // 编号 = 在来源里的固定位置（**1 = 最新**，越靠旧编号越大）。
     //
-    // 锚点用来源声明的总条数：绝对位置 = fromIndex + position（从最新那头数），
-    // 序号 = total - 绝对位置 + 1。列表接口是"最新在前"，所以最新那条 = total。
-    // 图文接口不给总数（total=0），退化成批内相对编号（再解析一次会重排，见说明）。
-    // 番剧/课程按集数顺序给，不倒。
-    const reversed = CHRONO_KINDS.includes(source.probe.kind);
-    const count = source.probe.items.length;
-    const total = source.probe.total || 0;
-    const absOf = (position) => {
-      const absolute = fromIndex + position;
-      // 图文/专栏没有总数可锚：用"从头数的固定位置"，冻结且与预览一致
-      if (source.probe.kind === "opus" || source.probe.kind === "article") return absolute;
-      if (!reversed) return absolute;
-      if (total > 0) return Math.max(total - absolute + 1, 1);
-      return Math.max(count - position, 1);
-    };
+    // 为什么用"位置"而不是"倒数第几名"：列表只会在末尾追加，已加载条目的位置
+    // 永远不变 —— 所以先解析 30 条、再解析 30 条，同一条的编号不会从 30 变成 60。
+    // 而且预览与下载用的是同一个值，不会出现"预览一个号、落盘另一个号"。
+    // 番剧/课程本来就按集数顺序，同样按位置给（顺带保持"新→旧"一致）。
+    const absOf = (position) => fromIndex + position;
     if (source.probe.kind === "video") {
       const ck = contentKey(null, source);
       if (seenItems.has(ck)) continue;
@@ -871,12 +860,10 @@ function singleNaming(probe) {
 
 /** 序号列的补零宽度与文件名一致：100 条补 3 位，避免表里 "01" 而磁盘上是 "001" */
 function paddedSeq(row) {
-  const width = String(Math.max(row.source.probe.items.length, 1)).length;
+  const probe = row.source.probe;
+  const width = String(Math.max(probe.total || probe.items.length, 1)).length;
   return String(row.abs).padStart(Math.max(width, 2), "0");
 }
-
-/** 这些来源的列表接口是"最新在前"，编号要倒成"由旧到新"；番剧/课程按集数顺序不倒 */
-const CHRONO_KINDS = ["opus", "space", "fav", "collection", "series", "audio"];
 
 /** 文件夹第二层叫什么都由来源类型决定（见 batchNaming 里的说明） */
 function folderLevel(batch, entry) {
@@ -909,7 +896,9 @@ function batchNaming(batch, entry, position) {
     source_kind: KIND_LABELS[batch.kind] ?? "视频",
     // {index} 的补零宽度按本批条数算：20 条补到 2 位、几千条补到 4 位，
     // 这样目录按名称排序才是 01、02 … 10，而不是 1、10、2
-    index_pad: String(Math.max(batch.items.length, 1)).length,
+    // 补零宽度按来源总数（拿不到总数时用本批条数）：表格与文件名同宽，
+    // 而且来源以后继续拉长，已编号的位数也不会变
+    index_pad: String(Math.max(batch.total || batch.items.length, 1)).length,
     // 分钟，东为正（JS 的 getTimezoneOffset 符号相反）
     tz_offset_min: -new Date().getTimezoneOffset(),
     // 序号由表格按"由旧到新"算好后传进来（row.abs），这里不再倒第二次。
