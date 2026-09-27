@@ -620,9 +620,43 @@ const pickingDl = ref(false);
 const dlPanel = ref(null);
 
 // 工具条上的窄版「每批 N」：自定义菜单，原生 select 的去不掉的箭头会占宽
-const BATCH_SIZES = [20, 50, 100];
+const BATCH_SIZES = [20, 50, 100, 200];
 const pickingBatch = ref(false);
 const batchPanel = ref(null);
+
+// 「解析」下拉：一次拉一批之外的两种批量做法
+const pickingParse = ref(false);
+const parsePanel = ref(null);
+const parsingAll = ref(false);
+
+/** 一直往后拉，直到来源到底或到单次上限；每拉完一页刷新计数 */
+async function loadAll() {
+  const source = activeSource.value;
+  if (!source || parsingAll.value) return;
+  parsingAll.value = true;
+  try {
+    for (let guard = 0; guard < 200 && !source.probe.exhausted; guard += 1) {
+      const before = source.probe.loaded;
+      await loadMore();
+      // 没有进展（出错、被限流）就停，别在原地打转
+      if (source.probe.loaded === before) break;
+    }
+  } finally {
+    parsingAll.value = false;
+  }
+}
+
+async function parseAll() {
+  pickingParse.value = false;
+  await loadAll();
+}
+
+/** 后台解析全部并下载：把余下的分页拉完，再把全部条目排进下载队列 */
+async function parseAllAndDownload() {
+  pickingParse.value = false;
+  await loadAll();
+  await downloadAll();
+}
 
 function chooseBatchSize(size) {
   batchSize.value = size;
@@ -632,6 +666,9 @@ function chooseBatchSize(size) {
 function onDlDocumentDown(event) {
   if (pickingDl.value && dlPanel.value && !dlPanel.value.contains(event.target)) {
     pickingDl.value = false;
+  }
+  if (pickingParse.value && parsePanel.value && !parsePanel.value.contains(event.target)) {
+    pickingParse.value = false;
   }
   if (pickingBatch.value && batchPanel.value && !batchPanel.value.contains(event.target)) {
     pickingBatch.value = false;
@@ -781,34 +818,97 @@ async function startSingle(item) {
             已加载 {{ loadedCount }} / {{ activeSource.probe.total }} 项
           </span>
           <!-- 拉到底就不再给加载控件：只留计数与下载动作（照着「解析完全」的样子） -->
-          <div v-if="!activeSource.probe.exhausted" ref="batchPanel" class="batch-picker">
-            <button class="ghost compact" :class="{ on: pickingBatch }" @click="pickingBatch = !pickingBatch">
-              每批 {{ batchSize }}
-            </button>
-            <Transition name="picker">
-              <div v-if="pickingBatch" class="batch-pop">
-                <button
-                  v-for="n in BATCH_SIZES"
-                  :key="n"
-                  class="batch-item"
-                  :class="{ on: n === batchSize }"
-                  @click="chooseBatchSize(n)"
-                >
-                  每批 {{ n }}
-                </button>
-              </div>
-            </Transition>
-          </div>
-          <button
-            v-if="!activeSource.probe.exhausted"
-            class="ghost"
-            :disabled="loadingMore"
-            @click="loadMore"
-          >
-            {{ loadingMore ? "解析中…" : "继续解析" }}
-          </button>
+          <template v-if="!activeSource.probe.exhausted">
+            <div ref="batchPanel" class="batch-picker">
+              <button
+                class="ghost compact"
+                :class="{ on: pickingBatch }"
+                aria-haspopup="menu"
+                @click="pickingBatch = !pickingBatch"
+              >
+                每批 {{ batchSize }}
+                <svg class="caret" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="m6 9.5 6 6 6-6"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <Transition name="picker">
+                <div v-if="pickingBatch" class="batch-pop">
+                  <button
+                    v-for="n in BATCH_SIZES"
+                    :key="n"
+                    class="batch-item"
+                    :class="{ on: n === batchSize }"
+                    @click="chooseBatchSize(n)"
+                  >
+                    每批 {{ n }}
+                  </button>
+                </div>
+              </Transition>
+            </div>
+
+            <!-- 继续解析（左半，拉一批）与解析方式下拉（右半的箭头） -->
+            <div ref="parsePanel" class="parse-split" :class="{ on: pickingParse }">
+              <button class="ghost seg" :disabled="loadingMore" @click="loadMore">
+                {{ loadingMore ? `解析中 ${loadedCount} / ${activeSource.probe.total}` : "继续解析" }}
+              </button>
+              <button
+                class="ghost seg caret"
+                :disabled="loadingMore"
+                aria-haspopup="menu"
+                title="更多解析方式"
+                @click="pickingParse = !pickingParse"
+              >
+                <svg class="caret" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="m6 9.5 6 6 6-6"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <Transition name="picker">
+                <div v-if="pickingParse" class="parse-pop">
+                  <button class="parse-item" @click="parseAll">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M3.6 6.6 5.2 8.2l3-3.6M3.6 12.2 5.2 13.8l3-3.6M3.6 17.8 5.2 19.4l3-3.6M12 7.2h8.4M12 12.8h8.4M12 18.4h8.4"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                    解析全部
+                  </button>
+                  <button class="parse-item" @click="parseAllAndDownload">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M12 4v9.6m0 0L8.4 10m3.6 3.6L15.6 10M4.5 18.6h15"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                    后台解析全部并下载
+                  </button>
+                </div>
+              </Transition>
+            </div>
+          </template>
         </template>
-        <span class="spacer"></span>
 
         <!-- 清晰度/音轨收进弹层，工具条只留动作 -->
         <div ref="dlPanel" class="dl-settings">
@@ -862,7 +962,14 @@ async function startSingle(item) {
           </Transition>
         </div>
 
-        <button v-if="hasTable" class="ghost" @click="downloadAll">下载全部</button>
+        <!-- 还没拉完先不给"下载全部"：否则点下去只下载了已加载的那一部分 -->
+        <button
+          v-if="hasTable && (!activeIsBatch || activeSource.probe.exhausted)"
+          class="ghost"
+          @click="downloadAll"
+        >
+          下载全部
+        </button>
         <button
           class="primary"
           :disabled="hasTable && !selectedCount"
@@ -2075,5 +2182,89 @@ option:disabled {
   flex: none;
   color: var(--faint);
   font-size: 11.5px;
+}
+
+/* 「每批 N」上的下拉箭头，以及「继续解析 + 解析方式」的合并按钮 */
+.batch-picker .ghost.compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.caret {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.parse-split {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+.select-bar .parse-split .seg {
+  padding: 6px 11px;
+  border-radius: 0;
+}
+
+.select-bar .parse-split .seg:first-child {
+  border-top-left-radius: var(--radius-sm);
+  border-bottom-left-radius: var(--radius-sm);
+}
+
+.select-bar .parse-split .seg.caret {
+  padding: 6px;
+  border-top-right-radius: var(--radius-sm);
+  border-bottom-right-radius: var(--radius-sm);
+  border-left-color: transparent;
+}
+
+.parse-split.on .seg {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--raised);
+}
+
+.parse-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 15;
+  min-width: 186px;
+  padding: 4px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 30px rgba(20, 12, 16, 0.24);
+}
+
+.parse-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  font-size: 12.5px;
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+  border-radius: var(--radius-sm);
+}
+
+.parse-item svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+}
+
+.parse-item:hover {
+  background: var(--hover);
+}
+
+.parse-item:hover svg {
+  color: var(--text);
 }
 </style>
