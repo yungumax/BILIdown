@@ -33,7 +33,7 @@ const check = (name, ok, detail = "") => {
 // ── 1. 媒体页：视频清晰度 → 480P，保存（写的是沙箱的 settings.json） ──
 await js(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('设置')).click()`);
 await wait(900);
-await js(`[...document.querySelectorAll('.cats button')].find(b => b.textContent.includes('清晰度与封装格式'))?.click()`);
+await js(`[...document.querySelectorAll('.cats button')].find(b => b.querySelector('.label')?.textContent.trim() === '媒体')?.click()`);
 await wait(600);
 const picked = await js(`(() => {
   const field = [...document.querySelectorAll('.field')].find(f => f.querySelector(':scope > label')?.textContent.trim() === '视频清晰度');

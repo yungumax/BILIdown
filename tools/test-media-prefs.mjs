@@ -83,7 +83,7 @@ const clearRows = async () => {
 // 进设置 → 媒体
 await js(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('设置')).click()`);
 await wait(900);
-await js(`[...document.querySelectorAll('.cats button')].find(b => b.textContent.includes('清晰度与封装格式'))?.click()`);
+await js(`[...document.querySelectorAll('.cats button')].find(b => b.querySelector('.label')?.textContent.trim() === '媒体')?.click()`);
 await wait(600);
 
 console.log("== 媒体页 ==");
@@ -139,6 +139,46 @@ await js(`(() => {
 await wait(400);
 s = await state();
 check("选 480P 后下拉显示 480P", s.清晰度?.text?.includes("480P"), s.清晰度?.text);
+
+// ── 附加内容已并入媒体 ──
+console.log("\n== 附加内容并入媒体 ==");
+const cats = await js(`JSON.stringify([...document.querySelectorAll('.cats button .label')].map(l => l.textContent.trim()))`);
+console.log("  分类栏: " + cats);
+check("「附加内容」这一栏没了", !JSON.parse(cats).includes("附加内容"));
+check("其余分类还在", JSON.parse(cats).includes("媒体") && JSON.parse(cats).includes("编码与处理"), cats);
+
+const merged = JSON.parse(await js(`(() => {
+  const boxes = [...document.querySelectorAll('.card-check span')].map(s => s.textContent.trim());
+  const field = [...document.querySelectorAll('.field')].find(f => f.querySelector(':scope > label')?.textContent.trim() === '下载范围');
+  return JSON.stringify({
+    复选框: boxes,
+    下载范围: field?.querySelector('select')?.options[field.querySelector('select').selectedIndex]?.textContent.trim(),
+    范围选项: field ? [...field.querySelector('select').options].map(o => o.textContent.trim()) : []
+  });
+})()`));
+console.log("  搬过来的: " + JSON.stringify(merged));
+check("媒体页有「嵌入封面」", merged.复选框.some((t) => t.includes("嵌入封面")), JSON.stringify(merged.复选框));
+check("媒体页有「嵌入字幕」", merged.复选框.some((t) => t.includes("嵌入字幕")));
+check("媒体页有「下载范围」（两个选项）", merged.范围选项.length === 2 && !!merged.下载范围, merged.范围选项.join(" / "));
+
+// 勾字幕 → 出说明；切换下载范围 → 下拉跟着变
+await js(`[...document.querySelectorAll('.card-check')].find(l => l.textContent.includes('嵌入字幕')).querySelector('input').click()`);
+await wait(400);
+check("勾上「嵌入字幕」后给出后续版本说明",
+  (await js(`[...document.querySelectorAll('.note')].some(n => n.textContent.includes('字幕与弹幕下载将在后续版本提供'))`)) === true);
+await js(`(() => {
+  const field = [...document.querySelectorAll('.field')].find(f => f.querySelector(':scope > label')?.textContent.trim() === '下载范围');
+  const sel = field.querySelector('select');
+  const opt = [...sel.options].find(o => o.textContent.includes('保留原始'));
+  sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true }));
+  return true;
+})()`);
+await wait(400);
+check("「下载范围」切到保留原始频道后选中态跟着变",
+  (await js(`(() => {
+    const field = [...document.querySelectorAll('.field')].find(f => f.querySelector(':scope > label')?.textContent.trim() === '下载范围');
+    return field.querySelector('select').selectedOptions[0].textContent.includes('保留原始');
+  })()`)) === true);
 
 // 收尾：撤销，别留脏草稿
 await js(`[...document.querySelectorAll('button')].find(b => b.textContent.includes('撤销'))?.click()`);

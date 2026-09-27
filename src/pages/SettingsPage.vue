@@ -15,18 +15,16 @@ const CATEGORY_ICONS = {
   media: "M4.6 7.4h14.8v9.2H4.6zM9.8 10v4l3.6-2-3.6-2Z",
   naming: "M7 4.6h7l4 4v10.8H7zM14 4.6V9h4M9.4 13h5.2M9.4 16.4h5.2",
   encode: "M8.4 4.8v14.4M8.4 19.2 5.2 16M15.6 4.8v14.4M15.6 4.8 12.4 8",
-  extras: "M6.4 5.4h11.2v13.2H6.4zM9.4 9.4h5.2M9.4 12.6h5.2M9.4 15.8h3",
   update: "M19.4 12a7.4 7.4 0 1 1-2.2-5.2M19.4 4.6v4h-4",
   network: "M12 19.4a7.4 7.4 0 1 0 0-14.8 7.4 7.4 0 0 0 0 14.8ZM3.6 12h16.8M12 4.6c-4.4 4.4-4.4 10.4 0 14.8 4.4-4.4 4.4-10.4 0-14.8Z",
 };
 
 const categories = [
   { key: "download", label: "下载", hint: "目录、并发与恢复" },
-  { key: "media", label: "媒体", hint: "清晰度与封装格式" },
+  { key: "media", label: "媒体", hint: "清晰度、封装与封面字幕" },
   { key: "naming", label: "文件命名", hint: "模板与重名处理" },
   { key: "folder", label: "文件夹", hint: "层级与文件夹命名" },
   { key: "encode", label: "编码与处理", hint: "编码、分段与 FFmpeg" },
-  { key: "extras", label: "附加内容", hint: "封面、字幕与弹幕" },
   { key: "update", label: "应用更新", hint: "版本检测与安装" },
   { key: "network", label: "网络与维护", hint: "代理、日志与数据" },
 ];
@@ -797,6 +795,32 @@ async function open(path) {
               <p class="note">嵌入封面和字幕时需使用 MKV</p>
             </div>
 
+            <div class="grid2 full">
+              <label class="check card-check">
+                <input type="checkbox" v-model="draft.embed_cover" />
+                <span>嵌入封面（仅 MKV）</span>
+              </label>
+              <label class="check card-check" :title="draft.container === 'mp4' ? '请先将封装格式切换为 MKV' : ''">
+                <input type="checkbox" v-model="draft.embed_subtitles" />
+                <span>嵌入字幕（仅 MKV）</span>
+              </label>
+            </div>
+            <p v-if="draft.embed_subtitles" class="note">
+              字幕与弹幕下载将在后续版本提供，当前仅保存该选项。
+            </p>
+
+            <div class="field full">
+              <label>下载范围</label>
+              <select
+                :value="draft.keep_temp ? 'true' : 'false'"
+                @change="set('keep_temp', $event.target.value === 'true')"
+              >
+                <option v-for="item in RANGES" :key="item.label" :value="String(item.value)">
+                  {{ item.label }}
+                </option>
+              </select>
+            </div>
+
             <div class="sub-card full">
               <div class="sub-head">
                 <svg class="sub-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -1233,40 +1257,6 @@ async function open(path) {
                 <button class="ghost" @click="chooseFfmpeg">选择</button>
               </div>
             </div>
-          </div>
-
-          <!-- 附加内容 -->
-          <div v-else-if="active === 'extras'" class="fields">
-            <div class="field full">
-              <label>下载范围</label>
-              <select
-                :value="draft.keep_temp ? 'true' : 'false'"
-                @change="set('keep_temp', $event.target.value === 'true')"
-              >
-                <option v-for="item in RANGES" :key="item.label" :value="String(item.value)">
-                  {{ item.label }}
-                </option>
-              </select>
-            </div>
-
-            <label class="check card-check full">
-              <input type="checkbox" v-model="draft.keep_temp" disabled />
-              <span>保留原始视频/音频频道（由上方「下载范围」控制）</span>
-            </label>
-
-            <div class="grid2 full">
-              <label class="check card-check">
-                <input type="checkbox" v-model="draft.embed_cover" />
-                <span>嵌入封面（仅 MKV）</span>
-              </label>
-              <label class="check card-check" :title="draft.container === 'mp4' ? '请先将封装格式切换为 MKV' : ''">
-                <input type="checkbox" v-model="draft.embed_subtitles" />
-                <span>嵌入字幕（仅 MKV）</span>
-              </label>
-            </div>
-            <p v-if="draft.embed_subtitles" class="note">
-              字幕与弹幕下载将在后续版本提供，当前仅保存该选项。
-            </p>
           </div>
 
           <!-- 应用更新 -->
