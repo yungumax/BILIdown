@@ -4,6 +4,7 @@
 //! - 普通视频：BV 号、av 号、`/video/` 链接、b23.tv 短链（先展开再识别）
 //! - 收藏夹：`space.bilibili.com/{mid}/favlist?fid={fid}`
 //! - 合集：`space.bilibili.com/{mid}/lists/{sid}` 或 `.../channel/collectiondetail?sid={sid}`
+//! - 系列：`space.bilibili.com/{mid}/lists/{sid}?type=series` 或 `.../channel/seriesdetail?sid={sid}`
 //! - UP 空间：`space.bilibili.com/{mid}`
 //! - 番剧：`bilibili.com/bangumi/play/ss{nid}` / `.../ep{ep_id}`
 //! - 课程：`bilibili.com/cheese/play/ss{nid}`（单集链接需先转成课程页）
@@ -20,6 +21,15 @@ pub enum Target {
     FavList(u64),
     /// 合集：mid + season_id
     Collection {
+        mid: u64,
+        sid: u64,
+    },
+    /// 系列：mid + series_id。
+    ///
+    /// 链接长得跟合集一样（`/lists/{id}`），但数据是另一套接口给的：
+    /// 两边的 id 空间重叠，把系列 id 当合集查会命中**别人的**合集
+    /// （返回别的内容而且不报错），所以必须靠 `?type=series` 分开走。
+    Series {
         mid: u64,
         sid: u64,
     },
@@ -45,6 +55,8 @@ fn patterns() -> &'static [Regex] {
             Regex::new(r"space\.bilibili\.com/(\d+)/lists/(\d+)").expect("合法"),
             Regex::new(r"space\.bilibili\.com/(\d+)/[a-z/]*collectiondetail[^ ]*?[?&]sid=(\d+)")
                 .expect("合法"),
+            Regex::new(r"space\.bilibili\.com/(\d+)/[a-z/]*seriesdetail[^ ]*?[?&]sid=(\d+)")
+                .expect("合法"),
             Regex::new(r"bangumi/play/(ss|ep)(\d+)").expect("合法"),
             Regex::new(r"cheese/play/(ss|ep)(\d+)").expect("合法"),
             Regex::new(r"space\.bilibili\.com/(\d+)").expect("合法"),
@@ -55,6 +67,12 @@ fn patterns() -> &'static [Regex] {
 fn fid_pattern() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"[?&]fid=(\d+)").expect("合法"))
+}
+
+/// 系列链接与合集链接同形（`/lists/{id}`），靠查询串里的 `type=series` 区分。
+fn series_query() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"[?&]type=series\b").expect("合法"))
 }
 
 /// 解析用户输入：支持裸 BV/av 号以及包含它们的任意链接文本。
@@ -95,13 +113,17 @@ pub fn parse_target(input: &str) -> Result<Target> {
         ));
     }
 
-    // 合集：新版 /lists/{sid}
+    // 合集 / 系列：新版 /lists/{sid}，两者同形，看 ?type=
     if let Some(caps) = patterns[3].captures(s) {
         if let (Some(mid), Some(sid)) = (
             caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()),
             caps.get(2).and_then(|m| m.as_str().parse::<u64>().ok()),
         ) {
-            return Ok(Target::Collection { mid, sid });
+            return Ok(if series_query().is_match(s) {
+                Target::Series { mid, sid }
+            } else {
+                Target::Collection { mid, sid }
+            });
         }
     }
 
@@ -115,8 +137,18 @@ pub fn parse_target(input: &str) -> Result<Target> {
         }
     }
 
-    // 番剧
+    // 系列：旧版 seriesdetail?sid=
     if let Some(caps) = patterns[5].captures(s) {
+        if let (Some(mid), Some(sid)) = (
+            caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()),
+            caps.get(2).and_then(|m| m.as_str().parse::<u64>().ok()),
+        ) {
+            return Ok(Target::Series { mid, sid });
+        }
+    }
+
+    // 番剧
+    if let Some(caps) = patterns[6].captures(s) {
         let id = caps.get(2).and_then(|m| m.as_str().parse::<u64>().ok());
         match (caps.get(1).map(|m| m.as_str()), id) {
             (Some("ss"), Some(season_id)) => {
@@ -136,7 +168,7 @@ pub fn parse_target(input: &str) -> Result<Target> {
     }
 
     // 课程
-    if let Some(caps) = patterns[6].captures(s) {
+    if let Some(caps) = patterns[7].captures(s) {
         let id = caps.get(2).and_then(|m| m.as_str().parse::<u64>().ok());
         if let (Some("ss"), Some(season_id)) = (caps.get(1).map(|m| m.as_str()), id) {
             return Ok(Target::Cheese(season_id));
@@ -147,7 +179,7 @@ pub fn parse_target(input: &str) -> Result<Target> {
     }
 
     // UP 空间（裸 mid）
-    if let Some(caps) = patterns[7].captures(s) {
+    if let Some(caps) = patterns[8].captures(s) {
         if let Some(mid) = caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()) {
             return Ok(Target::Space(mid));
         }
@@ -213,6 +245,40 @@ mod tests {
             Target::Collection {
                 mid: 946974,
                 sid: 1764318
+            }
+        );
+    }
+
+    /// 系列和合集同形（/lists/{id}），必须按 ?type= 分开：
+    /// 拿系列 id 问合集接口会命中别人的合集且不报错，这是真实踩过的坑。
+    #[test]
+    fn parses_series_lists_url_by_type_query() {
+        assert_eq!(
+            parse_target("https://space.bilibili.com/486287787/lists/90946?type=series").unwrap(),
+            Target::Series {
+                mid: 486287787,
+                sid: 90946
+            }
+        );
+        // 同一个 id：带 type=season 是合集，不带 type 也按合集处理
+        assert!(matches!(
+            parse_target("https://space.bilibili.com/486287787/lists/90946?type=season").unwrap(),
+            Target::Collection { .. }
+        ));
+        assert!(matches!(
+            parse_target("https://space.bilibili.com/486287787/lists/90946").unwrap(),
+            Target::Collection { .. }
+        ));
+    }
+
+    #[test]
+    fn parses_series_detail_url() {
+        assert_eq!(
+            parse_target("https://space.bilibili.com/486287787/channel/seriesdetail?sid=90946")
+                .unwrap(),
+            Target::Series {
+                mid: 486287787,
+                sid: 90946
             }
         );
     }

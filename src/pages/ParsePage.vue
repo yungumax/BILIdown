@@ -20,6 +20,7 @@ const KIND_LABELS = {
   video: "视频",
   fav: "收藏夹",
   collection: "合集",
+  series: "系列",
   space: "UP 空间",
   bangumi: "番剧",
   cheese: "课程",

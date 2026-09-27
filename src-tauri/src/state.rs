@@ -43,6 +43,8 @@ pub struct FfmpegStatus {
 pub enum BatchTarget {
     Fav(u64),
     Collection { mid: u64, sid: u64 },
+    /// 系列：链接与合集同形，接口不同（见 parser 里的说明）
+    Series { mid: u64, sid: u64 },
     Space(u64),
     /// 番剧/课程一次给全，没有分页
     Whole,

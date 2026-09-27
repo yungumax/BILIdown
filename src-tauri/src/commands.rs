@@ -277,6 +277,8 @@ fn source_page_size(target: BatchTarget) -> usize {
     match target {
         BatchTarget::Fav(_) | BatchTarget::Whole => 20,
         BatchTarget::Space(_) => 30,
+        // 系列接口一页最多 30 条（合集能给 100）
+        BatchTarget::Series { .. } => 30,
         BatchTarget::Collection { .. } => 100,
     }
 }
@@ -288,7 +290,7 @@ fn source_cap(kind: &str, override_cap: usize) -> usize {
     }
     match kind {
         "fav" => FAV_MAX_ITEMS,
-        "collection" => COLLECTION_MAX_ITEMS,
+        "collection" | "series" => COLLECTION_MAX_ITEMS,
         _ => SPACE_MAX_ITEMS,
     }
 }
@@ -351,6 +353,8 @@ struct BatchMeta {
     title: String,
     owner: String,
     total: usize,
+    /// 合集所属 UP 的 mid（只有合集接口会给，用来识别"系列 id 当合集查"的错配）
+    mid: u64,
 }
 
 /// 拉批量来源的一页。`meta` 只有第一页有值。
@@ -368,6 +372,7 @@ async fn fetch_batch_page(
                 title: data.info.title.clone(),
                 owner: data.info.upper_name.clone(),
                 total: data.info.media_count as usize,
+                mid: 0,
             });
             let items = data
                 .medias
@@ -399,6 +404,7 @@ async fn fetch_batch_page(
                 title: data.meta.name.clone(),
                 owner,
                 total: data.meta.total as usize,
+                mid: data.meta.mid,
             });
             let items = data
                 .archives
@@ -430,6 +436,7 @@ async fn fetch_batch_page(
                     .map(|v| v.author.clone())
                     .unwrap_or_default(),
                 total: data.page.count as usize,
+                mid: 0,
             });
             let items = list
                 .map(|l| {
@@ -446,6 +453,52 @@ async fn fetch_batch_page(
                         .collect()
                 })
                 .unwrap_or_default();
+            Ok((items, meta))
+        }
+        // 系列：接口不给标题也不给上传者，第一页顺带各查一次
+        BatchTarget::Series { mid, sid } => {
+            let data = client.series_archives(mid, sid, page).await.map_err(describe)?;
+            let owner = if first {
+                client.user_name(mid).await
+            } else {
+                String::new()
+            };
+            // 标题要额外请求一次，先 await 出结果再构造 meta
+            let title = if first {
+                let name = client
+                    .series_meta(mid, sid)
+                    .await
+                    .map(|page| page.meta.name)
+                    .unwrap_or_default();
+                if name.trim().is_empty() {
+                    "系列".to_string()
+                } else {
+                    name
+                }
+            } else {
+                String::new()
+            };
+            let meta = first.then(|| BatchMeta {
+                kind: "series".to_string(),
+                title,
+                // owner 随后还要逐条填进条目里，这里先克隆一份
+                owner: owner.clone(),
+                total: data.page.total as usize,
+                mid: 0,
+            });
+            let items = data
+                .archives
+                .iter()
+                .map(|archive| BatchVideo {
+                    bvid: archive.bvid.clone(),
+                    // 系列条目没有 cid，下载与画质探测会按 bvid 补查
+                    cid: 0,
+                    ep_id: None,
+                    title: archive.title.clone(),
+                    owner: owner.clone(),
+                    duration: archive.duration,
+                })
+                .collect();
             Ok((items, meta))
         }
         // 番剧/课程一次给全，没有分页
@@ -467,6 +520,7 @@ async fn start_batch(
         return Err(match meta.kind.as_str() {
             "fav" => "收藏夹为空或不可访问".to_string(),
             "collection" => "合集为空或不可访问".to_string(),
+            "series" => "系列为空或不可访问".to_string(),
             "space" => "该 UP 主没有可访问的投稿，或触发了风控".to_string(),
             _ => "来源没有可访问的内容".to_string(),
         });
@@ -540,6 +594,7 @@ fn batch_to_source(cache: &BatchCache) -> ProbeSource {
     let label = match cache.kind.as_str() {
         "fav" => "收藏夹",
         "collection" => "合集",
+        "series" => "系列",
         "space" => "投稿",
         _ => "来源",
     };
@@ -580,6 +635,7 @@ fn target_key(target: &Target) -> String {
         Target::Aid(aid) => format!("aid:{aid}"),
         Target::FavList(fid) => format!("fav:{fid}"),
         Target::Collection { mid, sid } => format!("collection:{mid}:{sid}"),
+        Target::Series { mid, sid } => format!("series:{mid}:{sid}"),
         Target::Space(mid) => format!("space:{mid}"),
         Target::Bangumi { season_id, ep_id } => match (season_id, ep_id) {
             (Some(sid), _) => format!("bangumi:{sid}"),
@@ -629,6 +685,9 @@ async fn probe_one(
         }
         Target::Collection { mid, sid } => {
             probe_batch_first_page(client, state, trimmed, BatchTarget::Collection { mid, sid }).await
+        }
+        Target::Series { mid, sid } => {
+            probe_batch_first_page(client, state, trimmed, BatchTarget::Series { mid, sid }).await
         }
         Target::Space(mid) => {
             probe_batch_first_page(client, state, trimmed, BatchTarget::Space(mid)).await
@@ -694,6 +753,21 @@ async fn probe_batch_first_page(
 ) -> Result<ProbeSource, String> {
     let (items, meta) = fetch_batch_page(client, target, 1).await?;
     let meta = meta.ok_or_else(|| "来源没有可访问的内容".to_string())?;
+
+    // 系列和合集的 id 空间重叠：拿系列 id 去问合集接口，会返回**别人的**合集
+    // （code 正常、内容却是另一回事，见 90946 那次踩坑）。合集接口给的 mid
+    // 对不上这个 UP 时，就按系列重取一次。
+    if let BatchTarget::Collection { mid, sid } = target {
+        if meta.mid != 0 && meta.mid != mid {
+            let series = BatchTarget::Series { mid, sid };
+            let (items, meta) = fetch_batch_page(client, series, 1).await.map_err(|e| {
+                format!("这个链接既不是该 UP 的合集，也不是系列：{e}")
+            })?;
+            let meta = meta.ok_or_else(|| "来源没有可访问的内容".to_string())?;
+            return finish_batch(client, state, key, series, meta, items).await;
+        }
+    }
+
     finish_batch(client, state, key, target, meta, items).await
 }
 
@@ -751,6 +825,7 @@ async fn probe_range_one(
         title: cache.title,
         owner: cache.owner,
         total: cache.total,
+        mid: 0,
     });
     let (mut items, meta) = fetch_batch_page(client, target, page).await?;
     let meta = match meta.or(cached_meta) {
@@ -872,6 +947,7 @@ async fn fetch_whole(
             title,
             owner: String::new(),
             total,
+            mid: 0,
         }),
     ))
 }
@@ -2008,6 +2084,33 @@ mod live_tests {
         assert!(probe.loaded > 0, "应加载到视频");
         println!(
             "fav: {} loaded={} total={} 首条={:?}",
+            probe.title, probe.loaded, probe.total, probe.items[0].title
+        );
+    }
+
+    /// 实测系列解析：`/lists/{id}?type=series` 必须走系列接口。
+    ///
+    /// 这个 id 当作合集查会返回**别人的**合集（2 条、标题是"中级经济师…"）
+    /// 而且接口不报错——所以这里同时断言标题与条数，防止再退回错配。
+    #[tokio::test]
+    #[ignore = "需要网络与登录态"]
+    async fn live_probe_series_not_mistaken_for_collection() {
+        let client = client();
+        let probe = probe_one(
+            &client,
+            &app_state(),
+            "https://space.bilibili.com/486287787/lists/90946?type=series",
+            true,
+        )
+        .await
+        .expect("解析成功");
+        assert_eq!(probe.kind, "series");
+        assert_eq!(probe.title, "暗中观察", "系列标题应来自系列接口");
+        assert!(probe.total > 400, "系列共 {} 条，不像 90946", probe.total);
+        assert!(probe.loaded > 0);
+        assert_ne!(probe.loaded, 2, "2 条说明又退回成按合集查了");
+        println!(
+            "series: {} loaded={} total={} 首条={:?}",
             probe.title, probe.loaded, probe.total, probe.items[0].title
         );
     }

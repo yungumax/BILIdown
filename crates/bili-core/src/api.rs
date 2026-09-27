@@ -10,6 +10,10 @@ const API_PLAYURL: &str = "https://api.bilibili.com/x/player/wbi/playurl";
 const API_FAV_LIST: &str = "https://api.bilibili.com/x/v3/fav/resource/list";
 const API_SEASONS_ARCHIVES: &str =
     "https://api.bilibili.com/x/polymer/web-space/seasons_archives_list";
+/// 系列：与合集同形（`/lists/{id}`）却是另一套接口，id 空间还重叠，
+/// 拿系列 id 问合集接口会返回别人的合集且不报错，所以必须分开调。
+const API_SERIES_ARCHIVES: &str = "https://api.bilibili.com/x/series/archives";
+const API_SERIES_META: &str = "https://api.bilibili.com/x/series/series";
 const API_SPACE_ARC: &str = "https://api.bilibili.com/x/space/wbi/arc/search";
 const API_PGC_SEASON: &str = "https://api.bilibili.com/pgc/view/web/season";
 const API_PGC_PLAYURL: &str = "https://api.bilibili.com/pgc/player/web/playurl";
@@ -444,6 +448,46 @@ pub struct SeasonArchive {
     pub owner: Owner,
 }
 
+/// 系列内容分页（`x/series/archives`）：条目字段比合集少，没有 cid 与上传者。
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SeriesArchivesPage {
+    #[serde(default, rename = "archives", deserialize_with = "vec_or_null")]
+    pub archives: Vec<SeriesArchive>,
+    #[serde(default)]
+    pub page: SeriesPageInfo,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SeriesPageInfo {
+    #[serde(default)]
+    pub total: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SeriesArchive {
+    pub bvid: String,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub title: String,
+    /// 秒
+    #[serde(default)]
+    pub duration: u64,
+}
+
+/// 系列本身的元信息（`x/series/series`）：标题在这里。
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SeriesMetaPage {
+    #[serde(default)]
+    pub meta: SeriesMeta,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SeriesMeta {
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub name: String,
+    #[serde(default)]
+    pub mid: u64,
+}
+
 /// UP 空间投稿分页。`vlist` 不含 cid，下载时按 bvid 补查。
 #[derive(Debug, Clone, Deserialize)]
 pub struct SpaceArcPage {
@@ -693,6 +737,25 @@ impl BiliClient {
         let url = format!(
             "{API_SEASONS_ARCHIVES}?mid={mid}&season_id={season_id}&page_num={page}&page_size=100"
         );
+        self.fetch_json(&url).await
+    }
+
+    /// UP 主系列内容（一页最多 30 条；条目里没有 cid，下载时按 bvid 补查）。
+    pub async fn series_archives(
+        &self,
+        mid: u64,
+        series_id: u64,
+        page: u32,
+    ) -> Result<SeriesArchivesPage> {
+        let url = format!(
+            "{API_SERIES_ARCHIVES}?mid={mid}&series_id={series_id}&only_normal=true&sort=desc&pn={page}&ps=30"
+        );
+        self.fetch_json(&url).await
+    }
+
+    /// 系列的名称：`archives` 接口只给条目，不给标题。
+    pub async fn series_meta(&self, mid: u64, series_id: u64) -> Result<SeriesMetaPage> {
+        let url = format!("{API_SERIES_META}?mid={mid}&series_id={series_id}");
         self.fetch_json(&url).await
     }
 
