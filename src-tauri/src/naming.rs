@@ -8,27 +8,27 @@ use std::path::PathBuf;
 
 /// 面板里列出的变量：`(标记, 说明)`。顺序即面板顺序。
 pub const VARIABLES: &[(&str, &str)] = &[
-    ("title", "视频或条目标题"),
-    ("part_title", "分P标题"),
-    ("part_index", "分P序号"),
-    ("bvid", "BV号"),
-    ("aid", "AV号"),
-    ("cid", "CID"),
-    ("owner_name", "UP主名称"),
-    ("owner_mid", "UP主MID"),
-    ("series_title", "番剧/课程/系列名"),
-    ("episode_index", "集序号"),
-    ("episode_title", "集标题"),
-    ("collection_title", "合集名"),
-    ("source_kind", "来源类型（合集/收藏夹/系列/UP 空间/图文/音频/番剧/课程/视频）"),
-    ("index", "列表序号"),
-    ("quality", "清晰度"),
-    ("codec", "编码"),
-    ("date", "下载日期（任务创建日）"),
-    ("publish_date", "发布时间（B站发布日期）"),
-    ("ext", "扩展名"),
+    // 说明里标出"在哪些来源有值"：模板是共用的，视频/图文/音频能用的变量并不相同
+    ("title", "标题（视频标题 / 合集条目 / 图文帖子）"),
+    ("part_title", "分P标题（多P视频；批量来源为空）"),
+    ("part_index", "分P序号（多P视频；批量来源为空）"),
+    ("bvid", "BV 号（视频）"),
+    ("aid", "AV 号（视频）"),
+    ("cid", "CID（视频）"),
+    ("owner_name", "UP 主名称（所有来源）"),
+    ("owner_mid", "UP 主 MID（所有来源）"),
+    ("series_title", "番剧/课程/系列名（番剧、课程）"),
+    ("episode_index", "集序号（番剧、课程）"),
+    ("episode_title", "集标题（番剧、课程）"),
+    ("collection_title", "合集/来源名（批量来源的第二层目录，见「文件夹」页）"),
+    ("source_kind", "来源类型：合集 / 收藏夹 / 系列 / UP 空间 / 图文 / 音频 / 番剧 / 课程 / 视频"),
+    ("index", "序号（批次内按发布顺序；单条链接为空）"),
+    ("quality", "清晰度（视频）"),
+    ("codec", "编码（视频）"),
+    ("date", "下载日期（任务创建那天）"),
+    ("publish_date", "发布时间（B 站发布日期）"),
+    ("ext", "扩展名（视频 mp4/mkv、音频 m4a）"),
 ];
-
 /// 一次渲染需要的全部取值。取不到的留空——空值在文件名里直接消失，
 /// 不会留下 `{episode_title}` 这种字面标记。
 #[derive(Debug, Clone, Default)]
