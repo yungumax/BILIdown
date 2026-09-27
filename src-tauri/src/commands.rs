@@ -250,9 +250,10 @@ pub async fn preview_names(
 pub async fn naming_variables() -> Result<Vec<crate::types::NamingVariable>, String> {
     Ok(crate::naming::VARIABLES
         .iter()
-        .map(|(token, label)| crate::types::NamingVariable {
+        .map(|(token, label, group)| crate::types::NamingVariable {
             token: (*token).to_string(),
             label: (*label).to_string(),
+            group: (*group).to_string(),
         })
         .collect())
 }

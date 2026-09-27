@@ -174,6 +174,9 @@ pub struct NamingMeta {
 /// 「魔法变量」面板的一项。
 #[derive(Debug, Clone, Serialize)]
 pub struct NamingVariable {
+    /// 分组：通用 / 视频 / 批量来源 / 番剧与课程
+    #[serde(default)]
+    pub group: String,
     pub token: String,
     pub label: String,
 }
