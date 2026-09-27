@@ -6,6 +6,7 @@
 
 pub mod api;
 pub mod client;
+pub mod danmaku;
 pub mod download;
 pub mod error;
 pub mod ffmpeg;

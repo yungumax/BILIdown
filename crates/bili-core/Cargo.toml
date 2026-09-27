@@ -9,6 +9,7 @@ description = "BILIdown 核心库：B 站 API 客户端、wbi 签名、DASH 下�
 [dependencies]
 tokio.workspace = true
 reqwest.workspace = true
+flate2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

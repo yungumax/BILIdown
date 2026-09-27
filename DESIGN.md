@@ -101,6 +101,21 @@ node tools/test-naming-conflicts.mjs
 - 真下载验证：`tools/test-media-pick.mjs` —— 设 480P → 保存 → 解析 → 下载一条 →
   断言任务上的画质标签是 480P，而不是"可用最高档"。
 
+### 弹幕：独立 .xml，不合成
+
+媒体页的「下载弹幕（独立 .xml）」勾上后，每条视频旁边多一份**同名 .xml**，
+播放器（弹弹play / mpv 等）直接读，**不合成进视频**（`ffprobe` 只该看到 video + audio）。
+
+- 主路是网页播放器用的 `x/v2/dm/web/seg.so`（protobuf，6 分钟一段，翻完即全量）。
+  `crates/bili-core/src/danmaku.rs` 里手写了个够用的 protobuf 读取器（不引依赖，
+  未知字段按 wire type 跳过），再把每条转成 B 站自己的 `<d p="进度,模式,字号,颜色,时间戳,池,hash,id">`。
+- 兜底是 `comment.bilibili.com/{cid}.xml`：明文 XML 但**只给一小部分**
+  （实测 91 万弹幕的视频只返回 1200 条），主路失败时才用，日志会写"接口只给了这一部分"。
+- 拿不到弹幕只记 warn，不让任务失败；音频/图文没有 cid 直接跳过。
+- 验证：`tools/test-danmaku.mjs`（沙箱跑，带链接参数），查同名 .xml、明文格式、
+  条数、按时间排序、多段覆盖（超过 6 分钟的视频弹幕要跨过 360s）、成品里没有弹幕轨、
+  日志里能看到条数。
+
 ### 会写用户数据的验证，一律在沙箱里做
 
 落盘、下载这类验证要真的写文件，**别拿用户真实的 settings.json / 下载目录试**：
@@ -112,6 +127,10 @@ BILIDOWN_COOKIE_FILE='D:\Zcode\_datailidown-sandbox\cookies.json' WEBVIEW2_ADDI
 `BILIDOWN_COOKIE_FILE` 会把数据目录整个挪到旁边（settings.json 也在同一目录），
 cookie 拷一份给沙箱用，验证完把沙箱目录删掉。踩过的坑：直接对着真实 settings.json
 验证"保存能不能落盘"，点了一次保存就把用户的命名模板改掉了。
+
+**打包顺序**：先 `npm run build` 再 `cargo build`。顺序反了的话，二进制里嵌的是上一版
+dist —— Tauri 的 `custom-protocol` 在**编译时**把 `dist/` 编进去，前端后构建等于白构建
+（踩过：加了勾选框，跑起来看不见，还以为是代码没生效）。
 
 ## 三、文字对比度（硬规则）
 

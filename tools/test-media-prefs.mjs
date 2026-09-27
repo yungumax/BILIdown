@@ -165,7 +165,12 @@ check("媒体页有「下载范围」（两个选项）", merged.范围选项.le
 await js(`[...document.querySelectorAll('.card-check')].find(l => l.textContent.includes('嵌入字幕')).querySelector('input').click()`);
 await wait(400);
 check("勾上「嵌入字幕」后给出后续版本说明",
-  (await js(`[...document.querySelectorAll('.note')].some(n => n.textContent.includes('字幕与弹幕下载将在后续版本提供'))`)) === true);
+  (await js(`[...document.querySelectorAll('.note')].some(n => n.textContent.includes('字幕将在后续版本提供'))`)) === true);
+// 弹幕已经是真下载（不再是"仅保存选项"），勾上要有 .xml 的说明
+await js(`[...document.querySelectorAll('.card-check')].find(l => l.textContent.includes('下载弹幕')).querySelector('input').click()`);
+await wait(400);
+check("勾上「下载弹幕」后说明是独立 .xml、不合成",
+  (await js(`[...document.querySelectorAll('.note')].some(n => n.textContent.includes('不与视频合成'))`)) === true);
 await js(`(() => {
   const field = [...document.querySelectorAll('.field')].find(f => f.querySelector(':scope > label')?.textContent.trim() === '下载范围');
   const sel = field.querySelector('select');

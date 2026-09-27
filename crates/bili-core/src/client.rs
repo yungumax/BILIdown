@@ -234,6 +234,50 @@ impl BiliClient {
         Ok((bytes.to_vec(), content_type))
     }
 
+    /// 全量弹幕，转成播放器直接读的 XML。
+    ///
+    /// 主路是网页播放器用的 `seg.so`（protobuf，按段翻页，翻完即全量）；
+    /// 任何一段失败就停下用已经拿到的，一条都没拿到再退回 XML 接口——
+    /// 那个只给一小部分（实测 91 万弹幕的视频只返回 1200 条），但总比空文件强。
+    pub async fn danmaku_full(&self, cid: u64) -> Result<(String, usize, bool)> {
+        let mut all = Vec::new();
+        for segment in 1..=40u32 {
+            let url = format!(
+                "https://api.bilibili.com/x/v2/dm/web/seg.so?type=1&oid={cid}&segment_index={segment}"
+            );
+            let resp = self.http.get(&url).send().await?;
+            if !resp.status().is_success() {
+                break;
+            }
+            let bytes = resp.bytes().await?;
+            let elems = crate::danmaku::parse_segment(&bytes);
+            if elems.is_empty() {
+                break;
+            }
+            all.extend(elems);
+        }
+        if !all.is_empty() {
+            let count = all.len();
+            return Ok((crate::danmaku::to_xml(&all), count, false));
+        }
+        let xml = self.danmaku_xml(cid).await?;
+        let count = danmaku_count(&xml);
+        Ok((xml, count, true))
+    }
+
+    /// 兜底：`comment.bilibili.com/{cid}.xml`，公开接口、不需要登录，
+    /// 返回的是**已解压的 XML 文本**，但条数被平台截断（见 [`Self::danmaku_full`]）。
+    pub async fn danmaku_xml(&self, cid: u64) -> Result<String> {
+        let url = format!("https://comment.bilibili.com/{cid}.xml");
+        let resp = self.http.get(&url).send().await?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(BiliError::Unavailable(format!("弹幕接口 HTTP {status}")));
+        }
+        let bytes = resp.bytes().await?;
+        decode_danmaku(&bytes)
+    }
+
     /// pgc（番剧）系接口的信封不同：载荷在 `result` 字段而非 `data`。
     pub async fn fetch_pgc_json<T: DeserializeOwned>(&self, url: &str) -> Result<T> {
         let resp = self.http.get(url).send().await?;
@@ -329,6 +373,83 @@ pub(crate) fn truncate(s: &str, max_chars: usize) -> String {
         let mut out: String = s.chars().take(max_chars).collect();
         out.push_str("...");
         out
+    }
+}
+
+/// 弹幕接口给的是 **raw deflate**（没有 zlib 头，实测首字节 `0xEC`），
+/// reqwest 的 deflate 特性认的是 zlib 头，解不了，所以自己来。
+/// 明文 XML（代理重编码、接口改版）与 zlib 两种情况也一并认掉。
+pub fn decode_danmaku(bytes: &[u8]) -> Result<String> {
+    if bytes.first() == Some(&b'<') {
+        return String::from_utf8(bytes.to_vec())
+            .map_err(|_| BiliError::Unavailable("弹幕不是 UTF-8".to_string()));
+    }
+    inflate(bytes, true)
+        .or_else(|| inflate(bytes, false))
+        .ok_or_else(|| BiliError::Unavailable("弹幕数据解不开（既不是明文也不是 deflate）".to_string()))
+}
+
+fn inflate(bytes: &[u8], raw: bool) -> Option<String> {
+    use std::io::Read;
+    let mut out = Vec::new();
+    let ok = if raw {
+        flate2::read::DeflateDecoder::new(bytes).read_to_end(&mut out).is_ok()
+    } else {
+        flate2::read::ZlibDecoder::new(bytes).read_to_end(&mut out).is_ok()
+    };
+    if !ok || out.is_empty() {
+        return None;
+    }
+    String::from_utf8(out).ok()
+}
+
+/// 弹幕条数：`<d p="...">内容</d>` 的个数，用来在日志里说清楚存了多少条。
+pub fn danmaku_count(xml: &str) -> usize {
+    xml.matches("<d p=").count()
+}
+
+#[cfg(test)]
+mod danmaku_tests {
+    use super::*;
+
+    const XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?><i><chatserver>chat.bilibili.com</chatserver><d p="1.5,1,25,16777215,0,0,0,0">第一条</d><d p="2.5,1,25,16777215,0,0,0,0">第二条</d></i>"#;
+
+    fn raw_deflate(text: &str) -> Vec<u8> {
+        use flate2::write::DeflateEncoder;
+        use std::io::Write;
+        let mut out = Vec::new();
+        let mut enc = DeflateEncoder::new(&mut out, flate2::Compression::default());
+        enc.write_all(text.as_bytes()).unwrap();
+        enc.finish().unwrap();
+        out
+    }
+
+    /// 三种输入都要认：B 站实际给的 raw deflate、明文、zlib；乱码则报错。
+    #[test]
+    fn decode_accepts_raw_deflate_plain_and_zlib() {
+        let packed = raw_deflate(XML);
+        assert_ne!(packed[0], 0x78, "0x78 开头才是 zlib 流，raw deflate 没有头");
+        assert_eq!(decode_danmaku(&packed).unwrap(), XML);
+        assert_eq!(decode_danmaku(XML.as_bytes()).unwrap(), XML);
+
+        let zlibbed = {
+            use flate2::write::ZlibEncoder;
+            use std::io::Write;
+            let mut out = Vec::new();
+            let mut enc = ZlibEncoder::new(&mut out, flate2::Compression::default());
+            enc.write_all(XML.as_bytes()).unwrap();
+            enc.finish().unwrap();
+            out
+        };
+        assert_eq!(decode_danmaku(&zlibbed).unwrap(), XML);
+
+        assert!(decode_danmaku(&[0xff, 0x00, 0x12, 0x34]).is_err());
+    }
+
+    #[test]
+    fn counts_entries() {
+        assert_eq!(danmaku_count(XML), 2);
+        assert_eq!(danmaku_count(r#"<?xml version="1.0"?><i></i>"#), 0);
     }
 }
 

@@ -243,6 +243,7 @@ const mock = (() => {
       quality_fallback: "nearest",
       embed_cover: false,
       embed_subtitles: false,
+      download_danmaku: false,
       retry_count: 3,
       speed_limit_mib: 0,
       auto_refresh_urls: true,

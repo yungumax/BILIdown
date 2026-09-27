@@ -2101,6 +2101,43 @@ async fn run_download(
         tokio::fs::remove_dir_all(&work_dir).await.ok();
     }
 
+    // 弹幕：单独一份与视频同名的 .xml，**不合成进视频**，播放器自己读。
+    // 失败只记日志——弹幕拿不到不该让整条任务失败。
+    if settings.download_danmaku {
+        let cid = if req.cid > 0 {
+            req.cid
+        } else if req.bvid.is_empty() {
+            0
+        } else {
+            client
+                .video_info(&req.bvid)
+                .await
+                .map(|info| info.cid)
+                .unwrap_or(0)
+        };
+        if cid == 0 {
+            settings.log("info", "这条没有弹幕（音频/图文或查不到 cid），跳过");
+        } else {
+            match client.danmaku_full(cid).await {
+                Ok((xml, count, truncated)) => {
+                    let dm_path = out_file.with_extension("xml");
+                    match tokio::fs::write(&dm_path, xml.as_bytes()).await {
+                        Ok(_) => settings.log(
+                            "info",
+                            &format!(
+                                "弹幕已保存（{count} 条{}）: {}",
+                                if truncated { "，接口只给了这一部分" } else { "" },
+                                dm_path.display()
+                            ),
+                        ),
+                        Err(e) => settings.log("warn", &format!("弹幕写入失败: {e}")),
+                    }
+                }
+                Err(e) => settings.log("warn", &format!("弹幕获取失败（不影响视频）: {e}")),
+            }
+        }
+    }
+
     let out_path = out_file.to_string_lossy().to_string();
     mutate(&shared, &app, |t| {
         t.status = TaskStatus::Done;

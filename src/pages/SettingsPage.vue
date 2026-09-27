@@ -804,9 +804,17 @@ async function open(path) {
                 <input type="checkbox" v-model="draft.embed_subtitles" />
                 <span>嵌入字幕（仅 MKV）</span>
               </label>
+              <label class="check card-check">
+                <input type="checkbox" v-model="draft.download_danmaku" />
+                <span>下载弹幕（独立 .xml）</span>
+              </label>
             </div>
             <p v-if="draft.embed_subtitles" class="note">
-              字幕与弹幕下载将在后续版本提供，当前仅保存该选项。
+              字幕将在后续版本提供，当前仅保存该选项。
+            </p>
+            <p v-if="draft.download_danmaku" class="note">
+              弹幕单独存成与视频同名的 .xml（不与视频合成），弹弹play、mpv 等播放器可直接读取。
+              音频与图文没有弹幕，跳过。
             </p>
 
             <div class="field full">

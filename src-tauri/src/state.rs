@@ -149,6 +149,9 @@ pub struct Settings {
     pub embed_cover: bool,
     /// 嵌入字幕（仅 MKV；字幕下载在后续版本提供）
     pub embed_subtitles: bool,
+    /// 下载弹幕：单独存一份与视频同名的 .xml，播放器直接读；不与视频合成
+    #[serde(default)]
+    pub download_danmaku: bool,
     /// 单个分片失败的最大重试次数
     pub retry_count: u32,
     /// 全局限速（MiB/s），0 表示不限速
@@ -213,6 +216,7 @@ impl Default for Settings {
             quality_fallback: "nearest".to_string(),
             embed_cover: false,
             embed_subtitles: false,
+            download_danmaku: false,
             retry_count: 3,
             speed_limit_mib: 0,
             auto_refresh_urls: true,
