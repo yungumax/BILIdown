@@ -1196,7 +1196,7 @@ async function startSingle(item) {
             <template v-for="group in tableGroups" :key="group.source.input">
               <tr
                 v-if="showGroups"
-                class="group-row row-in"
+                class="group-row"
                 :class="{ folded: isCollapsed(group.source.input) }"
                 :title="isCollapsed(group.source.input) ? '展开这个来源' : '收起这个来源'"
                 @click="toggleGroup(group.source.input)"
@@ -1232,9 +1232,7 @@ async function startSingle(item) {
                 v-for="row in group.rows"
                 v-show="!isCollapsed(group.source.input)"
                 :key="row.key"
-                class="row-in"
                 :class="{ on: isSelected(row) }"
-                :style="{ '--row-i': Math.min(row.seq, 10) }"
                 :title="fileNameOf(row)"
               >
                 <td class="col-check">
