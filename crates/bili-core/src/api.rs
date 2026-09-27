@@ -410,6 +410,8 @@ pub struct FavMedia {
     #[serde(default, deserialize_with = "u64_or_null")]
     pub cid: u64,
     #[serde(default, deserialize_with = "string_or_null")]
+    pub cover: String,
+    #[serde(default, deserialize_with = "string_or_null")]
     pub title: String,
     /// 秒
     #[serde(default)]
@@ -451,6 +453,8 @@ pub struct SeasonArchive {
     pub bvid: String,
     #[serde(default)]
     pub cid: u64,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub pic: String,
     #[serde(default, deserialize_with = "string_or_null")]
     pub title: String,
     /// 秒
@@ -531,6 +535,8 @@ pub struct SeriesPageInfo {
 pub struct SeriesArchive {
     pub bvid: String,
     #[serde(default, deserialize_with = "string_or_null")]
+    pub pic: String,
+    #[serde(default, deserialize_with = "string_or_null")]
     pub title: String,
     /// 秒
     #[serde(default)]
@@ -576,6 +582,8 @@ pub struct SpaceArcList {
 #[derive(Debug, Clone, Deserialize)]
 pub struct SpaceVideo {
     pub bvid: String,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub pic: String,
     #[serde(default, deserialize_with = "string_or_null")]
     pub title: String,
     /// "mm:ss" 文本

@@ -60,6 +60,9 @@ pub struct BatchVideo {
     /// 该条目的 UP 主 / 出品方；来源没给就是空
     #[serde(default)]
     pub owner: String,
+    /// 封面地址（有的来源接口不给，就是空；界面拿它画缩略图）
+    #[serde(default)]
+    pub pic: String,
     /// 秒
     pub duration: u64,
 }

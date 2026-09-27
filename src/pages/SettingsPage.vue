@@ -1350,6 +1350,24 @@ h1 {
   color: var(--muted);
 }
 
+/* 顶栏这三个（恢复默认 / 撤销 / 保存）小一号：它们是次要动作，别抢面板内容的戏 */
+.head .primary,
+.head .ghost {
+  gap: 5px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.head .primary {
+  padding: 6px 14px;
+}
+
+.head .primary svg,
+.head .ghost svg {
+  width: 15px;
+  height: 15px;
+}
+
 .ghost:hover:not(:disabled) {
   border-color: var(--accent-line);
   background: var(--raised);

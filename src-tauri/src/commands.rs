@@ -274,6 +274,12 @@ pub struct FavFolder {
     /// 订阅来的那些，这里是被订阅收藏夹的作者
     #[serde(default)]
     pub owner: String,
+    /// 封面（只有订阅的接口给；我创建的收藏夹没有封面）
+    #[serde(default)]
+    pub cover: String,
+    /// 简介（同样只有订阅的接口给）
+    #[serde(default)]
+    pub intro: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -334,11 +340,24 @@ pub async fn library_folders(state: State<'_, AppState>) -> Result<FavFolders, S
                             .and_then(|n| n.as_str())
                             .unwrap_or_default()
                             .to_string();
+                        // 收藏夹自己的封面字段叫 cover，订阅接口还给 intro
+                        let cover = item
+                            .get("cover")
+                            .and_then(|c| c.as_str())
+                            .unwrap_or_default()
+                            .to_string();
+                        let intro = item
+                            .get("intro")
+                            .and_then(|c| c.as_str())
+                            .unwrap_or_default()
+                            .to_string();
                         Some(FavFolder {
                             id,
                             title,
                             media_count,
                             owner,
+                            cover,
+                            intro,
                         })
                     })
                     .collect()
@@ -527,6 +546,7 @@ async fn fetch_batch_page(
                     collection: String::new(),
                     title: media.title.clone(),
                     owner: media.upper.name.clone(),
+                    pic: media.cover.clone(),
                     duration: media.duration,
                 })
                 .collect();
@@ -564,6 +584,7 @@ async fn fetch_batch_page(
                     collection: String::new(),
                     title: archive.title.clone(),
                     owner: archive.owner.name.clone(),
+                    pic: archive.pic.clone(),
                     duration: archive.duration,
                 })
                 .collect();
@@ -607,6 +628,7 @@ async fn fetch_batch_page(
                             collection: String::new(),
                             title: video.title.clone(),
                             owner: video.author.clone(),
+                            pic: video.pic.clone(),
                             duration: parse_mmss(&video.length),
                         })
                         .collect()
@@ -660,6 +682,7 @@ async fn fetch_batch_page(
                     collection: String::new(),
                     title: archive.title.clone(),
                     owner: owner.clone(),
+                    pic: archive.pic.clone(),
                     duration: archive.duration,
                 })
                 .collect();
@@ -685,6 +708,11 @@ async fn fetch_batch_page(
                     collection: String::new(),
                     title: summary_of(&item.content, &item.opus_id),
                     owner: owner.clone(),
+                    pic: item
+                        .cover
+                        .as_ref()
+                        .map(|c| c.url.clone())
+                        .unwrap_or_default(),
                     duration: 0,
                 })
                 .collect();
@@ -741,6 +769,7 @@ async fn fetch_batch_page(
                     } else {
                         item.uname.clone()
                     },
+                    pic: String::new(),
                     duration: item.duration,
                 })
                 .collect();
@@ -1080,6 +1109,7 @@ async fn probe_post(
             collection: String::new(),
             title: post.title.clone(),
             owner: post.author,
+            pic: String::new(),
             duration: 0,
         }],
     })
@@ -1259,6 +1289,7 @@ async fn fetch_whole(
                     },
                     // 番剧每集没有上传者，用出品方（如"哔哩哔哩番剧"）
                     owner: season.up_info.uname.clone(),
+                    pic: String::new(),
                     duration: episode.duration / 1000,
                 })
                 .collect::<Vec<_>>();
@@ -1282,6 +1313,8 @@ async fn fetch_whole(
                     collection: String::new(),
                     title: episode.title.clone(),
                     owner: season.up_info.uname.clone(),
+                    // 课程接口没给封面，留空（卡片上显示占位）
+                    pic: String::new(),
                     duration: episode.duration,
                 })
                 .collect::<Vec<_>>();

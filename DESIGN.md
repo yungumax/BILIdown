@@ -216,12 +216,24 @@ dist —— Tauri 的 `custom-protocol` 在**编译时**把 `dist/` 编进去，
 
 ### 内容库 / 断点续传 / 数据目录（原先标着"没做"的三处）
 
-- **内容库**（`LibraryPage.vue`）：**读账号自己的收藏夹与订阅**，不是手填清单。
-  两个标签：收藏夹（`x/v3/fav/folder/created/list-all`）/ 订阅合集（`x/v3/fav/folder/collected/list`），
-  都吃登录态；标题、UP 名、视频数直接来自接口。勾选若干集合 →「去解析所选」把它们的 favlist 链接
-  一行一个交给解析页（`pendingSource` → ParsePage），在那边继续筛具体视频、下载。
-  未登录时是"登录后连接你的内容库"的空状态 +「登录账号」按钮（打开登录框）；
-  副文案只承诺事实：凭据只存在本机数据目录里，内容库不显示也不导出 Cookie 内容。
+- **内容库**（`LibraryPage.vue`）：**读账号自己的收藏夹与订阅**（`x/v3/fav/folder/created/list-all` /
+  `x/v3/fav/folder/collected/list`，都吃登录态），两级界面：
+  1. **集合列表**：标签带数量、标题 + 「我创建的 · 共 N 个内容集合」、搜索框（标题/创建者/简介）、
+     两列卡片（有封面用封面，没有就用书签图标 + 视频数；订阅的还给简介）。点卡片进详情，
+     右上角圆圈是「选入批量」，底部「解析所选集合」把选中的 favlist 链接一行一个交给解析页。
+  2. **集合详情**：返回 + 标题 + 「已加载 N / M 项」+ 刷新 + 下载全部 / 下载所选（N）；
+     四列视频卡片（封面、序号角标、时长、UP 名），点卡片切换勾选；底部是
+     「已选 N / 本页数」+ 翻页（« ‹ 当前页 › » + 跳页输入框 + 「第 x / y 页」）+ 全选本页。
+  未登录时是「登录后连接你的内容库」+「登录账号」（打开登录框）。
+- **封面怎么加载**：B 站图片地址在 webview 里要 `https`（http 被拦）、要带缩放后缀
+  （`@320w_200h_1c.webp`，不然 130 张原图就是几十 MB）、还要 `referrerpolicy="no-referrer"`
+  （不然 CDN 按热链 403）。三条缺一条就是一片空白框。
+- **下载请求与命名变量**抽到了 `src/download-request.js`：`singleNaming` / `batchNaming` /
+  `pickDefaultQuality` / `pickDefaultAudio` / `paddedSeq` / `enqueueSingle` / `enqueueBatch`
+  只在这里实现一次，解析页与内容库共用 —— 两个入口必须算出同一个文件名，谁也别抄第二份。
+  这些函数**不读 Vue 的 props**：要设置就由调用方传 `settings` 进来（抽出来时踩过：
+  函数里留着 `props.settings`，模块里没有 `props`，一调用就 ReferenceError）。
+
 - **断点续传**：每个未完成的下载在 `.biltmp/<key>/` 里有 `task.json`（原始请求）与
   `video.ranges` / `audio.ranges`（每行 `offset len`，下完一个分片追加一行）。重启后
   `resume_pending`（设置里 `resume_on_start` 开着时由 `app_status` 之后自动调用）重新入队，
