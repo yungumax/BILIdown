@@ -19,19 +19,19 @@ const items = [
     key: "library",
     label: "内容库",
     hint: "收藏与订阅",
-    path: "M7.4 4.6h9.2v14.8l-4.6-3.6-4.6 3.6Z",
+    path: "M4.4 4.4v15.2M8.8 6v13.6M13.2 4.4v15.2M17.6 6l2.4 13.2",
   },
   {
     key: "transfer",
     label: "传输",
     hint: "队列与恢复",
-    path: "M8.4 4.8v14.4M8.4 19.2 5.2 16M8.4 19.2 11.6 16M15.6 19.2V4.8M15.6 4.8 12.4 8M15.6 4.8 18.8 8",
+    path: "M8 4 4 8l4 4M4 8h16m-4 12-4-4 4-4M20 16H4",
   },
   {
     key: "settings",
     label: "设置",
     hint: "偏好与维护",
-    path: "M5.2 8.4h13.6M5.2 15.6h13.6M9.6 6.6v3.6M15 13.8v3.6",
+    path: "M21 5.4h-6.6M10.2 5.4H3M21 12h-8.6M8.2 12H3M21 18.6h-4.6M12.2 18.6H3M14.4 3.4v4M8.2 10v4M16.4 16.6v4",
   },
   {
     key: "about",
@@ -77,7 +77,7 @@ const speedText = computed(() => {
             :d="item.path"
             fill="none"
             stroke="currentColor"
-            stroke-width="1.8"
+            stroke-width="2"
             stroke-linecap="round"
             stroke-linejoin="round"
           />

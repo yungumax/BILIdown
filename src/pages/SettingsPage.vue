@@ -12,12 +12,12 @@ const emit = defineEmits(["toast", "save", "reset", "reload", "login", "logout"]
 
 const CATEGORY_ICONS = {
   download: "M4.8 14.6v3.2a1.6 1.6 0 0 0 1.6 1.6h11.2a1.6 1.6 0 0 0 1.6-1.6v-3.2M12 4.6v9.4M7.8 10.2 12 14.4l4.2-4.2",
-  media: "M5 6h14a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1ZM7 6v12M17 6v12M7 9.2h1.6M7 14.8h1.6M15.4 9.2H17M15.4 14.8H17",
+  media: "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2ZM3 12h18M12 3v18",
   naming: "M7 4.6h7l4 4v10.8H7zM14 4.6V9h4M9.4 13h5.2M9.4 16.4h5.2",
   folder: "M4.8 7.2h4.4l1.8 2.2h8.2a1 1 0 0 1 1 1v7.4a1 1 0 0 1-1 1H4.8a1 1 0 0 1-1-1V8.2a1 1 0 0 1 1-1Z",
   encode: "M5 7.4h14M5 12h14M5 16.6h14M7.8 7.4a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0-3.6 0M12.6 12a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0-3.6 0M6.6 16.6a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0-3.6 0",
   update: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5",
-  network: "M12 19.4a7.4 7.4 0 1 0 0-14.8 7.4 7.4 0 0 0 0 14.8ZM3.6 12h16.8M12 4.6c-4.4 4.4-4.4 10.4 0 14.8 4.4-4.4 4.4-10.4 0-14.8Z",
+  network: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z",
 };
 
 const categories = [
@@ -613,7 +613,7 @@ async function open(path) {
                 :d="CATEGORY_ICONS[category.key]"
                 fill="none"
                 stroke="currentColor"
-                stroke-width="1.8"
+                stroke-width="2"
                 stroke-linecap="round"
                 stroke-linejoin="round"
               />
@@ -1509,8 +1509,8 @@ h1 {
 
 .icon {
   flex: none;
-  width: 21px;
-  height: 21px;
+  width: 22px;
+  height: 22px;
 }
 
 .cats button.active .icon {
