@@ -288,6 +288,8 @@ pub async fn preview_naming(
 const FAV_MAX_ITEMS: usize = 500;
 const COLLECTION_MAX_ITEMS: usize = 500;
 const SPACE_MAX_ITEMS: usize = 300;
+/// 图文要拉完整份列表才能算出"第几条"（接口不给总数），上限必须够宽
+const OPUS_MAX_ITEMS: usize = 2000;
 
 /// 各来源的单页条数，决定「继续解析」一次往后拉多少页。
 fn source_page_size(target: BatchTarget) -> usize {
@@ -312,8 +314,8 @@ fn source_cap(kind: &str, override_cap: usize) -> usize {
     match kind {
         "fav" => FAV_MAX_ITEMS,
         "collection" | "series" => COLLECTION_MAX_ITEMS,
-        // 图文条数按 UP 空间一档（20 条一页，接口不告诉总数）
-        "opus" => SPACE_MAX_ITEMS,
+        // 图文：拉完整份列表才算得出编号，用单独的宽上限
+        "opus" => OPUS_MAX_ITEMS,
         "audio" => SPACE_MAX_ITEMS,
         _ => SPACE_MAX_ITEMS,
     }

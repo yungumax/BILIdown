@@ -238,6 +238,10 @@ async function parse() {
   parsing.value = false;
   parseSkipped.value = [...skipped];
 
+  // 图文：解析完再把整份列表拉完（按钮上会显示「解析中 N / M」），
+  // 这样总数就知道了，编号才能按"由旧到新"冻结下来
+  await loadAllForOpus();
+
   const failed = collected.filter((item) => !item.ok).length;
   if (failed) {
     emit("toast", `${collected.length - failed} 条解析成功，${failed} 条失败`);
@@ -515,13 +519,18 @@ const tableRows = computed(() => {
   for (const source of allSources.value) {
     // 按序号加载时这批的第一条不是来源里的第 1 条；abs 记来源内的真实位置
     const fromIndex = source.probe.from_index || 1;
-    // 编号 = 在来源里的固定位置（**1 = 最新**，越靠旧编号越大）。
+    // 编号 = 在来源里的固定序号（**1 = 最旧**，越新编号越大）。
     //
-    // 为什么用"位置"而不是"倒数第几名"：列表只会在末尾追加，已加载条目的位置
-    // 永远不变 —— 所以先解析 30 条、再解析 30 条，同一条的编号不会从 30 变成 60。
-    // 而且预览与下载用的是同一个值，不会出现"预览一个号、落盘另一个号"。
-    // 番剧/课程本来就按集数顺序，同样按位置给（顺带保持"新→旧"一致）。
-    const absOf = (position) => fromIndex + position;
+    // 用"总数 - 位置 + 1"换算：位置在列表末尾追加时不会变，总数一旦拉满也不变，
+    // 所以编号冻结、不漂移；预览与下载用同一个值，不会一个号一个样。
+    // 图文原本没有总数，改为解析时把整份列表拉完（见 parse() 里的 loadAll），
+    // 拉满后 items.length 就是总数，于是全来源方向一致。
+    // 番剧/课程本来就按集数顺序给，不倒。
+    const episode = source.probe.kind === "bangumi" || source.probe.kind === "cheese";
+    const count = source.probe.items.length;
+    const total = source.probe.total || count;
+    const absOf = (position) =>
+      episode ? fromIndex + position : Math.max(total - (fromIndex + position) + 1, 1);
     if (source.probe.kind === "video") {
       const ck = contentKey(null, source);
       if (seenItems.has(ck)) continue;
@@ -715,6 +724,14 @@ async function loadAll() {
   } finally {
     parsingAll.value = false;
   }
+}
+
+/** 图文没有总数：解析后自动把整份列表拉完，编号才能按"第几条"冻结下来 */
+async function loadAllForOpus() {
+  const source = activeSource.value;
+  // 只认"是否已到底"：图文 total 是 0，拿 loaded>=total 判断会恒真而直接返回
+  if (!source || source.probe.kind !== "opus" || source.probe.exhausted) return;
+  await loadAll();
 }
 
 async function parseAll() {
