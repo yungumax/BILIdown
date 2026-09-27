@@ -31,14 +31,14 @@ await send("Runtime.evaluate", { expression: `document.querySelector('.theme-pic
 await new Promise(r => setTimeout(r, 400));
 console.log("点击按钮后:      " + JSON.stringify(await read()));
 let shot = await send("Page.captureScreenshot", { format: "png" });
-writeFileSync("D:/Zcode/BILIdown/menu-open.png", Buffer.from(shot.data, "base64"));
+writeFileSync("D:/Zcode/BILIdown/tools/theme-menu-open.png", Buffer.from(shot.data, "base64"));
 
 // 2) 点「深色」
 await send("Runtime.evaluate", { expression: `[...document.querySelectorAll('.theme-item')].find(e => e.textContent.includes('深色')).click()`, returnByValue: true });
 await new Promise(r => setTimeout(r, 700));
 console.log("选「深色」后:    " + JSON.stringify(await read()));
 shot = await send("Page.captureScreenshot", { format: "png" });
-writeFileSync("D:/Zcode/BILIdown/menu-dark.png", Buffer.from(shot.data, "base64"));
+writeFileSync("D:/Zcode/BILIdown/tools/theme-menu-dark.png", Buffer.from(shot.data, "base64"));
 
 // 3) 再展开 → 点外部关闭
 await send("Runtime.evaluate", { expression: `document.querySelector('.theme-picker .icon-btn').click()`, returnByValue: true });

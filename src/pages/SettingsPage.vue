@@ -727,6 +727,7 @@ async function open(path) {
                 <button class="ghost" @click="emit('reload')">重新检查</button>
               </div>
               <div class="env-row">
+                <Icon name="terminal" class="env-icon" />
                 <span class="env-name">FFmpeg</span>
                 <span class="env-info" :title="env?.ffmpeg_info">{{ env?.ffmpeg_info || "未检测" }}</span>
                 <span class="badge small" :class="env?.ffmpeg_ok ? 'ok' : 'bad'">
@@ -1868,6 +1869,17 @@ input::placeholder {
 
 .env-title b {
   color: var(--accent-dark);
+}
+
+.env-icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 4px;
+  color: var(--accent-ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
 }
 
 .env-row {

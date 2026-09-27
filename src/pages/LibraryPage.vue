@@ -20,6 +20,11 @@ const picked = ref(new Set());
 
 /** 打开的集合：当前页的条目、分页与勾选 */
 const opened = ref(null);
+/** 每页多少条（对应参考图里的「每批」）：改了立刻回第 1 页重取 */
+const pageSize = ref(20);
+const PAGE_SIZES = [20, 50, 100, 200];
+const pickingParse = ref(false);
+const parsing = ref(false);
 
 const loggedIn = computed(() => !!props.login?.logged_in);
 
@@ -31,6 +36,15 @@ const folders = computed(() => {
     [item.title, item.owner, item.intro].some((text) => (text ?? "").toLowerCase().includes(keyword))
   );
 });
+
+/** 两个标签合起来：勾选可以跨标签，取来源时不能只看当前标签那一列 */
+const allFolders = computed(() => [
+  ...(account.value?.created ?? []),
+  ...(account.value?.subscribed ?? []),
+]);
+
+/** 勾选用的键：收藏夹和合集的 id 是两套命名空间，可能撞号，得带上 kind */
+const keyOf = (folder) => `${folder.kind === "season" ? "season" : "fav"}:${folder.id}`;
 
 /** 秒 → m:ss（视频卡片右下角的时长） */
 function length(seconds) {
@@ -47,7 +61,26 @@ function thumb(url, width = 320, height = 200) {
   return `${https}@${width}w_${height}h_1c.webp`;
 }
 
-const favUrl = (id) => `https://space.bilibili.com/${account.value?.mid ?? 0}/favlist?fid=${id}`;
+/** 集合链接：按 kind 分流。
+ *
+ *  - 合集（订阅来的都是这一类）→ `channel/collectiondetail?sid=`，走 seasons_archives_list；
+ *  - 收藏夹 → `favlist?fid=`，订阅来的要用**对方**的 mid。
+ *
+ *  拿合集的 id 去查 favlist 不报错，但会命中另一个用户的收藏夹、返回 0 条，
+ *  界面上就表现为「没有可解析的内容」——所以不能一律用 favlist。 */
+const favUrl = (folder) => {
+  const mid = folder.owner_mid || account.value?.mid || 0;
+  return folder.kind === "season"
+    ? `https://space.bilibili.com/${mid}/channel/collectiondetail?sid=${folder.id}`
+    : `https://space.bilibili.com/${mid}/favlist?fid=${folder.id}`;
+};
+
+function switchTab(next) {
+  if (tab.value === next) return;
+  tab.value = next;
+  opened.value = null; // 切标签退回一级：不然停在详情里，看着像"点了没反应"
+  query.value = "";
+}
 
 async function load() {
   if (!loggedIn.value || loading.value) return;
@@ -64,16 +97,16 @@ async function load() {
   }
 }
 
-function togglePick(id) {
+function togglePick(key) {
   const next = new Set(picked.value);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
   picked.value = next;
 }
 
 /** 打开集合：每页多少条由接口决定（收藏夹 20），翻页就是按起点再探一次 */
 async function openFolder(folder) {
-  opened.value = { folder, probe: null, items: [], page: 1, perPage: 20, total: 0, picked: new Set(), loading: true };
+  opened.value = { folder, probe: null, items: [], page: 1, total: 0, picked: new Set(), loading: true };
   await loadPage(1);
 }
 
@@ -82,13 +115,14 @@ async function loadPage(page) {
   if (!view) return;
   view.loading = true;
   try {
-    const perPage = view.perPage || 20;
-    const probe = await api.probeRange(favUrl(view.folder.id), (page - 1) * perPage + 1);
+    const perPage = pageSize.value;
+    const probe = await api.probeRange(
+      favUrl(view.folder),
+      (page - 1) * perPage + 1,
+      perPage
+    );
     view.probe = probe;
     view.items = probe.items ?? [];
-    // 每页多少条以接口实际给的为准，但**只增不减**：最后一页往往只有几条，
-    // 拿它当页长会把页数算歪（实测冒出过"第 2 / 131 页"）
-    if (view.items.length > view.perPage) view.perPage = view.items.length;
     view.total = probe.total || view.items.length;
     view.page = page;
     view.picked = new Set();
@@ -99,16 +133,87 @@ async function loadPage(page) {
   }
 }
 
+async function changePageSize(size) {
+  pageSize.value = Number(size) || 20;
+  if (opened.value) await loadPage(1);
+}
+
 const pageCount = computed(() => {
   const view = opened.value;
-  if (!view || !view.perPage) return 1;
-  return Math.max(1, Math.ceil(view.total / view.perPage));
+  if (!view) return 1;
+  return Math.max(1, Math.ceil(view.total / Math.max(1, pageSize.value)));
 });
+
+/** 页码按钮：当前页附近最多 7 个，两头自动收窄 */
+const pageList = computed(() => {
+  const total = pageCount.value;
+  const current = opened.value?.page ?? 1;
+  const window = 3;
+  let start = Math.max(1, current - window);
+  let end = Math.min(total, start + 6);
+  start = Math.max(1, end - 6);
+  const pages = [];
+  for (let p = start; p <= end; p += 1) pages.push(p);
+  return pages;
+});
+
+/** 解析全部：把整个集合逐页拉进来（供勾选下载） */
+async function loadAll() {
+  const view = opened.value;
+  if (!view || parsing.value) return;
+  parsing.value = true;
+  pickingParse.value = false;
+  const pages = pageCount.value;
+  try {
+    for (let page = 1; page <= pages; page += 1) {
+      const probe = await api.probeRange(favUrl(view.folder), (page - 1) * pageSize.value + 1, pageSize.value);
+      const items = probe.items ?? [];
+      if (items.length) view.items = page === 1 ? items : [...view.items, ...items];
+      view.total = probe.total || view.total;
+      emit("toast", `已加载 ${view.items.length} / ${view.total} 项`);
+      if (!items.length) break;
+    }
+  } catch (error) {
+    emit("toast", String(error));
+  } finally {
+    parsing.value = false;
+  }
+}
+
+/** 后台解析全部并下载：逐页取元数据、直接入队（不占列表） */
+async function parseAllAndDownload() {
+  const view = opened.value;
+  if (!view || parsing.value) return;
+  parsing.value = true;
+  pickingParse.value = false;
+  const pages = pageCount.value;
+  let started = 0;
+  try {
+    for (let page = 1; page <= pages; page += 1) {
+      const from = (page - 1) * pageSize.value + 1;
+      const probe = await api.probeRange(favUrl(view.folder), from, pageSize.value);
+      const items = probe.items ?? [];
+      if (!items.length) break;
+      started += await enqueueBatch(probe, items, {
+        quality: pickDefaultQuality(probe, props.settings),
+        audio: pickDefaultAudio(probe, props.settings),
+        absoluteOf: (index) => Math.max((probe.total || view.total) - (from + index) + 1, 1),
+        onError: (entry, error) => emit("toast", `${entry.title}: ${error}`),
+      });
+    }
+    emit("toast", `已加入 ${started} 个下载任务`);
+  } catch (error) {
+    emit("toast", String(error));
+  } finally {
+    parsing.value = false;
+  }
+}
 
 /** 这一页第 index 条在来源里的序号（1 = 最旧），与解析页同一套算法 */
 const absoluteOf = (index) => {
   const view = opened.value;
-  const position = (view.page - 1) * view.perPage + index;
+  if (!view) return index + 1;
+  const position = (view.page - 1) * pageSize.value + index;
   return Math.max(view.total - position, 1);
 };
 
@@ -145,11 +250,11 @@ async function downloadPicked(all = false) {
   if (started) emit("toast", `已加入 ${started} 个下载任务`);
 }
 
-/** 选中若干个集合 → 交给解析页按各自的 favlist 解析（那边继续筛、还能改清晰度） */
+/** 选中若干个集合（可以跨标签）→ 交给解析页按各自的链接解析（那边继续筛、还能改清晰度） */
 function openPicked() {
-  const list = [...folders.value].filter((item) => picked.value.has(item.id));
+  const list = allFolders.value.filter((item) => picked.value.has(keyOf(item)));
   if (!list.length) return;
-  emit("open-source", list.map((item) => favUrl(item.id)).join("\n"));
+  emit("open-source", list.map((item) => favUrl(item)).join("\n"));
 }
 
 watch(
@@ -173,11 +278,11 @@ onMounted(() => {
   <div>
     <section class="card">
       <div class="tabs">
-        <button :class="{ active: tab === TAB.fav }" @click="tab = TAB.fav">
+        <button :class="{ active: tab === TAB.fav }" @click="switchTab(TAB.fav)">
           收藏夹
           <span v-if="account" class="badge">{{ account.created.length }}</span>
         </button>
-        <button :class="{ active: tab === TAB.sub }" @click="tab = TAB.sub">
+        <button :class="{ active: tab === TAB.sub }" @click="switchTab(TAB.sub)">
           订阅合集
           <span v-if="account" class="badge">{{ account.subscribed.length }}</span>
         </button>
@@ -227,9 +332,9 @@ onMounted(() => {
         <div v-else-if="folders.length" class="cards">
           <article
             v-for="item in folders"
-            :key="item.id"
+            :key="keyOf(item)"
             class="collection"
-            :class="{ on: picked.has(item.id) }"
+            :class="{ on: picked.has(keyOf(item)) }"
             @click="openFolder(item)"
           >
             <div class="thumb">
@@ -241,16 +346,24 @@ onMounted(() => {
             </div>
             <div class="body">
               <p class="ctitle">{{ item.title }}</p>
-              <p class="sub">{{ item.owner || "我的收藏夹" }}</p>
+              <p class="sub">
+                {{
+                  item.kind === "season"
+                    ? `合集 · ${item.owner}`
+                    : item.owner
+                      ? `收藏夹 · ${item.owner}`
+                      : "我创建的收藏夹"
+                }}
+              </p>
               <p v-if="item.intro" class="intro">{{ item.intro }}</p>
               <p class="num">{{ item.media_count }} 个视频</p>
             </div>
             <button
               class="pick"
-              :title="picked.has(item.id) ? '取消选择' : '选择这个集合'"
-              @click.stop="togglePick(item.id)"
+              :title="picked.has(keyOf(item)) ? '取消选择' : '选择这个集合'"
+              @click.stop="togglePick(keyOf(item))"
             >
-              <Icon :name="picked.has(item.id) ? 'check' : 'plus'" />
+              <Icon :name="picked.has(keyOf(item)) ? 'check' : 'plus'" />
             </button>
           </article>
         </div>
@@ -285,10 +398,33 @@ onMounted(() => {
             <Icon name="chevronLeft" class="btn-icon" />
           </button>
           <h2 class="grow">{{ opened.folder.title }}</h2>
-          <span class="loaded">已加载 {{ opened.items.length }} / {{ opened.total }} 项</span>
-          <button class="ghost" :disabled="opened.loading" @click="loadPage(opened.page)">
-            <Icon name="refresh" class="btn-icon" />
-          </button>
+          <span class="loaded">已加载 <b>{{ opened.items.length }}</b> / {{ opened.total }} 项</span>
+          <select
+            class="page-size"
+            :value="pageSize"
+            title="每页加载多少条"
+            @change="changePageSize($event.target.value)"
+          >
+            <option v-for="size in PAGE_SIZES" :key="size" :value="size">每批 {{ size }}</option>
+          </select>
+          <div class="parse-split">
+            <button class="seg main" :disabled="parsing" @click="loadAll">
+              {{ parsing ? "解析中…" : "解析全部" }}
+            </button>
+            <button class="seg arrow" :class="{ on: pickingParse }" title="更多解析方式" @click="pickingParse = !pickingParse">
+              <Icon name="chevronDown" />
+            </button>
+            <div v-if="pickingParse" class="parse-pop">
+              <button class="parse-item" @click="loadAll">
+                <Icon name="listDetails" />
+                解析全部
+              </button>
+              <button class="parse-item" @click="parseAllAndDownload">
+                <Icon name="cloudDownload" />
+                后台解析全部并下载
+              </button>
+            </div>
+          </div>
           <button class="ghost" :disabled="!opened.items.length" @click="downloadPicked(true)">下载全部</button>
           <button class="primary" :disabled="!opened.picked.size" @click="downloadPicked(false)">
             下载所选（{{ opened.picked.size }}）
@@ -319,11 +455,19 @@ onMounted(() => {
         <p v-else class="hint pad">这个集合里没有可解析的内容。</p>
 
         <footer v-if="opened.items.length" class="pager">
-          <span class="count">已选 {{ opened.picked.size }} / {{ opened.items.length }}</span>
+          <span class="count">已选 {{ opened.picked.size }} / {{ opened.total }}</span>
           <div class="pages">
             <button class="ghost" :disabled="opened.page <= 1" @click="loadPage(1)">«</button>
             <button class="ghost" :disabled="opened.page <= 1" @click="loadPage(opened.page - 1)">‹</button>
-            <span class="page-now">{{ opened.page }}</span>
+            <button
+              v-for="page in pageList"
+              :key="page"
+              class="ghost page-btn"
+              :class="{ on: page === opened.page }"
+              @click="loadPage(page)"
+            >
+              {{ page }}
+            </button>
             <button class="ghost" :disabled="opened.page >= pageCount" @click="loadPage(opened.page + 1)">›</button>
             <button class="ghost" :disabled="opened.page >= pageCount" @click="loadPage(pageCount)">»</button>
             <input
@@ -335,6 +479,7 @@ onMounted(() => {
               title="跳到第几页（回车）"
               @keydown.enter="loadPage(Math.min(Math.max(1, Number($event.target.value) || 1), pageCount))"
             />
+            <span class="jump-label">跳转</span>
             <span class="meta">第 {{ opened.page }} / {{ pageCount }} 页</span>
           </div>
           <button class="ghost" @click="selectPage">
@@ -701,6 +846,116 @@ h2 {
   display: flex;
   align-items: center;
   gap: 5px;
+}
+
+/* 「每批 N」下拉与「解析」分段按钮：跟解析页工具条同一套语言 */
+.page-size {
+  flex: none;
+  padding: 6px 9px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.parse-split {
+  position: relative;
+  flex: none;
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: visible;
+}
+
+.parse-split .seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--field);
+  border: none;
+  cursor: pointer;
+}
+
+.parse-split .seg.main {
+  border-right: 1px solid var(--line);
+}
+
+.parse-split .seg.arrow {
+  padding: 6px 8px;
+  color: var(--muted);
+}
+
+.parse-split .seg.arrow svg {
+  width: 14px;
+  height: 14px;
+}
+
+.parse-split .seg.arrow.on {
+  color: var(--accent-ink);
+}
+
+.parse-split .seg:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+.parse-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 12;
+  min-width: 208px;
+  padding: 5px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 30px rgba(20, 12, 16, 0.24);
+}
+
+.parse-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  font-size: 12.5px;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.parse-item:hover {
+  background: var(--hover);
+}
+
+.parse-item svg {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+
+.page-btn {
+  min-width: 30px;
+  text-align: center;
+}
+
+.page-btn.on {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.jump-label {
+  font-size: 12.5px;
+  color: var(--muted);
 }
 
 .pages .ghost {

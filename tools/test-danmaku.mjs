@@ -142,17 +142,18 @@ const walk = (dir, out = []) => {
   return out;
 };
 // 旁挂文件是视频落盘之后才写的，可能晚半拍：轮询等它出现（最多 20 秒）
+const isVideo = (p) => /\.(mp4|ts|mkv)$/i.test(p); // 封装格式由设置决定，别把扩展名写死
 let files = walk(`${SANDBOX}/downloads`);
 for (let i = 0; i < 20; i += 1) {
-  if (files.some((f) => f.full.endsWith(".mp4")) && files.some((f) => f.full.endsWith(".xml"))) break;
+  if (files.some((f) => isVideo(f.full)) && files.some((f) => f.full.endsWith(".xml"))) break;
   await wait(1000);
   files = walk(`${SANDBOX}/downloads`);
 }
 console.log("沙箱产物:\n" + files.map((f) => `  ${f.full.replace(SANDBOX, "")}  ${(f.size / 1024).toFixed(0)} KB`).join("\n"));
-const mp4 = files.find((f) => f.full.endsWith(".mp4"));
+const mp4 = files.find((f) => isVideo(f.full));
 const xml = files.find((f) => f.full.endsWith(".xml"));
 check("视频下下来了", !!mp4, mp4?.full);
-check("旁边有同名 .xml", !!xml && !!mp4 && xml.full.slice(0, -4) === mp4.full.slice(0, -4), xml?.full?.replace(SANDBOX, ""));
+check("旁边有同名 .xml", !!xml && !!mp4 && xml.full.replace(/\.[^./]+$/, "") === mp4.full.replace(/\.[^./]+$/, ""), xml?.full?.replace(SANDBOX, ""));
 
 if (xml) {
   const text = readFileSync(xml.full, "utf8");
@@ -178,7 +179,9 @@ if (mp4) {
     kinds = execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", mp4.full], { encoding: "utf8" }).trim();
   } catch (e) { kinds = `ffprobe 失败: ${e.message}`; }
   console.log("成品流类型: " + JSON.stringify(kinds));
-  check("成品里没有多出字幕/弹幕轨", /^(video|audio)(\r?\n(video|audio))*$/.test(kinds.replace(/\r/g, "").trim()), kinds);
+  // TS 容器下 ffprobe 会把同一组流打印两遍，比集合而不是比字符串
+  const kindsSet = [...new Set(kinds.split(/\r?\n/).map((s) => s.trim()).filter(Boolean))].sort();
+  check("成品里没有多出字幕/弹幕轨", JSON.stringify(kindsSet) === JSON.stringify(["audio", "video"]), kindsSet.join(" + "));
 }
 
 // ── 4. 日志里的证据 ──

@@ -74,6 +74,8 @@ const health = () =>
   })()`);
 
 const shot = async (name, clip) => {
+  // 别拿 0 宽的裁剪框去截图：解析页是 v-show 的，量到 0 说明它正被藏着
+  if (clip && (clip.width <= 0 || clip.height <= 0)) { console.log(`  ⚠ 跳过 ${name}（裁剪框 ${clip.width}×${clip.height}）`); return; }
   const s = await send("Page.captureScreenshot", clip ? { format: "png", clip: { ...clip, scale: 3 } } : { format: "png" });
   writeFileSync("D:/Zcode/BILIdown/tools/" + name, Buffer.from(s.data, "base64"));
 };
@@ -93,11 +95,17 @@ const pillShot = async (name) => {
 };
 
 async function parseOne(url, mode) {
+  // 先站到解析页：它平时是 v-show 藏着的，藏在别的页面时量到的一切都是 0
+  if (!(await js(`(() => { const c = [...document.querySelectorAll('.card')].find(c => c.querySelector('.select-bar')); return !!c && c.offsetParent !== null; })()`))) {
+    await js(`[...document.querySelectorAll(".sidebar button")].find(b => b.textContent.includes("解析"))?.click()`);
+    await wait(1400);
+  }
   await js(`[...document.querySelectorAll(".steps li")].find(li => li.textContent.includes("解析来源"))?.click()`);
   await wait(400);
-  await js(`[...document.querySelectorAll(".tabs button")].find(b => b.textContent.includes(${JSON.stringify(mode === "single" ? "单个视频" : "批量解析")}))?.click()`);
+  // 标签名跟着界面走：单个视频那条早就改叫「单个链接」了
+  await js(`[...document.querySelectorAll(".tabs button")].find(b => b.textContent.includes(${JSON.stringify(mode === "single" ? "单个链接" : "批量解析")}))?.click()`);
   await wait(300);
-  // 批量模式是 textarea，单个视频模式是 input——两种都要写得进去
+  // 批量模式是 textarea，单个链接模式是 input——两种都要写得进去
   await js(`(() => {
     const el = document.querySelector("textarea") || document.querySelector(".card input:not([type='checkbox'])");
     if (!el) return false;
@@ -115,14 +123,21 @@ async function parseOne(url, mode) {
   await wait(900);
   const toast = await js(`document.querySelector(".toast")?.textContent.trim() || ""`);
   if (toast) console.log("  提示: " + toast);
+  if (!(await js(`!!document.querySelector(".select-bar")`))) {
+    console.log("  ⚠ 没进到选择内容页（.select-bar 不在），后面的量尺寸会跳过");
+    return false;
+  }
+  return true;
 }
 
-// 1) 最长标题的视频（单个视频模式：标题会整条进工具条）
-await parseOne(`https://www.bilibili.com/video/${longest.bvid}`, "single");
+// 1) 最长标题的视频（单个链接模式：标题会整条进工具条）
+const ok1 = await parseOne(`https://www.bilibili.com/video/${longest.bvid}`, "single");
 console.log("长标题·单个视频: " + (await health()));
-await shot("long-title-single.png");
-const bar1 = JSON.parse(await js(`JSON.stringify((() => { const r = document.querySelector(".select-bar").getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }; })())`));
-await shot("long-title-bar.png", bar1);
+if (ok1) {
+  await shot("long-title-single.png");
+  const bar1 = JSON.parse(await js(`JSON.stringify((() => { const el = document.querySelector(".select-bar"); if (!el) return null; const r = el.getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }; })())`));
+  if (bar1) await shot("long-title-bar.png", bar1);
+}
 
 // 2) 最长名字的 UP（UP 空间：来源标题会带 UP 名）
 await parseOne(`https://space.bilibili.com/${longestOwner.mid}/video`, "batch");

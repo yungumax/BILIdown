@@ -77,7 +77,9 @@ const first = await js(`${LIB}.querySelector('.video')?.innerText.replace(/\s+/g
 await js(`(() => { const b = [...${LIB}.querySelectorAll('.pages button')].find(b => b.textContent.trim() === '›'); if (b && !b.disabled) b.click(); return true; })()`);
 for (let i = 0; i < 20; i += 1) { await wait(1000); const t = await js(`${LIB}.querySelector('.video')?.innerText.replace(/\s+/g, ' ').trim()`); if (t && t !== first) break; }
 check("翻页后内容变了", (await js(`${LIB}.querySelector('.video')?.innerText.replace(/\s+/g, ' ').trim()`)) !== first);
-check("翻页后页码是 2", (await js(`${LIB}.querySelector('.page-now')?.innerText`)) === "2");
+const curPage = await js(`${LIB}.querySelector('.page-btn.on')?.innerText.trim()`);
+const metaTxt = await js(`${LIB}.querySelector('.pager .meta')?.innerText || ''`);
+check("翻页后页码是 2", curPage === "2" && metaTxt.includes("第 2 /"), `${curPage} · ${metaTxt}`);
 
 console.log("\n== 勾选与下载 ==");
 await js(`[...${LIB}.querySelectorAll('.pager button')].find(b => b.textContent.includes('全选本页'))?.click()`);
@@ -96,6 +98,39 @@ const clicked = await js(`(() => { const b = [...${LIB}.querySelectorAll('button
 await wait(4000);
 check("「下载所选」按钮可点", clicked === "clicked", clicked);
 check("真的入队了 2 个任务", enqueued() - before === 2, `新增 ${enqueued() - before} 条`);
+
+// 订阅合集：collected/list 混着收藏夹和合集，合集必须走 collectiondetail，
+// 拿合集的 id 当 favlist 查不报错但返回 0 条——界面表现就是"显示无解析内容，实际有"。
+console.log("\n== 订阅合集（曾经显示无解析内容）==");
+await js(`(() => { const b = ${LIB}.querySelector('.head.detail .back'); if (b) b.click(); return true; })()`);
+await wait(1200);
+await js(`(() => { const b = [...${LIB}.querySelectorAll('.tabs button')].find(b => b.textContent.includes('订阅合集')); if (b) b.click(); return true; })()`);
+await wait(2200);
+check("点「订阅合集」会退回一级（不是停在详情里）", (await js(`!!${LIB}.querySelector('.head.detail')`)) === false);
+const subs = JSON.parse(await js(`JSON.stringify([...${LIB}.querySelectorAll('.collection')].map(c => c.innerText.replace(/\\s+/g, ' ').trim()))`));
+console.log("  订阅: " + JSON.stringify(subs.slice(0, 2)));
+check("列出订阅的合集", subs.length > 0, subs.length + " 个");
+check("订阅卡片标明是合集（不是收藏夹）", subs.every((s) => s.includes("合集 ·")), subs[0]?.slice(0, 24) || "(空)");
+// 挑一个条目多的（列表按接口顺序，挑视频数最大的那个）
+const bigIndex = JSON.parse(await js(`JSON.stringify([...${LIB}.querySelectorAll('.collection')].map((c, i) => i).sort((a, b) => { const num = (i) => Number(([...${LIB}.querySelectorAll('.collection')][i].innerText.match(/(\\d+) 个视频/) || [0, 0])[1]); return num(b) - num(a); }))`))[0];
+await js(`[...${LIB}.querySelectorAll('.collection')][${bigIndex}]?.click()`);
+for (let i = 0; i < 30; i += 1) { await wait(1000); if ((await js(`${LIB}.querySelectorAll('.video').length`)) > 0) break; }
+const subVideos = await js(`${LIB}.querySelectorAll('.video').length`);
+check("订阅合集里读得出内容", subVideos > 0, subVideos + " 张卡片");
+check("没有出现「没有可解析的内容」", !(await js(`${LIB}.innerText`)).includes("没有可解析的内容"));
+check("订阅合集的条目带封面和序号", (await js(`(() => { const v = ${LIB}.querySelector('.video'); return !!v?.querySelector('img') && /^\\d+$/.test(v?.querySelector('.seq')?.innerText || ''); })()`)) === true);
+await js(`(() => { const b = [...${LIB}.querySelectorAll('.head.detail button')].find(b => b.textContent.includes('解析全部')); if (b) b.click(); return true; })()`);
+const loadedText = () => js(`${LIB}.querySelector('.loaded')?.innerText || ''`);
+let loaded = "";
+for (let i = 0; i < 90; i += 1) {
+  await wait(1000);
+  loaded = await loadedText();
+  // 等到 N / N（真拉完）为止：只看"不是 0"会在一秒后误判成完成
+  if (/已加载\s*(\d+)\s*\/\s*\1\s*项/.test(loaded)) break;
+}
+console.log("  解析全部: " + loaded);
+const [got, all] = (loaded.match(/已加载\s*(\d+)\s*\/\s*(\d+)\s*项/) || []).slice(1);
+check("「解析全部」能一路拉到总数", !!got && got === all, loaded);
 
 const shot = await send("Page.captureScreenshot", { format: "png" });
 writeFileSync("D:/Zcode/BILIdown/tools/library-detail.png", Buffer.from(shot.data, "base64"));

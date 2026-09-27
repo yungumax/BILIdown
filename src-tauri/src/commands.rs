@@ -100,9 +100,10 @@ pub async fn probe_range(
     state: State<'_, AppState>,
     input: String,
     from: usize,
+    size: Option<usize>,
 ) -> Result<ProbeSource, String> {
     let client = state.client();
-    probe_range_one(&client, &state, &input, from).await
+    probe_range_one(&client, &state, &input, from, size).await
 }
 
 /// 设置页数据：可编辑项加运行环境信息。
@@ -274,12 +275,23 @@ pub struct FavFolder {
     /// 订阅来的那些，这里是被订阅收藏夹的作者
     #[serde(default)]
     pub owner: String,
+    /// 作者的 mid：订阅来的收藏夹要用**对方**的 mid 拼 favlist 链接
+    #[serde(default)]
+    pub owner_mid: u64,
     /// 封面（只有订阅的接口给；我创建的收藏夹没有封面）
     #[serde(default)]
     pub cover: String,
     /// 简介（同样只有订阅的接口给）
     #[serde(default)]
     pub intro: String,
+    /// `"fav"` = 收藏夹，`"season"` = 合集。
+    ///
+    /// 订阅接口（`collected/list`）把两类混在一起返回，靠 `type == 21` 区分。
+    /// 两类取内容走的是**不同接口**：收藏夹是 `fav/resource/list`，合集是
+    /// `seasons_archives_list`；拿合集的 id 当 favlist 查不会报错，但会命中
+    /// 另一个用户的收藏夹（返回 0 条），所以链接必须按这个字段拼。
+    #[serde(default)]
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -317,7 +329,8 @@ pub async fn library_folders(state: State<'_, AppState>) -> Result<FavFolders, S
         .await
         .map_err(describe)?;
 
-    let parse = |value: &serde_json::Value| -> Vec<FavFolder> {
+    // `fallback_mid`：我创建的收藏夹，接口不给 upper，作者就是自己
+    let parse = |value: &serde_json::Value, fallback_mid: u64| -> Vec<FavFolder> {
         value
             .get("list")
             .and_then(|list| list.as_array())
@@ -346,18 +359,30 @@ pub async fn library_folders(state: State<'_, AppState>) -> Result<FavFolders, S
                             .and_then(|c| c.as_str())
                             .unwrap_or_default()
                             .to_string();
+                        let owner_mid = item
+                            .get("upper")
+                            .and_then(|u| u.get("mid"))
+                            .and_then(|m| m.as_u64())
+                            .unwrap_or(fallback_mid);
                         let intro = item
                             .get("intro")
                             .and_then(|c| c.as_str())
                             .unwrap_or_default()
                             .to_string();
+                        // type 21 = 合集（ugc season），收藏夹没有这个字段
+                        let kind = match item.get("type").and_then(|t| t.as_u64()) {
+                            Some(21) => "season",
+                            _ => "fav",
+                        };
                         Some(FavFolder {
                             id,
                             title,
                             media_count,
                             owner,
+                            owner_mid,
                             cover,
                             intro,
+                            kind: kind.to_string(),
                         })
                     })
                     .collect()
@@ -367,8 +392,8 @@ pub async fn library_folders(state: State<'_, AppState>) -> Result<FavFolders, S
 
     Ok(FavFolders {
         mid,
-        created: parse(&created),
-        subscribed: parse(&collected),
+        created: parse(&created, mid),
+        subscribed: parse(&collected, mid),
     })
 }
 
@@ -1167,6 +1192,7 @@ async fn probe_range_one(
     state: &AppState,
     input: &str,
     from: usize,
+    size: Option<usize>,
 ) -> Result<ProbeSource, String> {
     let key = input.trim();
     if key.is_empty() {
@@ -1222,9 +1248,26 @@ async fn probe_range_one(
     let mut cache = start_batch(client, target, meta, items, cap).await?;
     cache.from_index = from;
     cache.next_page = page + 1;
-    // 一次就拉到这一批的上限：点一下能拿到"第 301–600 条"这样的整批。
-    // 中途失败不算错——已经拿到的条目照样可用，「继续解析」可以接着拉。
-    let _ = extend_batch(client, &mut cache, cap).await;
+    match size.filter(|n| *n > 0) {
+        // 按页取（内容库那种一页一页看）：只取到这一批要的条数，不冲到上限
+        Some(want) => {
+            while cache.items.len() < want {
+                let before = cache.items.len();
+                if extend_batch(client, &mut cache, want - before).await.is_err() {
+                    break;
+                }
+                if cache.items.len() == before {
+                    break; // 已经到底了
+                }
+            }
+            cache.items.truncate(want);
+        }
+        // 一次就拉到这一批的上限：点一下能拿到"第 301–600 条"这样的整批。
+        // 中途失败不算错——已经拿到的条目照样可用，「继续解析」可以接着拉。
+        None => {
+            let _ = extend_batch(client, &mut cache, cap).await;
+        }
+    }
     let source = batch_to_source(&cache);
     state.put_batch(key.to_string(), cache);
     Ok(source)
@@ -3454,7 +3497,7 @@ mod live_tests {
         assert!(state.peek_batch(url).expect("缓存").exhausted, "到上限后应标记已拉完");
         assert_eq!(head.len(), capped);
 
-        let second = probe_range_one(&client, &state, url, capped + 1)
+        let second = probe_range_one(&client, &state, url, capped + 1, None)
             .await
             .expect("按序号加载");
         assert_eq!(second.from_index, capped + 1);

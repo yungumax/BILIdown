@@ -40,9 +40,9 @@ export async function probeMore(input, want) {
 
 // 按序号加载：从第 from 条开始重新取一批。超过单次上限的来源靠它分批拉完，
 // 两批互不重叠（1–300、301–600……），因此不会重复下载。
-export async function probeRange(input, from) {
+export async function probeRange(input, from, size = null) {
   if (!hasTauri) return mock.probeRange(input, from);
-  return invoke("probe_range", { input, from });
+  return invoke("probe_range", { input, from, size });
 }
 
 // 按当前命名规则重命名已下载的条目（dryRun=true 只预演，不改盘）
@@ -559,8 +559,19 @@ const mock = (() => {
 
   const libraryFolders = async () => ({
     mid: 1,
-    created: [{ id: 52568231, title: "默认收藏夹", media_count: 131, owner: "" }],
-    subscribed: [{ id: 147, title: "示例订阅合集", media_count: 151, owner: "示例UP主" }],
+    created: [
+      { id: 52568231, title: "默认收藏夹", media_count: 131, owner: "", owner_mid: 1, kind: "fav" },
+    ],
+    subscribed: [
+      {
+        id: 147,
+        title: "示例订阅合集",
+        media_count: 151,
+        owner: "示例UP主",
+        owner_mid: 157761,
+        kind: "season",
+      },
+    ],
   });
 
   const namingVariables = () =>
