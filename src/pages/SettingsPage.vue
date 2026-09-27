@@ -1278,6 +1278,10 @@ async function open(path) {
               <select v-model.number="draft.chunk_concurrency">
                 <option v-for="n in SEGMENTS" :key="n" :value="n">{{ n }} 段</option>
               </select>
+              <p class="note">
+                同一个文件同时拉取的分段数：越大越快，也越容易碰到 B 站限速；选 1 就是顺序下载（最稳）。
+                实际并发还要乘以「下载」页的「同时下载任务数」。
+              </p>
             </div>
 
             <div class="field full">
