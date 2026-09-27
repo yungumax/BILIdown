@@ -40,6 +40,8 @@ pub struct OpusFeedPage {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct OpusPost {
     pub title: String,
+    /// 作者名（页面状态里的 module_author.name）
+    pub author: String,
     pub topic: String,
     pub text: String,
     pub images: Vec<OpusImage>,
@@ -74,6 +76,7 @@ pub fn parse_page(html: &str) -> Result<OpusPost> {
             }
             k if k.contains("AUTHOR") => {
                 post.pub_time = text_of(module.pointer("/module_author/pub_time"));
+                post.author = text_of(module.pointer("/module_author/name"));
             }
             k if k.contains("STAT") => {
                 post.like = module

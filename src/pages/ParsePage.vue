@@ -22,6 +22,7 @@ const KIND_LABELS = {
   collection: "合集",
   series: "系列",
   opus: "图文",
+  article: "专栏",
   audio: "音频",
   space: "UP 空间",
   bangumi: "番剧",
@@ -90,7 +91,7 @@ const sources = [
     icon: ["M4.6 6.4h14.8v10.6H4.6z", "M9.8 20.4 8.8 17M14.2 20.4l1-3.4"],
   },
   {
-    label: "图文与动态",
+    label: "图文与专栏",
     // 画面 + 右下角的正文线
     icon: ["M4.6 6.4h15v11.2h-15z", "M7.4 13.6h5.2M7.4 15.8h3.4"],
   },
@@ -1240,7 +1241,13 @@ async function startSingle(item) {
                 <td class="col-title">{{ row.title }}</td>
                 <td class="col-owner" :title="row.owner">{{ row.owner || "—" }}</td>
                 <td class="col-dur num">
-                  {{ row.entry && row.entry.opus_id ? "图文" : formatDuration(row.duration) }}
+                  {{
+                    row.entry && row.entry.opus_id
+                      ? row.source.probe.kind === "article"
+                        ? "专栏"
+                        : "图文"
+                      : formatDuration(row.duration)
+                  }}
                 </td>
               </tr>
             </template>
@@ -1294,7 +1301,7 @@ async function startSingle(item) {
       />
 
       <p class="hint">
-        每行一个来源；合集、收藏夹、系列、UP 空间、图文与音频都会按页加载。
+        每行一个来源；合集、收藏夹、系列、UP 空间、图文与音频都会按页加载，单条图文/专栏链接直接解析。
       </p>
 
       <div class="actions">

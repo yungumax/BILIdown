@@ -786,6 +786,9 @@ fn target_key(target: &Target) -> String {
         Target::Series { mid, sid } => format!("series:{mid}:{sid}"),
         Target::OpusList(mid) => format!("opus:{mid}"),
         Target::AudioList(mid) => format!("audio:{mid}"),
+        Target::Post { id, article } => {
+            format!("{}:{id}", if *article { "article" } else { "post" })
+        }
         Target::Space(mid) => format!("space:{mid}"),
         Target::Bangumi { season_id, ep_id } => match (season_id, ep_id) {
             (Some(sid), _) => format!("bangumi:{sid}"),
@@ -845,6 +848,7 @@ async fn probe_one(
         Target::AudioList(mid) => {
             probe_batch_first_page(client, state, trimmed, BatchTarget::Audio(mid)).await
         }
+        Target::Post { id, article } => probe_post(client, trimmed, id, article).await,
         Target::Space(mid) => {
             probe_batch_first_page(client, state, trimmed, BatchTarget::Space(mid)).await
         }
@@ -898,6 +902,62 @@ async fn probe_video_or_collection(
         }
     }
     probe_video_bvid(client, bvid).await
+}
+
+/// 单条图文/专栏：抓一次页面状态，包装成"只有一条"的来源。
+///
+/// 专栏的旧链接会 301 到 opus 页，两种形态拿到的是同一份页面状态，
+/// 下载也走图文那条路（图片 + 正文存文件夹）。
+async fn probe_post(
+    client: &BiliClient,
+    key: &str,
+    id: u64,
+    article: bool,
+) -> Result<ProbeSource, String> {
+    let html = client.post_page(id, article).await.map_err(describe)?;
+    let post = bili_core::opus::parse_page(&html).map_err(describe)?;
+    let id_text = id.to_string();
+    let title = if post.title.trim().is_empty() {
+        summary_of(&post.text, &id_text)
+    } else {
+        post.title.clone()
+    };
+    Ok(ProbeSource {
+        kind: if article { "article" } else { "opus" }.to_string(),
+        key: key.trim().to_string(),
+        title,
+        owner: post.author.clone(),
+        cover: String::new(),
+        note: String::new(),
+        bvid: String::new(),
+        cid: 0,
+        aid: 0,
+        owner_mid: 0,
+        pubdate: 0,
+        part_index: 0,
+        part_title: String::new(),
+        duration: 0,
+        page_count: 1,
+        total: 1,
+        from_index: 1,
+        loaded: 1,
+        exhausted: true,
+        capped: false,
+        qualities: Vec::new(),
+        audios: Vec::new(),
+        recommended_quality: 0,
+        best_quality: 0,
+        items: vec![BatchVideo {
+            bvid: String::new(),
+            cid: 0,
+            ep_id: None,
+            opus_id: id_text,
+            au_id: String::new(),
+            title: post.title.clone(),
+            owner: post.author,
+            duration: 0,
+        }],
+    })
 }
 
 /// 分页类批量来源：拉第一页 → 建缓存 → 返回。
@@ -1480,7 +1540,15 @@ async fn run_opus_download(
         t.message = "获取图文内容".to_string();
     });
 
-    let html = client.opus_page(&req.opus_id).await?;
+    // 专栏走旧链接（会 301 到 opus 页），图文走 opus 直链
+    let html = client
+        .post_page(
+            req.opus_id
+                .parse()
+                .map_err(|_| BiliError::InvalidInput("图文 id 非法".into()))?,
+            req.source == "article",
+        )
+        .await?;
     let post = bili_core::opus::parse_page(&html)?;
 
     let naming = naming_context(req, "", "图文");
@@ -1710,8 +1778,8 @@ async fn run_download(
         .await
         .map_err(|e| BiliError::Unavailable(format!("并发控制异常: {e}")))?;
 
-    // 图文没有音视频流：内容是图片与正文，走另一条路径
-    if req.source == "opus" {
+    // 图文/专栏没有音视频流：内容是图片与正文，走另一条路径
+    if req.source == "opus" || req.source == "article" {
         return run_opus_download(app, client, settings, output_dir, req, shared).await;
     }
     // 音频下载的是音频流本身（m4a），不需要合并

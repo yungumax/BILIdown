@@ -7,6 +7,8 @@
 //! - 系列：`space.bilibili.com/{mid}/lists/{sid}?type=series` 或 `.../channel/seriesdetail?sid={sid}`
 //! - 图文：`space.bilibili.com/{mid}/upload/opus`（一个 UP 的图文列表）
 //! - 音频：`space.bilibili.com/{mid}/upload/audio`（一个 UP 的音频投稿）
+//! - 单条图文/专栏：`bilibili.com/opus/{id}` 或 `bilibili.com/read/cv{id}`
+//!   （专栏已并入 opus，旧链接会 301 到 opus 页，内容也从同一份页面状态取）
 //! - UP 空间：`space.bilibili.com/{mid}`
 //! - 番剧：`bilibili.com/bangumi/play/ss{nid}` / `.../ep{ep_id}`
 //! - 课程：`bilibili.com/cheese/play/ss{nid}`（单集链接需先转成课程页）
@@ -41,6 +43,8 @@ pub enum Target {
     OpusList(u64),
     /// 音频列表：mid
     AudioList(u64),
+    /// 单条图文/专栏：id + 是不是专栏（旧链接 read/cv）
+    Post { id: u64, article: bool },
     /// 番剧：season_id 与 ep_id 至少一个存在
     Bangumi {
         season_id: Option<u64>,
@@ -60,6 +64,8 @@ fn patterns() -> &'static [Regex] {
             Regex::new(r"bilibili\.com/(\d+)/favlist").expect("合法"),
             Regex::new(r"space\.bilibili\.com/(\d+)/upload/opus").expect("合法"),
             Regex::new(r"space\.bilibili\.com/(\d+)/upload/audio").expect("合法"),
+            Regex::new(r"bilibili\.com/read/cv(\d+)").expect("合法"),
+            Regex::new(r"bilibili\.com/opus/(\d+)").expect("合法"),
             Regex::new(r"space\.bilibili\.com/(\d+)/lists/(\d+)").expect("合法"),
             Regex::new(r"space\.bilibili\.com/(\d+)/[a-z/]*collectiondetail[^ ]*?[?&]sid=(\d+)")
                 .expect("合法"),
@@ -128,6 +134,20 @@ pub fn parse_target(input: &str) -> Result<Target> {
         }
     }
 
+    // 单条专栏（旧链接，会 301 到 opus 页）
+    if let Some(caps) = patterns[5].captures(s) {
+        if let Some(id) = caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()) {
+            return Ok(Target::Post { id, article: true });
+        }
+    }
+
+    // 单条图文/专栏（opus 直链）
+    if let Some(caps) = patterns[6].captures(s) {
+        if let Some(id) = caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()) {
+            return Ok(Target::Post { id, article: false });
+        }
+    }
+
     // 音频列表：/upload/audio
     if let Some(caps) = patterns[4].captures(s) {
         if let Some(mid) = caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()) {
@@ -136,7 +156,7 @@ pub fn parse_target(input: &str) -> Result<Target> {
     }
 
     // 合集 / 系列：新版 /lists/{sid}，两者同形，看 ?type=
-    if let Some(caps) = patterns[5].captures(s) {
+    if let Some(caps) = patterns[7].captures(s) {
         if let (Some(mid), Some(sid)) = (
             caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()),
             caps.get(2).and_then(|m| m.as_str().parse::<u64>().ok()),
@@ -150,7 +170,7 @@ pub fn parse_target(input: &str) -> Result<Target> {
     }
 
     // 合集：旧版 collectiondetail?sid=
-    if let Some(caps) = patterns[6].captures(s) {
+    if let Some(caps) = patterns[8].captures(s) {
         if let (Some(mid), Some(sid)) = (
             caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()),
             caps.get(2).and_then(|m| m.as_str().parse::<u64>().ok()),
@@ -160,7 +180,7 @@ pub fn parse_target(input: &str) -> Result<Target> {
     }
 
     // 系列：旧版 seriesdetail?sid=
-    if let Some(caps) = patterns[7].captures(s) {
+    if let Some(caps) = patterns[9].captures(s) {
         if let (Some(mid), Some(sid)) = (
             caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()),
             caps.get(2).and_then(|m| m.as_str().parse::<u64>().ok()),
@@ -170,7 +190,7 @@ pub fn parse_target(input: &str) -> Result<Target> {
     }
 
     // 番剧
-    if let Some(caps) = patterns[8].captures(s) {
+    if let Some(caps) = patterns[10].captures(s) {
         let id = caps.get(2).and_then(|m| m.as_str().parse::<u64>().ok());
         match (caps.get(1).map(|m| m.as_str()), id) {
             (Some("ss"), Some(season_id)) => {
@@ -190,7 +210,7 @@ pub fn parse_target(input: &str) -> Result<Target> {
     }
 
     // 课程
-    if let Some(caps) = patterns[9].captures(s) {
+    if let Some(caps) = patterns[11].captures(s) {
         let id = caps.get(2).and_then(|m| m.as_str().parse::<u64>().ok());
         if let (Some("ss"), Some(season_id)) = (caps.get(1).map(|m| m.as_str()), id) {
             return Ok(Target::Cheese(season_id));
@@ -201,7 +221,7 @@ pub fn parse_target(input: &str) -> Result<Target> {
     }
 
     // UP 空间（裸 mid）
-    if let Some(caps) = patterns[10].captures(s) {
+    if let Some(caps) = patterns[12].captures(s) {
         if let Some(mid) = caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()) {
             return Ok(Target::Space(mid));
         }
@@ -269,6 +289,24 @@ mod tests {
         assert_eq!(
             parse_target("space.bilibili.com/486287787/upload/opus?tid=0&page=1").unwrap(),
             Target::OpusList(486287787)
+        );
+    }
+
+    #[test]
+    fn parses_single_post_urls() {
+        // 旧专栏链接与 opus 直链都是"单条"，只是标签不同
+        assert_eq!(
+            parse_target("https://www.bilibili.com/read/cv13397601").unwrap(),
+            Target::Post { id: 13397601, article: true }
+        );
+        assert_eq!(
+            parse_target("https://www.bilibili.com/opus/1179150912883523593").unwrap(),
+            Target::Post { id: 1179150912883523593, article: false }
+        );
+        // 带查询串/结尾斜杠也要认
+        assert_eq!(
+            parse_target("bilibili.com/read/cv13397601?spm_id_from=333").unwrap(),
+            Target::Post { id: 13397601, article: true }
         );
     }
 

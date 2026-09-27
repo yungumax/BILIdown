@@ -828,6 +828,17 @@ impl BiliClient {
         self.fetch_json(&url).await
     }
 
+    /// 单条图文/专栏的页面 HTML。专栏的旧链接会 301 到 opus 页，客户端跟随重定向，
+    /// 所以两种形态拿到的是同一份页面状态。
+    pub async fn post_page(&self, id: u64, article: bool) -> Result<String> {
+        let url = if article {
+            format!("https://www.bilibili.com/read/cv{id}")
+        } else {
+            format!("https://www.bilibili.com/opus/{id}")
+        };
+        self.fetch_text(&url).await
+    }
+
     /// 图文详情页的 HTML：完整内容（正文与原图）只在这份页面状态里。
     pub async fn opus_page(&self, opus_id: &str) -> Result<String> {
         self.fetch_text(&format!("https://www.bilibili.com/opus/{opus_id}"))
