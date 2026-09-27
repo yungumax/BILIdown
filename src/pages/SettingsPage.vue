@@ -43,9 +43,10 @@ const draft = ref(null);
 // 每个预设对应**一种来源形状**，多了就是重复：
 // 单条（{title}）／多P（分P）／批量列表（序号）／番剧课程（集）。
 // 想在自己的文件里再挂点别的（比如 {quality}），存成"我的预设"即可。
-// 「默认（默认）」就是"没挑别的时用的那一个"：模板等于后端 naming_template 的兜底值。
+// 「单文件（默认）」就是"没挑别的时用的那一个"：模板等于后端 naming_template 的兜底值，
+// 软件没设置过命名模板时用它的命名。文件夹那边同理（见 FOLDER_PRESETS 的第一项）。
 const BUILTIN_PRESETS = [
-  { name: "默认（默认）", template: "{title}.{ext}" },
+  { name: "单文件（默认）", template: "{title}.{ext}" },
   { name: "分P视频", template: "P{part_index} - {part_title}.{ext}" },
   { name: "合集/列表", template: "{index} {title}.{ext}" },
   { name: "番剧/课程", template: "第{episode_index}集 - {episode_title}.{ext}" },
@@ -194,6 +195,7 @@ const overlapVars = computed(() => {
 });
 
 const FOLDER_PRESETS = [
+  // 第一条 = 后端的 DEFAULT_FOLDER_TEMPLATE：软件没设置过文件夹模板时用它
   { name: "UP → 合集 → 条目（默认）", template: "{owner_name}/{collection_title}" },
   { name: "UP → 来源类型（图文/音频不混在一起）", template: "{owner_name}/{source_kind}" },
   { name: "只按 UP 分层", template: "{owner_name}" },

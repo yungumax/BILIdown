@@ -61,7 +61,7 @@ const go = async (text) => {
 
 // ── 文件命名页 ─────────────────────────────────────────────
 await go("文件命名");
-const DEFAULT_NAME = "默认（默认）";
+const DEFAULT_NAME = "单文件（默认）";
 const naming = await readSelect(DEFAULT_NAME);
 console.log("\n== 文件命名 · 命名预设 ==");
 for (const o of naming.options) console.log(`  ${o.group ? "[" + o.group + "] " : ""}${o.text}`);
@@ -69,14 +69,14 @@ for (const o of naming.options) console.log(`  ${o.group ? "[" + o.group + "] " 
 check("第一个选项是「自定义模板」", naming.options[0]?.text === "自定义模板");
 const nBuiltin = naming.options.filter((o) => o.group === "内置");
 check("内置精简到 4 个（每种来源形状一个）", nBuiltin.length === 4, nBuiltin.map((o) => o.text).join(" / "));
-check("内置顺序：默认 → 分P视频 → 合集/列表 → 番剧/课程",
+check("内置顺序：单文件（默认） → 分P视频 → 合集/列表 → 番剧/课程",
   JSON.stringify(nBuiltin.map((o) => o.text)) === JSON.stringify([DEFAULT_NAME, "分P视频", "合集/列表", "番剧/课程"]));
 check("变体预设「带清晰度」不再内置（需要就存成我的预设）", !naming.options.some((o) => o.text === "带清晰度"));
 // 反推往返：选中它 → 模板变成它的模板 → 下拉显示回到它自己的名字
 // （不能断言页面一进来就显示它——用户可能存的是别的模板，那就不该显示成默认）
 await pick(DEFAULT_NAME, DEFAULT_NAME);
 const defaultRoundTrip = await readSelect(DEFAULT_NAME);
-check("选「默认（默认）」后模板与显示都回到它", (await inputWith("{")) === "{title}.{ext}" && defaultRoundTrip.selected === DEFAULT_NAME,
+check("选「单文件（默认）」后模板与显示都回到它", (await inputWith("{")) === "{title}.{ext}" && defaultRoundTrip.selected === DEFAULT_NAME,
   `${await inputWith("{")} / ${defaultRoundTrip.selected}`);
 
 // 静态对一次：前端的默认设置 template 必须等于内置「默认（默认）」的模板，
@@ -86,7 +86,11 @@ const appSrc = readFileSync("src/App.vue", "utf8");
 const pageSrc = readFileSync("src/pages/SettingsPage.vue", "utf8");
 const defaultTemplate = /naming_template: "([^"]+)"/.exec(appSrc)?.[1];
 const defaultPreset = new RegExp('\{ name: "' + DEFAULT_NAME + '", template: "([^"]+)" \}').exec(pageSrc)?.[1];
-check("默认设置里的模板 = 内置「默认（默认）」的模板", !!defaultTemplate && defaultTemplate === defaultPreset, `${defaultTemplate} vs ${defaultPreset}`);
+check("默认命名模板 = 内置「单文件（默认）」的模板", !!defaultTemplate && defaultTemplate === defaultPreset, `${defaultTemplate} vs ${defaultPreset}`);
+const rustSrc = readFileSync("src-tauri/src/state.rs", "utf8");
+const defaultFolder = /pub const DEFAULT_FOLDER_TEMPLATE: &str = "([^"]+)"/.exec(rustSrc)?.[1];
+const defaultFolderPreset = /\{ name: "UP → 合集 → 条目（默认）", template: "([^"]+)" \}/.exec(pageSrc)?.[1];
+check("默认文件夹模板 = 内置第一条（未设置文件夹时用的就是它）", !!defaultFolder && defaultFolder === defaultFolderPreset, `${defaultFolder} vs ${defaultFolderPreset}`);
 
 // 每个内置模板都要符合命名规则：不含 /、不碰文件夹变量、以 {ext} 结尾
 console.log("\n== 内置模板是否守命名规则 ==");
