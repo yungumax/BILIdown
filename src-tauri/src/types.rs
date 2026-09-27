@@ -154,6 +154,9 @@ pub struct NamingMeta {
     /// 来源类型中文名（文件夹模板里的 {source_kind}）
     #[serde(default)]
     pub source_kind: String,
+    /// {index} 的补零宽度（0 = 不补；前端按本批条数给，几千条就是 4）
+    #[serde(default)]
+    pub index_pad: u32,
     pub part_title: String,
     pub part_index: u32,
     pub aid: u64,

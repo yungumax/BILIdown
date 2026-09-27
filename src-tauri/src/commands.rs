@@ -223,6 +223,7 @@ pub async fn preview_names(
                 collection_title: item.naming.collection_title.clone(),
                 source_kind: kind_label(&item.kind).to_string(),
                 index: item.naming.index,
+                index_pad: item.naming.index_pad,
                 quality: quality.map(quality_name).unwrap_or_default().to_string(),
                 codec: codec_label.to_string(),
                 date: date.clone().unwrap_or_default(),
@@ -1451,6 +1452,7 @@ fn naming_context(
         collection_title: req.naming.collection_title.clone(),
         source_kind: kind_label(&req.source).to_string(),
         index: req.naming.index,
+        index_pad: req.naming.index_pad,
         quality: quality.to_string(),
         codec: codec_name(codecs).to_string(),
         date: req.naming.date.clone(),
@@ -2479,6 +2481,7 @@ mod naming_tests {
             cover: String::new(),
             naming: crate::types::NamingMeta {
                 source_kind: String::new(),
+                index_pad: 0,
                 part_title: "P1 标题".to_string(),
                 part_index: 1,
                 aid: 12345,

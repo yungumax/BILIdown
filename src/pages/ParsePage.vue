@@ -880,9 +880,18 @@ function batchNaming(batch, entry, position) {
     // - 单条图文/专栏：没有合集层，留空（否则标题在路径里出现两次）
     collection_title: folderLevel(batch, entry),
     source_kind: KIND_LABELS[batch.kind] ?? "视频",
+    // {index} 的补零宽度按本批条数算：20 条补到 2 位、几千条补到 4 位，
+    // 这样目录按名称排序才是 01、02 … 10，而不是 1、10、2
+    index_pad: String(Math.max(batch.items.length, 1)).length,
     // 图文列表的顺序是"新 → 旧"，编号要按发布顺序"由远及近"，
     // 所以倒过来：本批里最旧的那条是 1，最新的最大。
-    index: (batch.kind === "opus" ? Math.max(batch.items.length - position + 1, 1) : position),
+    // 单条图文/专栏没有批次上下文，不给编号（编号会让人以为它是系列里的一条）
+    index:
+      batch.kind === "opus" && batch.items.length > 1
+        ? batch.items.length - position + 1
+        : batch.kind === "opus" || batch.kind === "article"
+          ? 0
+          : position,
     date: localDate(),
     publish_date: "",
   };

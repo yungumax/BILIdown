@@ -48,6 +48,9 @@ pub struct NamingContext {
     /// 来源类型的中文名：文件夹分层常用（例如 {owner_name}/{source_kind}）
     pub source_kind: String,
     pub index: u32,
+    /// {index} 的补零宽度（0 = 不补）。前端按本批条数算：几千条就是 4 位，
+    /// 保证按名称排序时 10 不会排在 2 前面。
+    pub index_pad: u32,
     pub quality: String,
     pub codec: String,
     pub date: String,
@@ -73,6 +76,7 @@ impl NamingContext {
             collection_title: "示例合集".to_string(),
             source_kind: "合集".to_string(),
             index: 7,
+            index_pad: 3,
             quality: "1080P60".to_string(),
             codec: "AVC".to_string(),
             date: String::new(),
@@ -84,6 +88,14 @@ impl NamingContext {
     fn value(&self, token: &str) -> Option<String> {
         let number = |n: u64| if n == 0 { String::new() } else { n.to_string() };
         let sequence = |n: u32| if n == 0 { String::new() } else { n.to_string() };
+        // 按宽度补零：几千条的批次用 4 位，按名称排序才不会把 10 排在 2 前面
+        let padded = |n: u32, width: u32| {
+            if n == 0 || width <= 1 {
+                sequence(n)
+            } else {
+                format!("{n:0width$}", width = width as usize)
+            }
+        };
         Some(match token {
             "title" => self.title.clone(),
             "part_title" => self.part_title.clone(),
@@ -98,7 +110,7 @@ impl NamingContext {
             "episode_title" => self.episode_title.clone(),
             "collection_title" => self.collection_title.clone(),
             "source_kind" => self.source_kind.clone(),
-            "index" => sequence(self.index),
+            "index" => padded(self.index, self.index_pad),
             "quality" => self.quality.clone(),
             "codec" => self.codec.clone(),
             "date" => self.date.clone(),
@@ -275,6 +287,7 @@ mod tests {
             collection_title: "合集".to_string(),
             source_kind: "合集".to_string(),
             index: 7,
+            index_pad: 0,
             quality: "1080P60".to_string(),
             codec: "AVC".to_string(),
             date: "2026-09-26".to_string(),

@@ -905,6 +905,10 @@ async function open(path) {
                 </div>
               </div>
               <p class="note">
+                <b>命名规则决定"条目自己叫什么"</b>：视频与音频是文件名，图文与专栏是条目文件夹名。
+                目录层级由「文件夹」页的规则决定，最终路径 = 文件夹规则 + 命名规则。
+              </p>
+              <p class="note">
                 文件名预览：<b>{{ namingPreview }}</b>
               </p>
               <p v-if="overlapVars.duplicated.length" class="note warn">
