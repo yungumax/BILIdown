@@ -515,12 +515,22 @@ const tableRows = computed(() => {
   for (const source of allSources.value) {
     // 按序号加载时这批的第一条不是来源里的第 1 条；abs 记来源内的真实位置
     const fromIndex = source.probe.from_index || 1;
-    // 列表接口都是"最新在前"，而编号要"由旧到新"（最旧的是 1），所以整批倒过来。
+    // 编号 = **在来源里的绝对序号**（1 = 来源里最旧的那条），不是"批内位置"。
+    // 这样先解析 30 条、再解析 30 条，同一条内容的编号不会从 30 变成 60。
+    //
+    // 锚点用来源声明的总条数：绝对位置 = fromIndex + position（从最新那头数），
+    // 序号 = total - 绝对位置 + 1。列表接口是"最新在前"，所以最新那条 = total。
+    // 图文接口不给总数（total=0），退化成批内相对编号（再解析一次会重排，见说明）。
     // 番剧/课程按集数顺序给，不倒。
     const reversed = CHRONO_KINDS.includes(source.probe.kind);
     const count = source.probe.items.length;
-    const absOf = (position) =>
-      reversed ? Math.max(count - position, 1) : fromIndex + position;
+    const total = source.probe.total || 0;
+    const absOf = (position) => {
+      const absolute = fromIndex + position;
+      if (!reversed) return absolute;
+      if (total > 0) return Math.max(total - absolute + 1, 1);
+      return Math.max(count - position, 1);
+    };
     if (source.probe.kind === "video") {
       const ck = contentKey(null, source);
       if (seenItems.has(ck)) continue;
