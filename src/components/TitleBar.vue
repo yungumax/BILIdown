@@ -175,12 +175,12 @@ function onDrag(event) {
 
     <button class="login-chip" :class="{ on: login.logged_in }" @click="emit('login')">
       <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="8.5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7" />
+        <circle cx="12" cy="8.5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.9" />
         <path
           d="M5.6 19.2c.9-3.1 3.4-4.7 6.4-4.7s5.5 1.6 6.4 4.7"
           fill="none"
           stroke="currentColor"
-          stroke-width="1.7"
+          stroke-width="1.9"
           stroke-linecap="round"
         />
       </svg>
@@ -200,7 +200,7 @@ function onDrag(event) {
     <div class="window-controls">
       <button class="ctrl" title="最小化" @click="api.minimizeWindow()">
         <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M5.5 12h13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          <path d="M5.5 12h13" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
         </svg>
       </button>
       <button class="ctrl" title="最大化 / 还原" @click="api.toggleMaximizeWindow()">
@@ -213,7 +213,7 @@ function onDrag(event) {
             rx="1.6"
             fill="none"
             stroke="currentColor"
-            stroke-width="1.5"
+            stroke-width="1.7"
           />
         </svg>
       </button>
@@ -222,7 +222,7 @@ function onDrag(event) {
           <path
             d="m7 7 10 10M17 7 7 17"
             stroke="currentColor"
-            stroke-width="1.5"
+            stroke-width="1.7"
             stroke-linecap="round"
           />
         </svg>
@@ -251,8 +251,8 @@ function onDrag(event) {
 }
 
 .mark {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
 }
 
 .name {
@@ -303,8 +303,8 @@ function onDrag(event) {
 .icon-btn {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   color: var(--muted);
   background: var(--field);
   border: 1px solid var(--line);
@@ -313,8 +313,8 @@ function onDrag(event) {
 }
 
 .icon-btn svg {
-  width: 16px;
-  height: 16px;
+  width: 19px;
+  height: 19px;
 }
 
 .icon-btn:hover,
@@ -360,8 +360,8 @@ function onDrag(event) {
 
 .theme-item svg {
   flex: none;
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
 }
 
 .theme-item .label {
@@ -369,8 +369,8 @@ function onDrag(event) {
 }
 
 .theme-item .check {
-  width: 14px;
-  height: 14px;
+  width: 17px;
+  height: 17px;
   color: var(--accent);
 }
 
@@ -391,8 +391,8 @@ function onDrag(event) {
 }
 
 .login-chip .glyph {
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
 }
 
 .login-chip.on .glyph {
@@ -400,8 +400,8 @@ function onDrag(event) {
 }
 
 .caret {
-  width: 13px;
-  height: 13px;
+  width: 15px;
+  height: 15px;
   color: var(--faint);
 }
 
@@ -419,8 +419,8 @@ function onDrag(event) {
 }
 
 .ctrl svg {
-  width: 17px;
-  height: 17px;
+  width: 20px;
+  height: 20px;
 }
 
 .ctrl:hover {

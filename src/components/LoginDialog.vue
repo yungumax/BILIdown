@@ -113,8 +113,8 @@ h2 {
 }
 
 .close {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   font-size: 12px;
   color: var(--faint);
   border-radius: var(--radius-sm);
@@ -140,8 +140,8 @@ h2 {
 }
 
 .spinner {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   border: 2px solid var(--line);
   border-top-color: var(--accent);
   border-radius: 50%;

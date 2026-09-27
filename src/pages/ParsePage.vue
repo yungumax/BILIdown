@@ -1012,7 +1012,7 @@ async function startSingle(item) {
               d="M19 12H5.6M11 5.6 4.6 12l6.4 6.4"
               fill="none"
               stroke="currentColor"
-              stroke-width="1.8"
+              stroke-width="2"
               stroke-linecap="round"
               stroke-linejoin="round"
             />
@@ -1043,7 +1043,7 @@ async function startSingle(item) {
                     d="m6 9.5 6 6 6-6"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.8"
+                    stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   />
@@ -1081,7 +1081,7 @@ async function startSingle(item) {
                     d="m6 9.5 6 6 6-6"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.8"
+                    stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   />
@@ -1095,7 +1095,7 @@ async function startSingle(item) {
                         d="M3.6 6.6 5.2 8.2l3-3.6M3.6 12.2 5.2 13.8l3-3.6M3.6 17.8 5.2 19.4l3-3.6M12 7.2h8.4M12 12.8h8.4M12 18.4h8.4"
                         fill="none"
                         stroke="currentColor"
-                        stroke-width="1.7"
+                        stroke-width="1.9"
                         stroke-linecap="round"
                         stroke-linejoin="round"
                       />
@@ -1108,7 +1108,7 @@ async function startSingle(item) {
                         d="M12 4v9.6m0 0L8.4 10m3.6 3.6L15.6 10M4.5 18.6h15"
                         fill="none"
                         stroke="currentColor"
-                        stroke-width="1.7"
+                        stroke-width="1.9"
                         stroke-linecap="round"
                         stroke-linejoin="round"
                       />
@@ -1126,7 +1126,7 @@ async function startSingle(item) {
                         d="M4.5 7.4h9M4.5 12h6M4.5 16.6h9M17 9.6V6m0 3.6L15.2 7.8M17 9.6l1.8-1.8M17 14.4v3.6m0-3.6 1.8 1.8M17 18l-1.8-1.8"
                         fill="none"
                         stroke="currentColor"
-                        stroke-width="1.7"
+                        stroke-width="1.9"
                         stroke-linecap="round"
                         stroke-linejoin="round"
                       />
@@ -1170,7 +1170,7 @@ async function startSingle(item) {
                     d="m6 9.5 6 6 6-6"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.8"
+                    stroke-width="2"
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   />
@@ -1184,7 +1184,7 @@ async function startSingle(item) {
                         d="M4.5 7.4h9M4.5 12h6M4.5 16.6h9M17 9.6V6m0 3.6L15.2 7.8M17 9.6l1.8-1.8M17 14.4v3.6m0-3.6 1.8 1.8M17 18l-1.8-1.8"
                         fill="none"
                         stroke="currentColor"
-                        stroke-width="1.7"
+                        stroke-width="1.9"
                         stroke-linecap="round"
                         stroke-linejoin="round"
                       />
@@ -1239,11 +1239,11 @@ async function startSingle(item) {
                 d="M5 7.4h14M5 12h14M5 16.6h14"
                 fill="none"
                 stroke="currentColor"
-                stroke-width="1.7"
+                stroke-width="1.9"
                 stroke-linecap="round"
               />
-              <circle cx="9" cy="7.4" r="1.9" fill="var(--card)" stroke="currentColor" stroke-width="1.5" />
-              <circle cx="15" cy="16.6" r="1.9" fill="var(--card)" stroke="currentColor" stroke-width="1.5" />
+              <circle cx="9" cy="7.4" r="1.9" fill="var(--card)" stroke="currentColor" stroke-width="1.7" />
+              <circle cx="15" cy="16.6" r="1.9" fill="var(--card)" stroke="currentColor" stroke-width="1.7" />
             </svg>
             下载设置
           </button>
@@ -1437,13 +1437,13 @@ async function startSingle(item) {
               rx="2.2"
               fill="none"
               stroke="currentColor"
-              stroke-width="1.6"
+              stroke-width="1.8"
             />
             <path
               d="M15.6 4.4v2.2M6.6 7.4v10.4a2 2 0 0 0 2 2h6"
               fill="none"
               stroke="currentColor"
-              stroke-width="1.6"
+              stroke-width="1.8"
               stroke-linecap="round"
             />
           </svg>
@@ -1466,7 +1466,7 @@ async function startSingle(item) {
               :d="d"
               fill="none"
               stroke="currentColor"
-              stroke-width="1.6"
+              stroke-width="1.8"
               stroke-linecap="round"
               stroke-linejoin="round"
             />
@@ -1673,8 +1673,8 @@ input:focus {
 }
 
 .ghost svg {
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
   color: var(--muted);
 }
 
@@ -1703,8 +1703,8 @@ input:focus {
 
 .source svg {
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 17px;
+  height: 17px;
   color: var(--accent);
 }
 
@@ -1809,8 +1809,8 @@ input:focus {
 }
 
 .dl-settings .ghost svg {
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
 }
 
 .dl-settings .ghost.on {
@@ -2031,8 +2031,8 @@ input:focus {
 }
 
 .back svg {
-  width: 17px;
-  height: 17px;
+  width: 20px;
+  height: 20px;
 }
 
 /* 标题按内容占宽（长标题折行，不会被截断），这样类型标签才能紧跟在标题后面 */
@@ -2130,8 +2130,8 @@ input:focus {
 }
 
 .fold-arrow {
-  width: 13px;
-  height: 13px;
+  width: 15px;
+  height: 15px;
   margin-right: 4px;
   color: var(--faint);
   vertical-align: -2px;
@@ -2392,8 +2392,8 @@ option:disabled {
 
 .remove {
   flex: none;
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   font-size: 12px;
   color: var(--faint);
   border-radius: var(--radius-sm);
@@ -2520,8 +2520,8 @@ option:disabled {
 
 .caret {
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 17px;
+  height: 17px;
 }
 
 /* 边框画在容器上、两个按钮透明无边框：箭头因此看起来是在按钮里面 */
@@ -2568,8 +2568,8 @@ option:disabled {
 
 .parse-split .seg.arrow svg {
   display: block;
-  width: 14px;
-  height: 14px;
+  width: 17px;
+  height: 17px;
   color: var(--muted);
 }
 
@@ -2615,8 +2615,8 @@ option:disabled {
 
 .parse-item svg {
   flex: none;
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
   color: var(--muted);
 }
 

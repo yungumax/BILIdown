@@ -75,8 +75,8 @@ li.done {
 .dot {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   font-size: 12px;
   font-weight: 600;
   border-radius: 50%;
@@ -86,8 +86,8 @@ li.done {
 }
 
 .dot svg {
-  width: 14px;
-  height: 14px;
+  width: 17px;
+  height: 17px;
 }
 
 li.clickable {

@@ -14,6 +14,7 @@ const CATEGORY_ICONS = {
   download: "M12 4.8v9.6M8.4 10.8 12 14.4l3.6-3.6M5.6 18.4h12.8",
   media: "M4.6 7.4h14.8v9.2H4.6zM9.8 10v4l3.6-2-3.6-2Z",
   naming: "M7 4.6h7l4 4v10.8H7zM14 4.6V9h4M9.4 13h5.2M9.4 16.4h5.2",
+  folder: "M4.8 7.2h4.4l1.8 2.2h8.2a1 1 0 0 1 1 1v7.4a1 1 0 0 1-1 1H4.8a1 1 0 0 1-1-1V8.2a1 1 0 0 1 1-1Z",
   encode: "M8.4 4.8v14.4M8.4 19.2 5.2 16M15.6 4.8v14.4M15.6 4.8 12.4 8",
   update: "M19.4 12a7.4 7.4 0 1 1-2.2-5.2M19.4 4.6v4h-4",
   network: "M12 19.4a7.4 7.4 0 1 0 0-14.8 7.4 7.4 0 0 0 0 14.8ZM3.6 12h16.8M12 4.6c-4.4 4.4-4.4 10.4 0 14.8 4.4-4.4 4.4-10.4 0-14.8Z",
@@ -561,10 +562,10 @@ async function open(path) {
         <button class="ghost" :disabled="!settings" @click="reset">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
-              d="M5.2 12a6.8 6.8 0 1 1 2 4.8M5.2 17v-4.4h4.4"
+              d="M20.4 12a8.4 8.4 0 1 1-2.5-6L20.4 8.4M20.4 4.2v4.2h-4.2"
               fill="none"
               stroke="currentColor"
-              stroke-width="1.6"
+              stroke-width="1.8"
               stroke-linecap="round"
               stroke-linejoin="round"
             />
@@ -574,10 +575,10 @@ async function open(path) {
         <button class="ghost" :disabled="!dirty" @click="undo">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
-              d="M18.8 12a6.8 6.8 0 1 1-2-4.8M18.8 7v4.4h-4.4"
+              d="M9.4 14.2 5 9.8l4.4-4.4M5 9.8h9.4a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5h-1.4"
               fill="none"
               stroke="currentColor"
-              stroke-width="1.6"
+              stroke-width="1.8"
               stroke-linecap="round"
               stroke-linejoin="round"
             />
@@ -590,7 +591,7 @@ async function open(path) {
               d="M6.4 5.4h9.2l3 3v10.2H6.4zM9.4 5.4v3.6h5.2M9 13.6h6"
               fill="none"
               stroke="currentColor"
-              stroke-width="1.6"
+              stroke-width="1.8"
               stroke-linecap="round"
               stroke-linejoin="round"
             />
@@ -612,7 +613,7 @@ async function open(path) {
                 :d="CATEGORY_ICONS[category.key]"
                 fill="none"
                 stroke="currentColor"
-                stroke-width="1.6"
+                stroke-width="1.8"
                 stroke-linecap="round"
                 stroke-linejoin="round"
               />
@@ -631,7 +632,7 @@ async function open(path) {
                 :d="CATEGORY_ICONS[activeCategory.key]"
                 fill="none"
                 stroke="currentColor"
-                stroke-width="1.6"
+                stroke-width="1.8"
                 stroke-linecap="round"
                 stroke-linejoin="round"
               />
@@ -864,7 +865,7 @@ async function open(path) {
                     d="M4.6 7.4h14.8v9.2H4.6zM9.8 10v4l3.6-2-3.6-2Z"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.6"
+                    stroke-width="1.8"
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   />
@@ -880,7 +881,7 @@ async function open(path) {
                       d="M12 5.6v12.8M5.6 12h12.8"
                       fill="none"
                       stroke="currentColor"
-                      stroke-width="1.8"
+                      stroke-width="2"
                       stroke-linecap="round"
                     />
                   </svg>
@@ -949,7 +950,7 @@ async function open(path) {
                     d="M5.4 9.4h3.2L12.6 6v12L8.6 14.6H5.4zM15.8 9.6a3.6 3.6 0 0 1 0 4.8"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="1.6"
+                    stroke-width="1.8"
                     stroke-linecap="round"
                     stroke-linejoin="round"
                   />
@@ -965,7 +966,7 @@ async function open(path) {
                       d="M12 5.6v12.8M5.6 12h12.8"
                       fill="none"
                       stroke="currentColor"
-                      stroke-width="1.8"
+                      stroke-width="2"
                       stroke-linecap="round"
                     />
                   </svg>
@@ -1064,7 +1065,7 @@ async function open(path) {
                         d="M12 5.6v12.8M5.6 12h12.8"
                         fill="none"
                         stroke="currentColor"
-                        stroke-width="1.8"
+                        stroke-width="2"
                         stroke-linecap="round"
                       />
                     </svg>
@@ -1123,7 +1124,7 @@ async function open(path) {
                       d="M6.4 5.4h9.2l3 3v10.2H6.4zM9.4 5.4v3.6h5.2"
                       fill="none"
                       stroke="currentColor"
-                      stroke-width="1.6"
+                      stroke-width="1.8"
                       stroke-linecap="round"
                       stroke-linejoin="round"
                     />
@@ -1194,7 +1195,7 @@ async function open(path) {
                         d="M12 5.6v12.8M5.6 12h12.8"
                         fill="none"
                         stroke="currentColor"
-                        stroke-width="1.8"
+                        stroke-width="2"
                         stroke-linecap="round"
                       />
                     </svg>
@@ -1245,7 +1246,7 @@ async function open(path) {
                       d="M6.4 5.4h9.2l3 3v10.2H6.4zM9.4 5.4v3.6h5.2"
                       fill="none"
                       stroke="currentColor"
-                      stroke-width="1.6"
+                      stroke-width="1.8"
                       stroke-linecap="round"
                       stroke-linejoin="round"
                     />
@@ -1435,8 +1436,8 @@ h1 {
 }
 
 .primary svg {
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
 }
 
 .ghost {
@@ -1452,8 +1453,8 @@ h1 {
 }
 
 .ghost svg {
-  width: 14px;
-  height: 14px;
+  width: 17px;
+  height: 17px;
   color: var(--muted);
 }
 
@@ -1508,8 +1509,8 @@ h1 {
 
 .icon {
   flex: none;
-  width: 18px;
-  height: 18px;
+  width: 21px;
+  height: 21px;
 }
 
 .cats button.active .icon {
@@ -1550,8 +1551,8 @@ h1 {
   flex: none;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   color: var(--accent);
   background: var(--accent-soft);
   border-radius: var(--radius-sm);
@@ -1819,8 +1820,8 @@ input::placeholder {
 .info {
   display: inline-grid;
   place-items: center;
-  width: 13px;
-  height: 13px;
+  width: 15px;
+  height: 15px;
   font-size: 9.5px;
   font-weight: 700;
   line-height: 1;
@@ -1852,8 +1853,8 @@ input::placeholder {
 /* 卡片头上的小图标：发丝描边的方片，和侧栏分类图标同一个语言 */
 .sub-icon {
   flex: none;
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   padding: 5px;
   color: var(--accent-ink);
   background: var(--card);
@@ -2030,8 +2031,8 @@ input::placeholder {
   position: absolute;
   top: 2.5px;
   left: 3px;
-  width: 16px;
-  height: 16px;
+  width: 19px;
+  height: 19px;
   background: #fff;
   border-radius: 50%;
   transition: transform 0.15s ease;

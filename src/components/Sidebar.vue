@@ -77,7 +77,7 @@ const speedText = computed(() => {
             :d="item.path"
             fill="none"
             stroke="currentColor"
-            stroke-width="1.6"
+            stroke-width="1.8"
             stroke-linecap="round"
             stroke-linejoin="round"
           />
@@ -145,8 +145,8 @@ nav {
 
 .icon {
   flex: none;
-  width: 19px;
-  height: 19px;
+  width: 22px;
+  height: 22px;
 }
 
 .nav-item.active .icon {
@@ -196,8 +196,8 @@ nav {
 }
 
 .dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--ok);
 }

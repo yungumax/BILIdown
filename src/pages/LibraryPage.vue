@@ -14,7 +14,7 @@ const emit = defineEmits(["goto"]);
             d="M7.4 4.6h9.2v14.8l-4.6-3.6-4.6 3.6Z"
             fill="none"
             stroke="currentColor"
-            stroke-width="1.5"
+            stroke-width="1.7"
             stroke-linejoin="round"
           />
         </svg>
@@ -60,8 +60,8 @@ h1 {
 }
 
 .icon {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   color: var(--faint);
 }
 
