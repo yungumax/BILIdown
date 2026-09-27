@@ -51,7 +51,6 @@ const state = async () => JSON.parse(await js(`(() => {
   return JSON.stringify({
     清晰度: sel('视频清晰度'),
     音频: sel('音频质量'),
-    封装: sel('封装格式'),
     卡片: cards,
     标签: labels.slice(0, 6)
   });
@@ -93,13 +92,9 @@ let s = await state();
 check("顶部有「视频清晰度」下拉", !!s.清晰度, JSON.stringify(s.清晰度));
 check("顶部有「音频质量」下拉", !!s.音频, JSON.stringify(s.音频));
 check("清晰度下拉第一项是最优画质", s.清晰度?.first === "最优画质", s.清晰度?.first);
-check("封装格式在下面一行（全宽）", !!s.封装);
 check("两个下拉并排（同一行、左右各一）",
   s.清晰度?.box?.[1] === s.音频?.box?.[1] && s.清晰度?.box?.[0] < s.音频?.box?.[0] && s.清晰度?.box?.[2] < 600,
   `清晰度 ${JSON.stringify(s.清晰度?.box)} / 音频 ${JSON.stringify(s.音频?.box)}`);
-check("封装格式在下一行、占满整行",
-  (s.封装?.box?.[1] ?? 0) > (s.清晰度?.box?.[1] ?? 0) && (s.封装?.box?.[2] ?? 0) > (s.清晰度?.box?.[2] ?? 0) * 1.7,
-  `封装 ${JSON.stringify(s.封装?.box)}`);
 check("两张卡片是「画质优先顺序」与「音频优先顺序」",
   s.卡片.map((c) => c.title).join(" / ") === "画质优先顺序 / 音频优先顺序", s.卡片.map((c) => c.title).join(" / "));
 
@@ -158,15 +153,29 @@ const merged = JSON.parse(await js(`(() => {
 })()`));
 console.log("  搬过来的: " + JSON.stringify(merged));
 check("媒体页有「下载封面（独立图片）」", merged.复选框.some((t) => t.includes("下载封面")), JSON.stringify(merged.复选框));
-check("媒体页有「下载字幕（独立 .srt）」", merged.复选框.some((t) => t.includes("下载字幕")));
+check("「下载字幕」勾选框已摘掉（清单接口被风控挡住）", !merged.复选框.some((t) => t.includes("下载字幕")), JSON.stringify(merged.复选框));
 check("媒体页有「下载范围」（两个选项）", merged.范围选项.length === 2 && !!merged.下载范围, merged.范围选项.join(" / "));
 
-// 勾字幕 → 出风控说明（不再是"后续版本提供"）
-await js(`[...document.querySelectorAll('.card-check')].find(l => l.textContent.includes('下载字幕')).querySelector('input').click()`);
+// 视频/音频/图片三个格式：同一排、每个至少两个选项、没有 MKV
+const formats = JSON.parse(await js(`(() => {
+  const cols = [...document.querySelectorAll('.grid3 .field')];
+  return JSON.stringify(cols.map(f => {
+    const r = f.getBoundingClientRect();
+    const sel = f.querySelector('select');
+    return { 名: f.querySelector(':scope > label').textContent.trim(), top: Math.round(r.top), left: Math.round(r.left),
+             选项: [...sel.options].map(o => o.textContent.trim()) };
+  }));
+})()`));
+console.log("  格式三连排: " + JSON.stringify(formats));
+check("三个格式下拉排在同一排", formats.length === 3 && formats.every((f) => f.top === formats[0].top) && formats[0].left < formats[1].left && formats[1].left < formats[2].left);
+check("视频格式至少两个选项且没有 MKV",
+  formats[0]?.选项.length >= 2 && !formats[0].选项.some((t) => t.includes("MKV")), formats[0]?.选项.join(" / "));
+check("音频格式至少两个选项", (formats[1]?.选项.length ?? 0) >= 2, formats[1]?.选项.join(" / "));
+check("图片格式至少两个选项", (formats[2]?.选项.length ?? 0) >= 2, formats[2]?.选项.join(" / "));
+
+await js(`[...document.querySelectorAll('.card-check')].find(l => l.textContent.includes('下载封面')).querySelector('input').click()`);
 await wait(400);
-check("勾上「下载字幕」后说明写清风控限制",
-  (await js(`[...document.querySelectorAll('.note')].some(n => n.textContent.includes('字幕清单接口受 B 站风控限制'))`)) === true);
-check("勾上「下载字幕」后说明文件是独立 .srt",
+check("勾上「下载封面」后说明是独立文件",
   (await js(`[...document.querySelectorAll('.note')].some(n => n.textContent.includes('与视频同名的独立文件'))`)) === true);
 await js(`[...document.querySelectorAll('.card-check')].find(l => l.textContent.includes('下载弹幕')).querySelector('input').click()`);
 await wait(400);

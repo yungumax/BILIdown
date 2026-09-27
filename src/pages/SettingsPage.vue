@@ -112,10 +112,24 @@ const AUDIO_PREFS = [
   { value: "normal", label: "普通音轨" },
 ];
 
-const CONTAINERS = [
-  { value: "mp4", label: "MP4" },
-  { value: "mkv", label: "MKV" },
+// 视频格式（封装）：MKV 已去掉——封面、字幕、弹幕都成独立文件后它没用了
+const VIDEO_FORMATS = [
+  { value: "mp4", label: "MP4（通用）" },
+  { value: "ts", label: "TS（剪辑 / 直播工具友好）" },
 ];
+
+// 音频格式：只影响「音频」来源的成品，视频里的音轨保持原编码
+const AUDIO_FORMATS = [
+  { value: "source", label: "原格式（不转码）" },
+  { value: "mp3", label: "MP3（兼容最广）" },
+];
+
+// 图片格式：只影响图文图片与封面
+const IMAGE_FORMATS = [
+  { value: "source", label: "原格式（不转码）" },
+  { value: "jpg", label: "JPG（体积小）" },
+];
+
 
 const CODECS = [
   { value: "auto", label: "不限编码" },
@@ -785,15 +799,36 @@ async function open(path) {
               </div>
             </div>
 
-            <div class="field full">
-              <label>封装格式</label>
-              <select v-model="draft.container">
-                <option v-for="item in CONTAINERS" :key="item.value" :value="item.value">
-                  {{ item.label }}
-                </option>
-              </select>
-              <p class="note">封面、字幕、弹幕都另存为独立文件，与封装格式无关</p>
+            <div class="grid3">
+              <div class="field">
+                <label>视频格式</label>
+                <select v-model="draft.container">
+                  <option v-for="item in VIDEO_FORMATS" :key="item.value" :value="item.value">
+                    {{ item.label }}
+                  </option>
+                </select>
+              </div>
+              <div class="field">
+                <label>音频格式</label>
+                <select v-model="draft.audio_format">
+                  <option v-for="item in AUDIO_FORMATS" :key="item.value" :value="item.value">
+                    {{ item.label }}
+                  </option>
+                </select>
+              </div>
+              <div class="field">
+                <label>图片格式</label>
+                <select v-model="draft.image_format">
+                  <option v-for="item in IMAGE_FORMATS" :key="item.value" :value="item.value">
+                    {{ item.label }}
+                  </option>
+                </select>
+              </div>
             </div>
+            <p class="note">
+              视频格式只管封装（MP4 通用、TS 给剪辑工具）；音频格式只管「音频」来源的成品，
+              视频里的音轨保持原编码；图片格式只管图文图片与封面。后两项选转码需要 ffmpeg。
+            </p>
 
             <div class="grid2 full">
               <label class="check card-check">
@@ -801,21 +836,13 @@ async function open(path) {
                 <span>下载封面（独立图片）</span>
               </label>
               <label class="check card-check">
-                <input type="checkbox" v-model="draft.download_subtitles" />
-                <span>下载字幕（独立 .srt）</span>
-              </label>
-              <label class="check card-check">
                 <input type="checkbox" v-model="draft.download_danmaku" />
                 <span>下载弹幕（独立 .xml）</span>
               </label>
             </div>
-            <p v-if="draft.download_cover || draft.download_subtitles || draft.download_danmaku" class="note">
-              封面、字幕、弹幕都存成<b>与视频同名的独立文件</b>（封面 .jpg/.png、字幕 .srt、弹幕 .xml），
-              不与视频合成，播放器直接读同名文件即可。
-              音频与图文没有字幕弹幕，会跳过。
-            </p>
-            <p v-if="draft.download_subtitles" class="note">
-              字幕清单接口受 B 站风控限制，被挡（412）时这条就跳过、并写进日志 —— 没字幕的视频也走这条。
+            <p v-if="draft.download_cover || draft.download_danmaku" class="note">
+              封面和弹幕都存成<b>与视频同名的独立文件</b>（封面按上面的图片格式、弹幕 .xml），
+              不与视频合成，播放器直接读同名文件即可。音频与图文没有弹幕，会跳过。
             </p>
 
             <div class="field full">
@@ -1555,6 +1582,13 @@ h2 {
 .field label {
   font-size: 12.5px;
   font-weight: 600;
+}
+
+/* 三个一排（视频/音频/图片格式） */
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .grid2 {

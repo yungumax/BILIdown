@@ -1646,10 +1646,27 @@ async fn run_opus_download(
     );
     tokio::fs::write(&text_path, compose_opus_text(&post, &req.opus_id)).await?;
 
+    // 图片格式：默认原样落盘；选了 JPG 就把不是 jpg 的转一道（转不了就留原格式）
+    let want_jpg = settings.image_format == "jpg";
+    let ffmpeg_bin = bili_core::ffmpeg::find_ffmpeg(explicit_ffmpeg(&settings).as_deref());
+    if want_jpg && ffmpeg_bin.is_none() {
+        settings.log("warn", "选了 JPG 图片但没找到 ffmpeg，图片保持原格式");
+    }
     for (index, image) in post.images.iter().enumerate() {
         let bytes = client.fetch_bytes(&image.url).await?;
-        let name = format!("{:02}.{}", index + 1, image_ext(&image.url, &bytes.1));
-        tokio::fs::write(folder.join(&name), &bytes.0).await?;
+        let source_ext = image_ext(&image.url, &bytes.1);
+        let mut jpeg: Option<Vec<u8>> = None;
+        if want_jpg && source_ext != "jpg" {
+            if let Some(ffmpeg) = ffmpeg_bin.as_deref() {
+                match jpeg_bytes(ffmpeg, &bytes.0, source_ext, &folder, index).await {
+                    Ok(data) => jpeg = Some(data),
+                    Err(e) => settings.log("warn", &format!("转 JPG 失败，保留原格式: {e}")),
+                }
+            }
+        }
+        let ext = if jpeg.is_some() { "jpg" } else { source_ext };
+        let data = jpeg.as_deref().unwrap_or(&bytes.0);
+        tokio::fs::write(folder.join(format!("{:02}.{ext}", index + 1)), data).await?;
         let done = index + 1;
         let percent = done as f64 / total.max(1) as f64 * 100.0;
         mutate(&shared, &app, |t| {
@@ -1697,11 +1714,14 @@ async fn run_audio_download(
         .cloned()
         .ok_or_else(|| BiliError::Unavailable("这条音频没有可下载的地址（可能是会员专享）".into()))?;
 
-    // 音频就是 m4a：用固定的扩展名渲染，不跟视频的封装设置走
+    // 音频默认用原轨道的扩展名（B 站给的基本是 m4a）；设置里选了 MP3 就转码成 mp3
+    let source_ext = audio_ext(&url);
+    let want_mp3 = settings.audio_format == "mp3";
+    let target_ext = if want_mp3 { "mp3" } else { source_ext };
     let naming = naming_context(req, "", "音频");
     let out_file = output_dir
         .join(settings.output_folder_template(&naming))
-        .join(settings.output_filename_with_ext(&naming, audio_ext(&url)));
+        .join(settings.output_filename_with_ext(&naming, target_ext));
     if let Some(parent) = out_file.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
@@ -1751,6 +1771,27 @@ async fn run_audio_download(
             .await?;
     }
 
+    // 要 MP3 而源不是 mp3（常见是 m4a）时转一道；转不了就留着原格式，别让任务失败
+    if want_mp3 && source_ext != "mp3" {
+        match bili_core::ffmpeg::find_ffmpeg(explicit_ffmpeg(&settings).as_deref()) {
+            Some(ffmpeg_bin) => {
+                let tmp = out_file.with_extension("src");
+                if tokio::fs::rename(&out_file, &tmp).await.is_ok() {
+                    match bili_core::ffmpeg::to_mp3(&ffmpeg_bin, &tmp, &out_file).await {
+                        Ok(_) => {
+                            tokio::fs::remove_file(&tmp).await.ok();
+                        }
+                        Err(e) => {
+                            settings.log("warn", &format!("转 MP3 失败，保留原格式（{source_ext}）: {e}"));
+                            tokio::fs::rename(&tmp, out_file.with_extension(source_ext)).await.ok();
+                        }
+                    }
+                }
+            }
+            None => settings.log("warn", "选了 MP3 但没找到 ffmpeg，保留原格式"),
+        }
+    }
+
     let path = final_path.to_string_lossy().to_string();
     settings.log("info", &format!("音频下载完成: {} -> {path}", req.title));
     mutate(&shared, &app, |t| {
@@ -1783,6 +1824,62 @@ fn compose_opus_text(post: &bili_core::opus::OpusPost, opus_id: &str) -> String 
         lines.push(format!("图片 {} 张（文件名为序号）", post.images.len()));
     }
     lines.join("\n") + "\n"
+}
+
+/// 把内存里的一张图转成 JPEG 字节（临时文件进出，转完即删）。
+async fn jpeg_bytes(
+    ffmpeg: &Path,
+    bytes: &[u8],
+    source_ext: &str,
+    dir: &Path,
+    index: usize,
+) -> Result<Vec<u8>, BiliError> {
+    let tmp_in = dir.join(format!(".img{index}.src.{source_ext}"));
+    let tmp_out = dir.join(format!(".img{index}.out.jpg"));
+    tokio::fs::write(&tmp_in, bytes).await?;
+    let result = bili_core::ffmpeg::to_jpg(ffmpeg, &tmp_in, &tmp_out).await;
+    let out = match result {
+        Ok(_) => Ok(tokio::fs::read(&tmp_out).await?),
+        Err(e) => Err(e),
+    };
+    tokio::fs::remove_file(&tmp_in).await.ok();
+    tokio::fs::remove_file(&tmp_out).await.ok();
+    out
+}
+
+/// 按「图片格式」把一张图写成与视频同名的文件：默认原样落盘；
+/// 选了 JPG 且原图不是 jpg 时转一道，转不了就写原图（不让任务失败）。
+async fn write_image_file(
+    settings: &crate::state::Settings,
+    bytes: &[u8],
+    source_ext: &str,
+    out_file: &Path,
+) -> Result<PathBuf, BiliError> {
+    if settings.image_format == "jpg" && source_ext != "jpg" {
+        if let Some(ffmpeg) = bili_core::ffmpeg::find_ffmpeg(explicit_ffmpeg(settings).as_deref()) {
+            // 临时名要留正经扩展名：ffmpeg 靠扩展名推断封装，`.tmp` 会直接报错
+            let tmp_in = out_file.with_extension(format!("src.{source_ext}"));
+            let tmp_out = out_file.with_extension("out.jpg");
+            tokio::fs::write(&tmp_in, bytes).await?;
+            let converted = bili_core::ffmpeg::to_jpg(&ffmpeg, &tmp_in, &tmp_out).await;
+            tokio::fs::remove_file(&tmp_in).await.ok();
+            match converted {
+                Ok(_) => {
+                    let path = out_file.with_extension("jpg");
+                    if let Err(e) = tokio::fs::rename(&tmp_out, &path).await {
+                        settings.log("warn", &format!("转 JPG 失败，保留原格式: {e}"));
+                    } else {
+                        return Ok(path);
+                    }
+                }
+                Err(e) => settings.log("warn", &format!("转 JPG 失败，保留原格式: {e}")),
+            }
+            tokio::fs::remove_file(&tmp_out).await.ok();
+        }
+    }
+    let path = out_file.with_extension(source_ext);
+    tokio::fs::write(&path, bytes).await?;
+    Ok(path)
 }
 
 /// 音频扩展名：URL 结尾是 .m4a/.mp3 就用它，否则按常见的 m4a。
@@ -2167,9 +2264,8 @@ async fn write_sidecars(
                     match client.fetch_bytes(&info.pic).await {
                         Ok((bytes, content_type)) => {
                             let ext = image_ext(&info.pic, &content_type);
-                            let path = out_file.with_extension(ext);
-                            match tokio::fs::write(&path, &bytes).await {
-                                Ok(_) => settings
+                            match write_image_file(settings, &bytes, ext, out_file).await {
+                                Ok(path) => settings
                                     .log("info", &format!("封面已保存: {}", path.display())),
                                 Err(e) => settings.log("warn", &format!("封面写入失败: {e}")),
                             }
@@ -2185,7 +2281,7 @@ async fn write_sidecars(
             }
         }
         if !cover_data.is_empty() {
-            match write_cover_file(&cover_data, out_file).await {
+            match write_cover_file(settings, &cover_data, out_file).await {
                 Ok(path) => settings.log("info", &format!("封面已保存: {}", path.display())),
                 Err(e) => settings.log("warn", &format!("封面保存失败（不影响视频）: {e}")),
             }
@@ -2284,7 +2380,11 @@ async fn find_free_name(path: PathBuf) -> PathBuf {
 /// 把 data URL 封面落盘，返回 (路径, MIME)。按 data URL 声明的类型决定扩展名。
 /// 封面存成与视频同名的独立图片文件（`<视频名>.jpg|png|webp`）。
 /// 内容就是解析阶段前端带过来的 data URL，不再需要另外请求。
-async fn write_cover_file(data_url: &str, video_path: &Path) -> Result<PathBuf, BiliError> {
+async fn write_cover_file(
+    settings: &crate::state::Settings,
+    data_url: &str,
+    video_path: &Path,
+) -> Result<PathBuf, BiliError> {
     let (mime, b64) = data_url
         .split_once(",")
         .and_then(|(head, payload)| {
@@ -2304,9 +2404,7 @@ async fn write_cover_file(data_url: &str, video_path: &Path) -> Result<PathBuf, 
         "image/webp" => "webp",
         _ => "jpg",
     };
-    let path = video_path.with_extension(ext);
-    tokio::fs::write(&path, &bytes).await?;
-    Ok(path)
+    write_image_file(settings, &bytes, ext, video_path).await
 }
 
 #[tauri::command]

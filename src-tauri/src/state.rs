@@ -102,6 +102,11 @@ pub struct QualityPref {
     pub codec: String,
 }
 
+/// 音频/图片格式的默认值：原样，不转码。
+fn default_format_source() -> String {
+    "source".to_string()
+}
+
 fn default_codec() -> String {
     "auto".to_string()
 }
@@ -142,8 +147,14 @@ pub struct Settings {
     pub folder_presets: Vec<NamingPreset>,
     /// 重名处理：skip=跳过任务 / overwrite=覆盖 / auto=自动加序号
     pub rename_conflict: String,
-    /// 封装格式：mp4 / mkv
+    /// 视频封装：mp4 / ts（MKV 已去掉：封面、字幕、弹幕都成独立文件后它没用了）
     pub container: String,
+    /// 音频（音频来源）成品格式：source=原轨道不转码 / mp3=转成 MP3
+    #[serde(default = "default_format_source")]
+    pub audio_format: String,
+    /// 图片（图文图片与封面）格式：source=原格式不转码 / jpg=统一转 JPEG
+    #[serde(default = "default_format_source")]
+    pub image_format: String,
     /// 视频编码偏好：auto / avc / hevc
     pub codec_pref: String,
     /// 请求的清晰度不可用时：nearest=自动降级 / fail=任务失败
@@ -151,7 +162,9 @@ pub struct Settings {
     /// 下载封面：与视频同名的独立图片文件，不合成进视频
     #[serde(default)]
     pub download_cover: bool,
-    /// 下载字幕：与视频同名的独立 .srt，播放器直接读；不合成进视频
+    /// 下载字幕：与视频同名的独立 .srt。**界面上暂时没有这个开关** ——
+    /// 字幕清单接口（x/player/wbi/v2）被 B 站的 gaia 风控挡住（412），实测拿不到数据。
+    /// 代码与开关都留着：哪天能够过风控，把媒体页的勾选框加回来即可。
     #[serde(default)]
     pub download_subtitles: bool,
     /// 下载弹幕：单独存一份与视频同名的 .xml，播放器直接读；不与视频合成
@@ -223,6 +236,8 @@ impl Default for Settings {
             folder_presets: Vec::new(),
             rename_conflict: "skip".to_string(),
             container: "mp4".to_string(),
+            audio_format: "source".to_string(),
+            image_format: "source".to_string(),
             codec_pref: "auto".to_string(),
             quality_fallback: "nearest".to_string(),
             download_cover: false,
@@ -364,8 +379,15 @@ impl Settings {
         if !matches!(self.rename_conflict.as_str(), "skip" | "overwrite" | "auto") {
             self.rename_conflict = "skip".to_string();
         }
-        if !matches!(self.container.as_str(), "mp4" | "mkv") {
+        if !matches!(self.container.as_str(), "mp4" | "ts") {
+            // 老设置里的 mkv 也落这里：改成 mp4（MKV 的用途已被独立文件取代）
             self.container = "mp4".to_string();
+        }
+        if !matches!(self.audio_format.as_str(), "source" | "mp3") {
+            self.audio_format = "source".to_string();
+        }
+        if !matches!(self.image_format.as_str(), "source" | "jpg") {
+            self.image_format = "source".to_string();
         }
         if !matches!(self.codec_pref.as_str(), "auto" | "avc" | "hevc") {
             self.codec_pref = "auto".to_string();
@@ -417,8 +439,8 @@ impl Settings {
 
     /// 输出文件扩展名跟随封装格式。
     pub fn container_ext(&self) -> &'static str {
-        if self.container == "mkv" {
-            "mkv"
+        if self.container == "ts" {
+            "ts"
         } else {
             "mp4"
         }
@@ -734,6 +756,33 @@ mod preset_tests {
 #[cfg(test)]
 mod pref_tests {
     use super::*;
+
+    /// 三个格式选择：默认都是"原样"，MKV 落回 MP4，非法值收敛到默认。
+    #[test]
+    fn format_settings_clamp() {
+        let s = Settings::default();
+        assert_eq!(s.container, "mp4");
+        assert_eq!(s.audio_format, "source");
+        assert_eq!(s.image_format, "source");
+
+        let mut s = Settings::default();
+        s.container = "mkv".to_string(); // 老设置里的 MKV：MKV 已从界面去掉
+        s.audio_format = "flac".to_string();
+        s.image_format = "png".to_string();
+        s.clamp();
+        assert_eq!(s.container, "mp4", "mkv 要落回 mp4");
+        assert_eq!(s.audio_format, "source");
+        assert_eq!(s.image_format, "source");
+
+        let mut s = Settings::default();
+        s.container = "ts".to_string();
+        s.audio_format = "mp3".to_string();
+        s.image_format = "jpg".to_string();
+        s.clamp();
+        assert_eq!(s.container_ext(), "ts");
+        assert_eq!(s.audio_format, "mp3");
+        assert_eq!(s.image_format, "jpg");
+    }
 
     /// 媒体页的默认状态：优先顺序表空着，挑流用上面两个单值。
     #[test]
