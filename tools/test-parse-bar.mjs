@@ -47,7 +47,7 @@ const state = () =>
       每批按钮: batch ? batch.textContent.trim() : null,
       每批带箭头: batch ? !!batch.querySelector("svg.caret") : null,
       解析按钮: split ? [...split.querySelectorAll("button")].map((b) => b.textContent.trim()).filter(Boolean).join(" | ") : null,
-      解析带箭头: split ? !!split.querySelector("button.caret svg.caret") : null,
+      解析带箭头: split ? !!split.querySelector("button.arrow svg.caret") : null,
       下载全部: [...bar.querySelectorAll("button")].some((b) => b.textContent.trim() === "下载全部"),
       下载所选: [...bar.querySelectorAll("button")].map((b) => b.textContent.trim()).find((t) => t.startsWith("下载所选")) || null,
     });
@@ -75,7 +75,7 @@ await js(`document.querySelector(".batch-picker .ghost.compact").click()`);
 await wait(300);
 
 // 解析下拉：两个批量做法
-await js(`document.querySelector(".parse-split button.caret").click()`);
+await js(`document.querySelector(".parse-split button.arrow").click()`);
 await wait(400);
 console.log("解析菜单: " + (await js(`JSON.stringify([...document.querySelectorAll(".parse-item")].map(b => b.textContent.trim()))`)));
 console.log("解析菜单带图标: " + (await js(`[...document.querySelectorAll(".parse-item")].every(b => !!b.querySelector("svg"))`)));

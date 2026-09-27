@@ -853,13 +853,13 @@ async function startSingle(item) {
               </Transition>
             </div>
 
-            <!-- 继续解析（左半，拉一批）与解析方式下拉（右半的箭头） -->
+            <!-- 一个按钮：点文字拉一批，点右侧箭头选解析方式（箭头在按钮内） -->
             <div ref="parsePanel" class="parse-split" :class="{ on: pickingParse }">
-              <button class="ghost seg" :disabled="loadingMore" @click="loadMore">
+              <button class="seg main" :disabled="loadingMore" @click="loadMore">
                 {{ loadingMore ? `解析中 ${loadedCount} / ${activeSource.probe.total}` : "继续解析" }}
               </button>
               <button
-                class="ghost seg caret"
+                class="seg arrow"
                 :disabled="loadingMore"
                 aria-haspopup="menu"
                 title="更多解析方式"
@@ -909,6 +909,15 @@ async function startSingle(item) {
             </div>
           </template>
         </template>
+
+        <!-- 还没拉完先不给"下载全部"：否则点下去只下载了已加载的那一部分 -->
+        <button
+          v-if="hasTable && (!activeIsBatch || activeSource.probe.exhausted)"
+          class="ghost"
+          @click="downloadAll"
+        >
+          下载全部
+        </button>
 
         <!-- 清晰度/音轨收进弹层，工具条只留动作 -->
         <div ref="dlPanel" class="dl-settings">
@@ -962,14 +971,6 @@ async function startSingle(item) {
           </Transition>
         </div>
 
-        <!-- 还没拉完先不给"下载全部"：否则点下去只下载了已加载的那一部分 -->
-        <button
-          v-if="hasTable && (!activeIsBatch || activeSource.probe.exhausted)"
-          class="ghost"
-          @click="downloadAll"
-        >
-          下载全部
-        </button>
         <button
           class="primary"
           :disabled="hasTable && !selectedCount"
@@ -1717,6 +1718,8 @@ input:focus {
 .select-title {
   /* 不伸长：换行时若标题伸长，会把「合集」标签顶到整行最右 */
   flex: 0 1 auto;
+  /* 超长标题也不能吃掉整行：给标签与右侧动作留出位置，超出部分省略号 */
+  max-width: calc(100% - 460px);
   /* 下限保证标题至少能读；一行实在放不下时工具条整行换行兜底 */
   min-width: 110px;
   margin: 0;
@@ -2184,7 +2187,7 @@ option:disabled {
   font-size: 11.5px;
 }
 
-/* 「每批 N」上的下拉箭头，以及「继续解析 + 解析方式」的合并按钮 */
+/* 「每批 N」上的下拉箭头，以及「继续解析 + 解析方式」按钮 */
 .batch-picker .ghost.compact {
   display: inline-flex;
   align-items: center;
@@ -2197,34 +2200,67 @@ option:disabled {
   height: 14px;
 }
 
+/* 边框画在容器上、两个按钮透明无边框：箭头因此看起来是在按钮里面 */
 .parse-split {
   position: relative;
-  display: flex;
-  align-items: center;
+  display: inline-flex;
+  align-items: stretch;
   flex: none;
+  color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
 }
 
-.select-bar .parse-split .seg {
-  padding: 6px 11px;
+.parse-split .seg {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 4px 6px 11px;
+  font-size: 12.5px;
+  color: inherit;
+  background: none;
+  border: 0;
   border-radius: 0;
 }
 
-.select-bar .parse-split .seg:first-child {
+.parse-split .seg:first-of-type {
   border-top-left-radius: var(--radius-sm);
   border-bottom-left-radius: var(--radius-sm);
 }
 
-.select-bar .parse-split .seg.caret {
-  padding: 6px;
-  border-top-right-radius: var(--radius-sm);
-  border-bottom-right-radius: var(--radius-sm);
-  border-left-color: transparent;
+.parse-split .seg:hover:not(:disabled) {
+  color: var(--accent);
 }
 
-.parse-split.on .seg {
+.parse-split .seg:disabled {
+  opacity: 0.55;
+}
+
+.parse-split .seg.arrow {
+  padding: 6px 9px 6px 4px;
+  border-top-right-radius: var(--radius-sm);
+  border-bottom-right-radius: var(--radius-sm);
+}
+
+.parse-split .seg.arrow svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.parse-split .seg.arrow:hover:not(:disabled) svg {
   color: var(--accent);
+}
+
+.parse-split.on {
   border-color: var(--accent-line);
   background: var(--raised);
+}
+
+.parse-split.on .seg,
+.parse-split.on .seg.arrow svg {
+  color: var(--accent);
 }
 
 .parse-pop {
