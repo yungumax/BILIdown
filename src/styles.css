@@ -38,9 +38,18 @@
   --scroll-hover: #c9c2c6;
   --shade: rgba(38, 30, 34, 0.34);
 
-  --radius-lg: 14px;
-  --radius: 10px;
-  --radius-sm: 8px;
+  --radius-lg: 18px;
+  --radius: 14px;
+  --radius-sm: 10px;
+
+  /* 设计 v2：投影、聚焦环、主色渐变、表头纱 */
+  --shadow-1: 0 1px 2px rgba(38, 30, 34, 0.04), 0 8px 22px -12px rgba(38, 30, 34, 0.16);
+  --shadow-2: 0 2px 8px rgba(38, 30, 34, 0.06), 0 22px 48px -22px rgba(38, 30, 34, 0.22);
+  --shadow-accent: 0 6px 18px -9px rgba(251, 114, 153, 0.75);
+  --ring: 0 0 0 3px rgba(251, 114, 153, 0.22);
+  --accent-grad: linear-gradient(135deg, #ff92b4 0%, #fb7299 52%, #ef5486 100%);
+  --header-veil: rgba(255, 255, 255, 0.86);
+  --card-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 
   --font: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC",
     -apple-system, "Segoe UI", system-ui, sans-serif;
@@ -58,8 +67,8 @@
   --card: #17181a;
   --raised: #1e2022;
 
-  --line: #282a2d;
-  --line-soft: #202224;
+  --line: #272a2d;
+  --line-soft: #1f2123;
 
   --text: #e8e9ea;
   --muted: #9a9da1;
@@ -86,6 +95,15 @@
   --scroll: #2f3236;
   --scroll-hover: #3b3f43;
   --shade: rgba(4, 5, 6, 0.66);
+
+  --shadow-1: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 2px 6px rgba(0, 0, 0, 0.32),
+    0 18px 40px -24px rgba(0, 0, 0, 0.6);
+  --shadow-2: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 4px 12px rgba(0, 0, 0, 0.42),
+    0 30px 60px -28px rgba(0, 0, 0, 0.7);
+  --shadow-accent: 0 8px 22px -10px rgba(251, 114, 153, 0.6);
+  --ring: 0 0 0 3px rgba(251, 114, 153, 0.28);
+  --header-veil: rgba(23, 24, 26, 0.88);
+  --card-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 
 /* 跟随系统：显式 data-theme="system"、以及属性完全缺失时都走这里。
@@ -100,8 +118,8 @@
     --card: #17181a;
     --raised: #1e2022;
 
-    --line: #282a2d;
-    --line-soft: #202224;
+    --line: #272a2d;
+    --line-soft: #1f2123;
 
     --text: #e8e9ea;
     --muted: #9a9da1;
@@ -128,6 +146,15 @@
     --scroll: #2f3236;
     --scroll-hover: #3b3f43;
     --shade: rgba(4, 5, 6, 0.66);
+
+    --shadow-1: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 2px 6px rgba(0, 0, 0, 0.32),
+      0 18px 40px -24px rgba(0, 0, 0, 0.6);
+    --shadow-2: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 4px 12px rgba(0, 0, 0, 0.42),
+      0 30px 60px -28px rgba(0, 0, 0, 0.7);
+    --shadow-accent: 0 8px 22px -10px rgba(251, 114, 153, 0.6);
+    --ring: 0 0 0 3px rgba(251, 114, 153, 0.28);
+    --header-veil: rgba(23, 24, 26, 0.88);
+    --card-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.035);
   }
 }
 
@@ -350,4 +377,154 @@ html.ready .content {
     background-color var(--motion) var(--ease-out),
     color var(--motion) var(--ease-out),
     border-color var(--motion) var(--ease-out);
+}
+
+/* ============ 设计层 v2 ============
+   只动观感（配色/圆角/投影/层次/字距），不动排版：不改宽高、间距与栅格。
+   选择器统一带 body 前缀：页面内的 scoped 样式带 [data-v-*]，
+   特异性更高，不加前缀的覆盖会被它们压掉。 */
+
+/* 背景：主色在左上角一层很淡的洗色，纯色底也有纵深 */
+body {
+  background-image: radial-gradient(1100px 520px at 12% -12%, var(--accent-soft), transparent 68%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* 卡片：更低对比的描边 + 柔和投影（深色下再加一条顶部高光） */
+body .content .card,
+body .content .results {
+  border-color: var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-highlight), var(--shadow-1);
+}
+
+/* 标题：收紧字距，层级更清楚 */
+body .content .card h1 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+body .content .card h2,
+body .content .group-title,
+body .content .results-head h2 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* 主按钮：主色渐变 + 光晕，悬停再抬一点 */
+body .primary {
+  background-image: var(--accent-grad);
+  border-color: transparent;
+  box-shadow: var(--shadow-accent);
+}
+
+body .primary:hover:not(:disabled) {
+  box-shadow: var(--shadow-accent), var(--shadow-1);
+  transform: translateY(-1px);
+}
+
+/* 幽灵按钮：悬停时给一点主色倾向，不再只是描边变色 */
+body .ghost:hover:not(:disabled),
+body .compact:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+/* 可点的小卡片（解析结果入口）：悬停轻微抬起 */
+body .parsed-chip:hover {
+  box-shadow: var(--shadow-1);
+  transform: translateY(-1px);
+}
+
+/* 数字列等宽，表格读数不跳格 */
+.num,
+.col-idx,
+.col-dur,
+.count {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* 键盘聚焦：统一的主色聚焦环（鼠标点击不出现，避免噪声） */
+body :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 输入类控件圆角与卡片一致 */
+body .content input:not([type="checkbox"]),
+body .content select,
+body .content textarea {
+  border-radius: var(--radius-sm);
+}
+
+/* 表头：半透明纱 + 字距，滚动时压在内容之上更有层次 */
+body .content .batch-table thead th {
+  background: var(--header-veil);
+  backdrop-filter: blur(8px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* 表格行：悬停更柔，选中态用主色左侧条而不是整行重色 */
+body .content .batch-table tbody tr:hover > td {
+  background: var(--hover);
+}
+
+/* 滚动条：更细更圆 */
+body ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+body ::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 99px;
+  background-clip: content-box;
+}
+
+/* 侧栏：激活项用主色面 + 左侧主色条（伪元素绝对定位，不占排版） */
+body .sidebar .nav-item {
+  position: relative;
+  border-color: transparent;
+  background: transparent;
+}
+
+body .sidebar .nav-item.active {
+  color: var(--text);
+  background: var(--card);
+  border-color: var(--line);
+  box-shadow: var(--card-highlight), var(--shadow-1);
+}
+
+body .sidebar .nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  width: 3px;
+  height: 22px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent-grad);
+  transform: translateY(-50%);
+}
+
+body .sidebar .nav-item.active .label {
+  color: var(--accent-dark);
+}
+
+body .sidebar .nav-item .hint {
+  letter-spacing: 0.01em;
+}
+
+/* 标题栏：底部发丝线 + 极淡的上高光，和内容区分层 */
+body .titlebar {
+  border-bottom: 1px solid var(--line-soft);
+  background-image: linear-gradient(180deg, var(--card), transparent);
+}
+
+/* 步骤条：当前步的圆点用主色渐变，已完成步用主色描边 */
+body .steps .dot,
+body .steps li .index {
+  background-image: var(--accent-grad);
 }
