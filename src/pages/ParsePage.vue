@@ -908,8 +908,12 @@ function batchNaming(batch, entry, position) {
     // {index} 的补零宽度按本批条数算：20 条补到 2 位、几千条补到 4 位，
     // 这样目录按名称排序才是 01、02 … 10，而不是 1、10、2
     index_pad: String(Math.max(batch.items.length, 1)).length,
+    // 分钟，东为正（JS 的 getTimezoneOffset 符号相反）
+    tz_offset_min: -new Date().getTimezoneOffset(),
     // 序号由表格按"由旧到新"算好后传进来（row.abs），这里不再倒第二次。
     // 单条图文/专栏没有批次上下文，不给编号。
+    // 图文/专栏的编号：后端在下载时用发布日期覆盖成 YYYYMMDD（列表接口不给日期）。
+    // 这里先按批次给出，万一覆盖没生效也不会比之前更差。
     index: (batch.kind === "opus" || batch.kind === "article") && batch.items.length <= 1 ? 0 : position,
     date: localDate(),
     publish_date: "",

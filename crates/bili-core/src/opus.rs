@@ -46,6 +46,9 @@ pub struct OpusPost {
     pub text: String,
     pub images: Vec<OpusImage>,
     pub pub_time: String,
+    /// 发布时间的 Unix 秒（详情页 module_author.pub_ts）；拿不到是 0。
+    /// 图文编号用它生成定宽日期数字 —— 列表接口不给日期，只有详情里有。
+    pub pub_ts: i64,
     pub like: u64,
 }
 
@@ -76,6 +79,10 @@ pub fn parse_page(html: &str) -> Result<OpusPost> {
             }
             k if k.contains("AUTHOR") => {
                 post.pub_time = text_of(module.pointer("/module_author/pub_time"));
+                post.pub_ts = module
+                    .pointer("/module_author/pub_ts")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
                 post.author = text_of(module.pointer("/module_author/name"));
             }
             // 图片集形式的图文：图片挂在置顶模块的 album 里，正文段落是纯文本

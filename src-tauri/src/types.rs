@@ -157,6 +157,9 @@ pub struct NamingMeta {
     /// {index} 的补零宽度（0 = 不补；前端按本批条数给，几千条就是 4）
     #[serde(default)]
     pub index_pad: u32,
+    /// 本地时区相对 UTC 的偏移（分钟，东为正）。图文按发布日期编号时要用它换算本地日期
+    #[serde(default)]
+    pub tz_offset_min: i32,
     pub part_title: String,
     pub part_index: u32,
     pub aid: u64,

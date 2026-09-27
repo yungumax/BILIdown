@@ -58,6 +58,8 @@ pub struct NamingContext {
     /// {index} 的补零宽度（0 = 不补）。前端按本批条数算：几千条就是 4 位，
     /// 保证按名称排序时 10 不会排在 2 前面。
     pub index_pad: u32,
+    /// 本地时区偏移（分钟，东为正），图文按发布日期编号时用
+    pub tz_offset_min: i32,
     pub quality: String,
     pub codec: String,
     pub date: String,
@@ -84,6 +86,7 @@ impl NamingContext {
             source_kind: "合集".to_string(),
             index: 7,
             index_pad: 3,
+            tz_offset_min: 480,
             quality: "1080P60".to_string(),
             codec: "AVC".to_string(),
             date: String::new(),
@@ -214,6 +217,30 @@ fn has_content(segment: &str) -> bool {
     body.chars().any(|c| c.is_alphanumeric() || !c.is_ascii())
 }
 
+/// Unix 秒 → 定宽数字日期 `YYYYMMDD`（图文/专栏的编号用它）。
+///
+/// 用「日期编码」而不是「第几名」：接口不给总数时算不出名次，而日期只取决于
+/// 这条内容自己 —— 绝对稳定，也不受分批加载影响。时区偏移由前端给。
+pub fn compact_date(unix_secs: i64, tz_offset_min: i64) -> u64 {
+    if unix_secs <= 0 {
+        return 0;
+    }
+    let local = unix_secs + tz_offset_min * 60;
+    let days = local.div_euclid(86_400);
+    // Howard Hinnant 的 civil_from_days：不引日期库也能算公历
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y * 10_000 + m * 100 + d) as u64
+}
+
 /// 替换一段里的 `{标记}`；同时报告这段是否用到了 `{ext}`。
 fn substitute(segment: &str, ctx: &NamingContext, ext: &str) -> (String, bool) {
     let mut out = String::new();
@@ -295,6 +322,7 @@ mod tests {
             source_kind: "合集".to_string(),
             index: 7,
             index_pad: 0,
+            tz_offset_min: 0,
             quality: "1080P60".to_string(),
             codec: "AVC".to_string(),
             date: "2026-09-26".to_string(),
