@@ -2,6 +2,7 @@
 
 use crate::client::BiliClient;
 use crate::error::{BiliError, Result};
+use crate::opus::OpusFeedPage;
 use serde::{Deserialize, Deserializer};
 
 const API_NAV: &str = "https://api.bilibili.com/x/web-interface/nav";
@@ -15,6 +16,8 @@ const API_SEASONS_ARCHIVES: &str =
 const API_SERIES_ARCHIVES: &str = "https://api.bilibili.com/x/series/archives";
 const API_SERIES_META: &str = "https://api.bilibili.com/x/series/series";
 const API_SPACE_ARC: &str = "https://api.bilibili.com/x/space/wbi/arc/search";
+/// 图文（opus）列表：按 offset 游标翻页（page 参数无效，实测会重复返回第一页）
+const API_OPUS_FEED: &str = "https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/feed/space";
 const API_PGC_SEASON: &str = "https://api.bilibili.com/pgc/view/web/season";
 const API_PGC_PLAYURL: &str = "https://api.bilibili.com/pgc/player/web/playurl";
 const API_PUGV_SEASON: &str = "https://api.bilibili.com/pugv/view/web/season";
@@ -757,6 +760,21 @@ impl BiliClient {
     pub async fn series_meta(&self, mid: u64, series_id: u64) -> Result<SeriesMetaPage> {
         let url = format!("{API_SERIES_META}?mid={mid}&series_id={series_id}");
         self.fetch_json(&url).await
+    }
+
+    /// UP 主图文（opus）列表：20 条一页，`offset` 为下一页游标。
+    pub async fn opus_feed(&self, mid: u64, offset: &str) -> Result<OpusFeedPage> {
+        let mut url = format!("{API_OPUS_FEED}?host_mid={mid}&type=all&page=1");
+        if !offset.is_empty() {
+            url.push_str(&format!("&offset={offset}"));
+        }
+        self.fetch_json(&url).await
+    }
+
+    /// 图文详情页的 HTML：完整内容（正文与原图）只在这份页面状态里。
+    pub async fn opus_page(&self, opus_id: &str) -> Result<String> {
+        self.fetch_text(&format!("https://www.bilibili.com/opus/{opus_id}"))
+            .await
     }
 
     /// UP 主投稿列表（一页 30 条，需 wbi 签名）。

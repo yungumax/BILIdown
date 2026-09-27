@@ -196,6 +196,37 @@ impl BiliClient {
         self.fetch_json_inner(url, true).await
     }
 
+    /// 取一页 HTML/文本（图文详情只有页面里带完整内容，接口要风控签名）。
+    pub async fn fetch_text(&self, url: &str) -> Result<String> {
+        let resp = self.http.get(url).send().await?;
+        let status = resp.status();
+        let text = resp.text().await?;
+        if !status.is_success() {
+            return Err(BiliError::Unavailable(format!(
+                "HTTP {status}: {}",
+                truncate(&text, 200)
+            )));
+        }
+        Ok(text)
+    }
+
+    /// 取二进制（图文里的原图）并带上 Content-Type，便于判断扩展名。
+    pub async fn fetch_bytes(&self, url: &str) -> Result<(Vec<u8>, String)> {
+        let resp = self.http.get(url).send().await?;
+        let status = resp.status();
+        let content_type = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        if !status.is_success() {
+            return Err(BiliError::Unavailable(format!("HTTP {status}: {url}")));
+        }
+        let bytes = resp.bytes().await?;
+        Ok((bytes.to_vec(), content_type))
+    }
+
     /// pgc（番剧）系接口的信封不同：载荷在 `result` 字段而非 `data`。
     pub async fn fetch_pgc_json<T: DeserializeOwned>(&self, url: &str) -> Result<T> {
         let resp = self.http.get(url).send().await?;

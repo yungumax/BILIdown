@@ -10,6 +10,7 @@ pub mod download;
 pub mod error;
 pub mod ffmpeg;
 pub mod login;
+pub mod opus;
 pub mod parser;
 pub mod util;
 pub mod wbi;

@@ -279,6 +279,8 @@ fn source_page_size(target: BatchTarget) -> usize {
         BatchTarget::Space(_) => 30,
         // 系列接口一页最多 30 条（合集能给 100）
         BatchTarget::Series { .. } => 30,
+        // 图文按 offset 游标翻页，这里只用于"首页取多少"的判定
+        BatchTarget::Opus(_) => 20,
         BatchTarget::Collection { .. } => 100,
     }
 }
@@ -291,6 +293,8 @@ fn source_cap(kind: &str, override_cap: usize) -> usize {
     match kind {
         "fav" => FAV_MAX_ITEMS,
         "collection" | "series" => COLLECTION_MAX_ITEMS,
+        // 图文条数按 UP 空间一档（20 条一页，接口不告诉总数）
+        "opus" => SPACE_MAX_ITEMS,
         _ => SPACE_MAX_ITEMS,
     }
 }
@@ -335,6 +339,20 @@ fn batch_exhausted(target: BatchTarget, loaded: usize, total: usize) -> bool {
     loaded >= total || source_page_size(target) > loaded
 }
 
+/// 图文的"标题"：取正文摘要（列表与命名都用它）。正文为空时退回 id。
+fn summary_of(content: &str, opus_id: &str) -> String {
+    let flat = content.split_whitespace().collect::<Vec<_>>().join(" ");
+    let trimmed = flat.trim();
+    if trimmed.is_empty() {
+        return format!("图文 {opus_id}");
+    }
+    let mut out: String = trimmed.chars().take(60).collect();
+    if trimmed.chars().count() > 60 {
+        out.push('…');
+    }
+    out
+}
+
 /// 条目自己没有上传者时用来源的补上（合集接口不给每条的上传者）。
 fn fill_missing_owner(items: &mut [BatchVideo], owner: &str) {
     if owner.is_empty() {
@@ -355,6 +373,10 @@ struct BatchMeta {
     total: usize,
     /// 合集所属 UP 的 mid（只有合集接口会给，用来识别"系列 id 当合集查"的错配）
     mid: u64,
+    /// 这一页之后还有没有内容（图文接口直接给 has_more；分页接口按页数自己判断）
+    has_more: bool,
+    /// 图文列表的下一页游标（其他来源为空）
+    next_offset: String,
 }
 
 /// 拉批量来源的一页。`meta` 只有第一页有值。
@@ -362,6 +384,7 @@ async fn fetch_batch_page(
     client: &BiliClient,
     target: BatchTarget,
     page: u32,
+    offset: &str,
 ) -> Result<(Vec<BatchVideo>, Option<BatchMeta>), String> {
     let first = page == 1;
     match target {
@@ -373,6 +396,8 @@ async fn fetch_batch_page(
                 owner: data.info.upper_name.clone(),
                 total: data.info.media_count as usize,
                 mid: 0,
+                has_more: true,
+                next_offset: String::new(),
             });
             let items = data
                 .medias
@@ -381,6 +406,7 @@ async fn fetch_batch_page(
                     bvid: media.bvid.clone(),
                     cid: media.cid,
                     ep_id: None,
+                    opus_id: String::new(),
                     title: media.title.clone(),
                     owner: media.upper.name.clone(),
                     duration: media.duration,
@@ -405,6 +431,8 @@ async fn fetch_batch_page(
                 owner,
                 total: data.meta.total as usize,
                 mid: data.meta.mid,
+                has_more: true,
+                next_offset: String::new(),
             });
             let items = data
                 .archives
@@ -413,6 +441,7 @@ async fn fetch_batch_page(
                     bvid: archive.bvid.clone(),
                     cid: archive.cid,
                     ep_id: None,
+                    opus_id: String::new(),
                     title: archive.title.clone(),
                     owner: archive.owner.name.clone(),
                     duration: archive.duration,
@@ -437,6 +466,8 @@ async fn fetch_batch_page(
                     .unwrap_or_default(),
                 total: data.page.count as usize,
                 mid: 0,
+                has_more: true,
+                next_offset: String::new(),
             });
             let items = list
                 .map(|l| {
@@ -446,6 +477,7 @@ async fn fetch_batch_page(
                             bvid: video.bvid.clone(),
                             cid: 0,
                             ep_id: None,
+                            opus_id: String::new(),
                             title: video.title.clone(),
                             owner: video.author.clone(),
                             duration: parse_mmss(&video.length),
@@ -485,6 +517,8 @@ async fn fetch_batch_page(
                 owner: owner.clone(),
                 total: data.page.total as usize,
                 mid: 0,
+                has_more: true,
+                next_offset: String::new(),
             });
             let items = data
                 .archives
@@ -494,11 +528,50 @@ async fn fetch_batch_page(
                     // 系列条目没有 cid，下载与画质探测会按 bvid 补查
                     cid: 0,
                     ep_id: None,
+                    opus_id: String::new(),
                     title: archive.title.clone(),
                     owner: owner.clone(),
                     duration: archive.duration,
                 })
                 .collect();
+            Ok((items, meta))
+        }
+        // 图文：20 条一页，靠 offset 游标往后翻（page 参数无效）
+        BatchTarget::Opus(mid) => {
+            let data = client.opus_feed(mid, offset).await.map_err(describe)?;
+            let owner = if first {
+                client.user_name(mid).await
+            } else {
+                String::new()
+            };
+            let items = data
+                .items
+                .iter()
+                .map(|item| BatchVideo {
+                    bvid: String::new(),
+                    cid: 0,
+                    ep_id: None,
+                    opus_id: item.opus_id.clone(),
+                    title: summary_of(&item.content, &item.opus_id),
+                    owner: owner.clone(),
+                    duration: 0,
+                })
+                .collect();
+            // 图文每页都带 meta：extend_batch 要靠 has_more 与游标继续翻
+            let meta = Some(BatchMeta {
+                kind: "opus".to_string(),
+                title: if first {
+                    format!("{} 的图文", if owner.is_empty() { "该 UP" } else { &owner })
+                } else {
+                    String::new()
+                },
+                owner,
+                // 图文接口不给总数，界面按"已加载 N 项"显示
+                total: 0,
+                mid: 0,
+                has_more: data.has_more,
+                next_offset: data.offset.clone(),
+            });
             Ok((items, meta))
         }
         // 番剧/课程一次给全，没有分页
@@ -539,7 +612,11 @@ async fn start_batch(
     let mut items = items;
     fill_missing_owner(&mut items, &meta.owner);
 
-    let exhausted = batch_exhausted(target, items.len(), meta.total);
+    let exhausted = if meta.kind == "opus" {
+        !meta.has_more
+    } else {
+        batch_exhausted(target, items.len(), meta.total)
+    };
     Ok(BatchCache {
         kind: meta.kind,
         target,
@@ -550,6 +627,7 @@ async fn start_batch(
         from_index: 1,
         cap,
         next_page: 2,
+        next_offset: meta.next_offset.clone(),
         exhausted,
         qualities,
         audios,
@@ -572,7 +650,8 @@ async fn extend_batch(
             break;
         }
         let page = cache.next_page;
-        let (items, _) = fetch_batch_page(client, cache.target, page).await?;
+        let (items, meta) =
+            fetch_batch_page(client, cache.target, page, &cache.next_offset).await?;
         if items.is_empty() {
             cache.exhausted = true;
             break;
@@ -581,7 +660,15 @@ async fn extend_batch(
         fill_missing_owner(&mut items, &cache.owner);
         cache.items.extend(items);
         cache.next_page = page + 1;
-        if cache.items.len() >= cache.total {
+        if let Some(meta) = &meta {
+            if cache.kind == "opus" {
+                // 图文没有页码：靠接口给的 has_more 与下一页游标推进
+                cache.exhausted = !meta.has_more;
+                cache.next_offset = meta.next_offset.clone();
+            }
+        }
+        // total=0 表示"总数未知"（图文），不能拿它判到底
+        if cache.total > 0 && cache.items.len() >= cache.total {
             cache.exhausted = true;
         }
     }
@@ -595,6 +682,7 @@ fn batch_to_source(cache: &BatchCache) -> ProbeSource {
         "fav" => "收藏夹",
         "collection" => "合集",
         "series" => "系列",
+        "opus" => "图文",
         "space" => "投稿",
         _ => "来源",
     };
@@ -604,7 +692,16 @@ fn batch_to_source(cache: &BatchCache) -> ProbeSource {
         title: cache.title.clone(),
         owner: cache.owner.clone(),
         cover: String::new(),
-        note: load_note(label, cache.total, loaded, cache.cap, cache.exhausted),
+        note: if cache.kind == "opus" {
+            // 图文接口不给总数，只能提示上限
+            if loaded >= cache.cap {
+                format!("图文已达单次解析上限 {} 条（可在设置里调大）", cache.cap)
+            } else {
+                String::new()
+            }
+        } else {
+            load_note(label, cache.total, loaded, cache.cap, cache.exhausted)
+        },
         bvid: String::new(),
         cid: 0,
         aid: 0,
@@ -636,6 +733,7 @@ fn target_key(target: &Target) -> String {
         Target::FavList(fid) => format!("fav:{fid}"),
         Target::Collection { mid, sid } => format!("collection:{mid}:{sid}"),
         Target::Series { mid, sid } => format!("series:{mid}:{sid}"),
+        Target::OpusList(mid) => format!("opus:{mid}"),
         Target::Space(mid) => format!("space:{mid}"),
         Target::Bangumi { season_id, ep_id } => match (season_id, ep_id) {
             (Some(sid), _) => format!("bangumi:{sid}"),
@@ -689,6 +787,9 @@ async fn probe_one(
         Target::Series { mid, sid } => {
             probe_batch_first_page(client, state, trimmed, BatchTarget::Series { mid, sid }).await
         }
+        Target::OpusList(mid) => {
+            probe_batch_first_page(client, state, trimmed, BatchTarget::Opus(mid)).await
+        }
         Target::Space(mid) => {
             probe_batch_first_page(client, state, trimmed, BatchTarget::Space(mid)).await
         }
@@ -729,7 +830,7 @@ async fn probe_video_or_collection(
                     mid: season.mid,
                     sid: season.id,
                 };
-                let (items, meta) = fetch_batch_page(client, target, 1).await?;
+                let (items, meta) = fetch_batch_page(client, target, 1, "").await?;
                 if let Some(meta) = meta {
                     let mut source = finish_batch(client, state, key, target, meta, items).await?;
                     // 身份要记成合集：同一个合集里的另一个视频也会展开成这个合集，
@@ -751,7 +852,7 @@ async fn probe_batch_first_page(
     key: &str,
     target: BatchTarget,
 ) -> Result<ProbeSource, String> {
-    let (items, meta) = fetch_batch_page(client, target, 1).await?;
+    let (items, meta) = fetch_batch_page(client, target, 1, "").await?;
     let meta = meta.ok_or_else(|| "来源没有可访问的内容".to_string())?;
 
     // 系列和合集的 id 空间重叠：拿系列 id 去问合集接口，会返回**别人的**合集
@@ -760,7 +861,7 @@ async fn probe_batch_first_page(
     if let BatchTarget::Collection { mid, sid } = target {
         if meta.mid != 0 && meta.mid != mid {
             let series = BatchTarget::Series { mid, sid };
-            let (items, meta) = fetch_batch_page(client, series, 1).await.map_err(|e| {
+            let (items, meta) = fetch_batch_page(client, series, 1, "").await.map_err(|e| {
                 format!("这个链接既不是该 UP 的合集，也不是系列：{e}")
             })?;
             let meta = meta.ok_or_else(|| "来源没有可访问的内容".to_string())?;
@@ -826,12 +927,14 @@ async fn probe_range_one(
         owner: cache.owner,
         total: cache.total,
         mid: 0,
+        has_more: !cache.exhausted,
+        next_offset: String::new(),
     });
-    let (mut items, meta) = fetch_batch_page(client, target, page).await?;
+    let (mut items, meta) = fetch_batch_page(client, target, page, "").await?;
     let meta = match meta.or(cached_meta) {
         Some(meta) => meta,
         None => {
-            let (_, meta) = fetch_batch_page(client, target, 1).await?;
+            let (_, meta) = fetch_batch_page(client, target, 1, "").await?;
             meta.ok_or_else(|| "来源没有可访问的内容".to_string())?
         }
     };
@@ -904,6 +1007,7 @@ async fn fetch_whole(
                     bvid: episode.bvid.clone(),
                     cid: episode.cid,
                     ep_id: (episode.id > 0).then_some(episode.id),
+                    opus_id: String::new(),
                     title: if episode.long_title.is_empty() {
                         episode.title.clone()
                     } else {
@@ -929,6 +1033,7 @@ async fn fetch_whole(
                     bvid: String::new(),
                     cid: episode.cid,
                     ep_id: (episode.id > 0).then_some(episode.id),
+                    opus_id: String::new(),
                     title: episode.title.clone(),
                     owner: season.up_info.uname.clone(),
                     duration: episode.duration,
@@ -948,6 +1053,8 @@ async fn fetch_whole(
             owner: String::new(),
             total,
             mid: 0,
+            has_more: true,
+            next_offset: String::new(),
         }),
     ))
 }
@@ -1239,7 +1346,11 @@ pub async fn start_download(
 ) -> Result<String, String> {
     let id = state.next_task_id();
     let mut initial = TaskUpdate::new(id.clone(), &req);
-    initial.quality_label = quality_name(req.quality).to_string();
+    initial.quality_label = if req.source == "opus" {
+        "图文".to_string()
+    } else {
+        quality_name(req.quality).to_string()
+    };
     let shared = Arc::new(Mutex::new(initial.clone()));
 
     let client = state.client();
@@ -1291,6 +1402,134 @@ pub async fn start_download(
     Ok(id)
 }
 
+/// 图文下载：一个条目一个文件夹，里面是原图（按序号）与正文 txt。
+///
+/// 列表接口只给摘要与封面，完整的正文和原图要从 opus 页面的内嵌状态里解。
+async fn run_opus_download(
+    app: AppHandle,
+    client: Arc<BiliClient>,
+    settings: crate::state::Settings,
+    output_dir: PathBuf,
+    req: &DownloadRequest,
+    shared: Arc<Mutex<TaskUpdate>>,
+) -> Result<(), BiliError> {
+    if req.opus_id.is_empty() {
+        return Err(BiliError::InvalidInput("缺少图文 id".into()));
+    }
+    mutate(&shared, &app, |t| {
+        t.message = "获取图文内容".to_string();
+    });
+
+    let html = client.opus_page(&req.opus_id).await?;
+    let post = bili_core::opus::parse_page(&html)?;
+
+    let naming = naming_context(req, "", "图文");
+    let folder = output_dir.join(settings.output_folder(&naming));
+    let text_path = folder.join("正文.txt");
+
+    // 重名策略与视频一致：跳过 / 自动加序号 / 覆盖
+    let folder = match settings.rename_conflict.as_str() {
+        "overwrite" => folder,
+        "auto" => find_free_name(folder).await,
+        _ => {
+            if text_path.exists() {
+                let path = folder.to_string_lossy().to_string();
+                settings.log("info", &format!("图文已存在，跳过任务: {path}"));
+                mutate(&shared, &app, |t| {
+                    t.status = TaskStatus::Done;
+                    t.video_pct = 100.0;
+                    t.audio_pct = 100.0;
+                    t.output_path = path.clone();
+                    t.message = "文件夹已存在，跳过下载".to_string();
+                });
+                return Ok(());
+            }
+            folder
+        }
+    };
+    let text_path = folder.join("正文.txt");
+    tokio::fs::create_dir_all(&folder).await?;
+
+    let total = post.images.len();
+    settings.log(
+        "info",
+        &format!("图文 {}：{} 张图，{} 字", req.opus_id, total, post.text.chars().count()),
+    );
+    tokio::fs::write(&text_path, compose_opus_text(&post, &req.opus_id)).await?;
+
+    for (index, image) in post.images.iter().enumerate() {
+        let bytes = client.fetch_bytes(&image.url).await?;
+        let name = format!("{:02}.{}", index + 1, image_ext(&image.url, &bytes.1));
+        tokio::fs::write(folder.join(&name), &bytes.0).await?;
+        let done = index + 1;
+        let percent = done as f64 / total.max(1) as f64 * 100.0;
+        mutate(&shared, &app, |t| {
+            t.video_pct = percent;
+            t.audio_pct = 100.0;
+            t.message = format!("图片 {done}/{total}");
+        });
+    }
+
+    mutate(&shared, &app, |t| {
+        t.status = TaskStatus::Done;
+        t.video_pct = 100.0;
+        t.audio_pct = 100.0;
+        t.output_path = folder.to_string_lossy().to_string();
+        t.message = if total == 0 {
+            "已保存正文（这条没有图片）".to_string()
+        } else {
+            format!("已保存 {total} 张图片与正文")
+        };
+    });
+    Ok(())
+}
+
+/// 正文文件：标题、话题、发布信息、正文、图片清单。
+fn compose_opus_text(post: &bili_core::opus::OpusPost, opus_id: &str) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    if !post.title.is_empty() {
+        lines.push(post.title.clone());
+    }
+    if !post.topic.is_empty() {
+        lines.push(format!("话题：{}", post.topic));
+    }
+    if !post.pub_time.is_empty() {
+        lines.push(format!("发布：{}", post.pub_time));
+    }
+    lines.push(format!("链接：https://www.bilibili.com/opus/{opus_id}"));
+    lines.push(String::new());
+    lines.push(post.text.clone());
+    if !post.images.is_empty() {
+        lines.push(String::new());
+        lines.push(format!("图片 {} 张（文件名为序号）", post.images.len()));
+    }
+    lines.join("\n") + "\n"
+}
+
+/// 图片扩展名：优先信响应头，其次看 URL 后缀。
+fn image_ext(url: &str, content_type: &str) -> &'static str {
+    let ctype = content_type.to_ascii_lowercase();
+    if ctype.contains("png") {
+        return "png";
+    }
+    if ctype.contains("webp") {
+        return "webp";
+    }
+    if ctype.contains("gif") {
+        return "gif";
+    }
+    if ctype.contains("jpeg") || ctype.contains("jpg") {
+        return "jpg";
+    }
+    let path = url.split('?').next().unwrap_or(url).to_ascii_lowercase();
+    for ext in ["png", "webp", "gif", "jpg", "jpeg"] {
+        if path.ends_with(&format!(".{ext}")) {
+            return if ext == "jpeg" { "jpg" } else { ext };
+        }
+    }
+    "jpg"
+}
+
 async fn run_download(
     app: AppHandle,
     client: Arc<BiliClient>,
@@ -1305,6 +1544,11 @@ async fn run_download(
         .acquire()
         .await
         .map_err(|e| BiliError::Unavailable(format!("并发控制异常: {e}")))?;
+
+    // 图文没有音视频流：内容是图片与正文，走另一条路径
+    if req.source == "opus" {
+        return run_opus_download(app, client, settings, output_dir, req, shared).await;
+    }
 
     mutate(&shared, &app, |t| {
         t.status = TaskStatus::Downloading;
@@ -1928,6 +2172,7 @@ mod naming_tests {
             title: "标题".to_string(),
             source: "video".to_string(),
             ep_id: None,
+            opus_id: String::new(),
             owner: "UP主".to_string(),
             quality: 116,
             audio: "normal".to_string(),
@@ -2112,6 +2357,45 @@ mod live_tests {
         println!(
             "series: {} loaded={} total={} 首条={:?}",
             probe.title, probe.loaded, probe.total, probe.items[0].title
+        );
+    }
+
+    /// 实测图文列表与单条图文内容（图片、正文）。
+    #[tokio::test]
+    #[ignore = "需要网络与登录态"]
+    async fn live_probe_opus_list_and_post() {
+        let client = client();
+        let state = app_state();
+        let probe = probe_one(
+            &client,
+            &state,
+            "https://space.bilibili.com/486287787/upload/opus",
+            false,
+        )
+        .await
+        .expect("解析成功");
+        assert_eq!(probe.kind, "opus");
+        assert!(probe.loaded > 0, "应加载到图文");
+        assert!(probe.items.iter().all(|item| !item.opus_id.is_empty()));
+        assert_eq!(probe.total, 0, "图文接口不给总数");
+
+        // 再往下一页翻（游标）
+        let mut cache = state.take_batch("https://space.bilibili.com/486287787/upload/opus").expect("缓存");
+        extend_batch(&client, &mut cache, 3).await.expect("翻页");
+        assert!(cache.items.len() > 20, "游标翻页应拿到更多条目，实际 {}", cache.items.len());
+
+        // 单条：正文与原图
+        let first = probe.items[0].clone();
+        let html = client.opus_page(&first.opus_id).await.expect("图文页面");
+        let post = bili_core::opus::parse_page(&html).expect("解出图文");
+        assert!(!post.text.is_empty() || !post.images.is_empty());
+        println!(
+            "opus: {} 条已加载；首条 {} | 图片 {} 张 | 正文 {} 字 | 标题 {:?}",
+            cache.items.len(),
+            first.title,
+            post.images.len(),
+            post.text.chars().count(),
+            post.title
         );
     }
 

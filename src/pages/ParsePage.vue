@@ -21,6 +21,7 @@ const KIND_LABELS = {
   fav: "收藏夹",
   collection: "合集",
   series: "系列",
+  opus: "图文",
   space: "UP 空间",
   bangumi: "番剧",
   cheese: "课程",
@@ -326,6 +327,8 @@ const loadedHint = computed(() => {
   if (activeIsBatch.value && from > 1 && loadedCount.value > 0) {
     return `第 ${from}–${from + loadedCount.value - 1} 条 / 共 ${total} 条`;
   }
+  // 图文接口不给总数，只报已加载
+  if (!total) return `已加载 ${loadedCount.value} 项`;
   return `已加载 ${loadedCount.value} / ${total} 项`;
 });
 
@@ -460,8 +463,17 @@ function openSelect(input) {
   view.value = "select";
 }
 
+/** 条目在来源内的唯一标识：视频用 bvid，番剧/课程用 ep_id，图文用 opus_id。
+ *  注意不能用 `||` 串起来——ep_id 为空时 `ep-undefined` 也是真值，整列会撞成一个键。 */
+function entryIdentity(entry) {
+  if (entry.bvid) return entry.bvid;
+  if (entry.ep_id) return `ep-${entry.ep_id}`;
+  if (entry.opus_id) return `opus-${entry.opus_id}`;
+  return "unknown";
+}
+
 function entryKey(probe, entry) {
-  return `${probe.kind}:${entry.bvid || `ep-${entry.ep_id}`}`;
+  return `${probe.kind}:${entryIdentity(entry)}`;
 }
 
 const videosOnly = computed(() => okItems.value.filter((item) => item.probe.kind === "video"));
@@ -482,7 +494,7 @@ const tableRows = computed(() => {
   // UP 空间与它的一条投稿），只保留先出现的那个
   const seenItems = new Set();
   const contentKey = (entry, source) =>
-    entry ? `item:${entry.bvid || `ep-${entry.ep_id}`}` : `item:${source.probe.bvid}`;
+    entry ? `item:${entryIdentity(entry)}` : `item:${source.probe.bvid}`;
   for (const source of allSources.value) {
     // 按序号加载时这批的第一条不是来源里的第 1 条；abs 记来源内的真实位置
     const fromIndex = source.probe.from_index || 1;
@@ -601,6 +613,7 @@ async function startRows(rows) {
           bvid: row.entry.bvid,
           cid: row.entry.cid,
           ep_id: row.entry.ep_id,
+          opus_id: row.entry.opus_id ?? "",
           source: row.source.probe.kind,
           title: row.entry.title,
           owner: row.source.probe.owner,
@@ -1208,7 +1221,9 @@ async function startSingle(item) {
                 <td class="col-idx num">{{ String(row.abs).padStart(2, "0") }}</td>
                 <td class="col-title">{{ row.title }}</td>
                 <td class="col-owner" :title="row.owner">{{ row.owner || "—" }}</td>
-                <td class="col-dur num">{{ formatDuration(row.duration) }}</td>
+                <td class="col-dur num">
+                  {{ row.entry && row.entry.opus_id ? "图文" : formatDuration(row.duration) }}
+                </td>
               </tr>
             </template>
           </tbody>
@@ -1260,7 +1275,9 @@ async function startSingle(item) {
         @keydown.enter="parse"
       />
 
-      <p class="hint">每行一个来源；合集、收藏夹与 UP 空间会按页加载。</p>
+      <p class="hint">
+        每行一个来源；合集、收藏夹、系列、UP 空间与图文都会按页加载。
+      </p>
 
       <div class="actions">
         <button class="ghost" @click="pasteFromClipboard">

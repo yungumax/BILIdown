@@ -134,6 +134,34 @@ pub fn render(template: &str, ctx: &NamingContext, ext: &str) -> PathBuf {
     path
 }
 
+/// 目录名：图文这类"一个条目一个文件夹"的输出用它。
+///
+/// 和文件名的区别只是不补扩展名——`render` 在没用到 `{ext}` 时会补上
+/// `.` + ext，这里传空扩展名会留下一个尾巴点，去掉即可。
+pub fn render_dir(template: &str, ctx: &NamingContext) -> PathBuf {
+    let path = render(template, ctx, "");
+    let mut trimmed = PathBuf::new();
+    for segment in path.components() {
+        let text = segment.as_os_str().to_string_lossy().to_string();
+        let text = text.trim_end_matches('.').trim().to_string();
+        // 图文没有"分集"，像 `P{part_index} - {part_title}` 这种只依赖分集的段落
+        // 会替换成 "P - "，这种空壳段落直接丢掉，别生成 `标题/P - /`
+        if !text.is_empty() && has_content(&text) {
+            trimmed.push(text);
+        }
+    }
+    if trimmed.as_os_str().is_empty() {
+        trimmed.push("图文");
+    }
+    trimmed
+}
+
+/// 段落里除开头的 P 与标点外，还有没有真内容（中文/字母/数字）。
+fn has_content(segment: &str) -> bool {
+    let body = segment.trim_start_matches(['P', 'p']).trim();
+    body.chars().any(|c| c.is_alphanumeric() || !c.is_ascii())
+}
+
 /// 替换一段里的 `{标记}`；同时报告这段是否用到了 `{ext}`。
 fn substitute(segment: &str, ctx: &NamingContext, ext: &str) -> (String, bool) {
     let mut out = String::new();
@@ -289,6 +317,30 @@ mod tests {
     fn path_traversal_is_dropped() {
         assert_eq!(render_str("../{title}"), "标题.mp4");
         assert_eq!(render_str("{title}/../../etc"), "标题/etc.mp4");
+    }
+
+    #[test]
+    fn render_dir_drops_extension() {
+        let ctx = NamingContext {
+            title: "两天在读".to_string(),
+            index: 7,
+            ..NamingContext::default()
+        };
+        // 用户模板常以 {ext} 结尾：当目录名时那个点要消失
+        assert_eq!(
+            render_dir("{title}/P{index} - {part_title}.{ext}", &ctx),
+            PathBuf::from("两天在读/P7 -")
+        );
+        assert_eq!(render_dir("{title}", &ctx), PathBuf::from("两天在读"));
+        // 只依赖分集的段落（图文没有分集）整段丢掉，不生成 "P - "
+        assert_eq!(
+            render_dir("{title}/P{part_index} - {part_title}.{ext}", &ctx),
+            PathBuf::from("两天在读")
+        );
+        // 变量全空时也不能产出空目录名或带尾巴点的名字
+        let fallback = render_dir("{bvid}", &NamingContext::default());
+        assert!(!fallback.as_os_str().is_empty());
+        assert!(!fallback.to_string_lossy().ends_with('.'));
     }
 
     #[test]

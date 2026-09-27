@@ -45,6 +45,8 @@ pub enum BatchTarget {
     Collection { mid: u64, sid: u64 },
     /// 系列：链接与合集同形，接口不同（见 parser 里的说明）
     Series { mid: u64, sid: u64 },
+    /// 图文列表：mid（游标翻页，见 next_offset）
+    Opus(u64),
     Space(u64),
     /// 番剧/课程一次给全，没有分页
     Whole,
@@ -70,6 +72,8 @@ pub struct BatchCache {
     pub cap: usize,
     /// 下次要拉的页码
     pub next_page: u32,
+    /// 图文列表的下一页游标（opus 按 offset 翻页，页码参数无效）
+    pub next_offset: String,
     /// 已经拉完（没有更多，或到了单次上限）
     pub exhausted: bool,
     pub qualities: Vec<crate::types::QualityOption>,
@@ -373,6 +377,11 @@ impl Settings {
     /// 变量清单与渲染规则都在 [`crate::naming`]，界面面板由同一份清单生成。
     pub fn output_filename(&self, ctx: &crate::naming::NamingContext) -> PathBuf {
         crate::naming::render(&self.naming_template, ctx, self.container_ext())
+    }
+
+    /// 按命名模板渲染输出目录（图文这类"一条目一文件夹"用它）。
+    pub fn output_folder(&self, ctx: &crate::naming::NamingContext) -> PathBuf {
+        crate::naming::render_dir(&self.naming_template, ctx)
     }
 
     /// 日志目录：自定义数据目录优先，否则用默认数据目录。
