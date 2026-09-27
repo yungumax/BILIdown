@@ -862,7 +862,11 @@ function batchNaming(batch, entry, position) {
     series_title: episode ? batch.title : "",
     episode_index: episode ? position : 0,
     episode_title: episode ? entry.title : "",
-    collection_title: episode ? "" : batch.title,
+    // 单条图文/专栏没有合集层级：来源标题就是条目标题，填进合集层会让路径里标题出现两次
+    collection_title:
+      episode || ((batch.kind === "opus" || batch.kind === "article") && batch.items.length <= 1)
+        ? ""
+        : batch.title,
     source_kind: KIND_LABELS[batch.kind] ?? "视频",
     index: position,
     date: localDate(),

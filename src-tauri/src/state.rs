@@ -410,14 +410,17 @@ impl Settings {
         crate::naming::render(&self.naming_template, ctx, ext)
     }
 
-    /// 按命名模板渲染输出目录（图文这类"一条目一文件夹"用它）。
-    /// 条目文件夹不能为空，所以这里保留兜底名。
+    /// 图文/专栏的条目文件夹名。
+    ///
+    /// 固定用条目自身的标题，**不复用文件名模板**：文件名模板是给视频用的
+    /// （`P{part_index} - {part_title}` 这类），图文没有分集，套过来会得到
+    /// 空名字或 `P - ` —— 这正是"命名规则与文件夹规则重合"的坑。
     pub fn output_folder(&self, ctx: &crate::naming::NamingContext) -> PathBuf {
-        let path = crate::naming::render_dir(&self.naming_template, ctx);
-        if path.as_os_str().is_empty() {
+        let name = ctx.title.trim();
+        if name.is_empty() {
             PathBuf::from("图文")
         } else {
-            path
+            crate::naming::render_dir("{title}", ctx)
         }
     }
 

@@ -169,6 +169,16 @@ const folderPreview = ref("");
 const pickingFolderVar = ref(false);
 const folderPicker = ref(null);
 
+/** 两套模板的变量重合提醒：同一个变量在文件名与文件夹里都出现 = 信息重复 */
+const overlapVars = computed(() => {
+  const pick = (tpl) => [...String(tpl ?? "").matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
+  const folder = new Set(pick(draft.value?.folder_template));
+  const duplicated = [...new Set(pick(draft.value?.naming_template))]
+    .filter((v) => folder.has(v))
+    .map((v) => `{${v}}`);
+  return { folderOnly: [...folder], duplicated };
+});
+
 const FOLDER_PRESETS = [
   { value: "{owner_name}/{collection_title}", label: "UP → 合集 → 条目（默认）" },
   { value: "{owner_name}/{source_kind}", label: "UP → 来源类型（图文/音频不混在一起）" },
@@ -897,6 +907,10 @@ async function open(path) {
               <p class="note">
                 文件名预览：<b>{{ namingPreview }}</b>
               </p>
+              <p v-if="overlapVars.duplicated.length" class="note warn">
+                这些变量在「文件夹」模板里也用了：{{ overlapVars.duplicated.join("、") }}
+                —— 路径里会出现重复信息（例如 UP 名既在目录又在文件名）。想让层级只由文件夹模板负责，就从文件名里去掉它们。
+              </p>
             </div>
 
             <div class="field full">
@@ -1424,6 +1438,11 @@ input::placeholder {
   font-size: 11.5px;
   color: var(--faint);
   line-height: 1.6;
+}
+
+/* 提醒类说明：用警告色，和普通说明区分开 */
+.note.warn {
+  color: var(--warn);
 }
 
 .note.top {

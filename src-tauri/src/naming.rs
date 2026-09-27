@@ -125,24 +125,28 @@ pub fn render(template: &str, ctx: &NamingContext, ext: &str) -> PathBuf {
 
     // 音频/图文没有"分集"：模板里只由分集占位组成的段落会空掉（如 "P - .m4a"）。
     // 这种空壳段落整段丢掉，扩展名并到上一段，别让文件名变成 "P - .m4a"。
-    if segments.len() > 1 {
-        let suffix = format!(".{ext}");
-        let mut merged: Vec<String> = Vec::with_capacity(segments.len());
-        for segment in segments {
-            let stem = segment.strip_suffix(&suffix).unwrap_or(&segment);
-            if has_content(stem) {
-                merged.push(segment);
-            } else if let Some(prev) = merged.last_mut() {
-                prev.push_str(&suffix);
-            }
+    // 单段模板（例如 `P{part_index} - {part_title}.{ext}`）同样要过这一关。
+    let suffix = format!(".{ext}");
+    let mut merged: Vec<String> = Vec::with_capacity(segments.len());
+    for segment in segments {
+        let stem = segment.strip_suffix(&suffix).unwrap_or(&segment);
+        if has_content(stem) {
+            merged.push(segment);
+        } else if let Some(prev) = merged.last_mut() {
+            prev.push_str(&suffix);
         }
-        // 全是空壳时兜底，别产出空路径
-        segments = if merged.is_empty() {
-            vec![format!("video.{ext}")]
-        } else {
-            merged
-        };
     }
+    // 整条模板都只由空变量组成时，退回条目标题——比产出 "P - .mp4" 或 "video.mp4" 都有用
+    segments = if merged.is_empty() {
+        let fallback = if ctx.title.trim().is_empty() {
+            "video".to_string()
+        } else {
+            ctx.title.clone()
+        };
+        vec![format!("{fallback}.{ext}")]
+    } else {
+        merged
+    };
 
     let mut path = PathBuf::new();
     for segment in &segments {
@@ -370,6 +374,32 @@ mod tests {
         assert_eq!(
             render("{title}/P{part_index} - {part_title}.{ext}", &video, "mp4"),
             PathBuf::from("标题/P2 - 第二集.mp4")
+        );
+    }
+
+    #[test]
+    fn single_segment_shell_template_falls_back_to_title() {
+        // 批量来源没有分集：整条模板都是空变量时不能产出 "P - .mp4"
+        let batch = NamingContext {
+            title: "条目标题".to_string(),
+            part_title: String::new(),
+            part_index: 0,
+            ..NamingContext::default()
+        };
+        assert_eq!(
+            render("P{part_index} - {part_title}.{ext}", &batch, "mp4"),
+            PathBuf::from("条目标题.mp4")
+        );
+        // 有分集信息时照常
+        let multi = NamingContext {
+            title: "条目标题".to_string(),
+            part_title: "第二集".to_string(),
+            part_index: 2,
+            ..NamingContext::default()
+        };
+        assert_eq!(
+            render("P{part_index} - {part_title}.{ext}", &multi, "mp4"),
+            PathBuf::from("P2 - 第二集.mp4")
         );
     }
 
