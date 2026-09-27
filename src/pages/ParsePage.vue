@@ -739,7 +739,6 @@ async function startSingle(item) {
     <!-- 选择内容：解析后的独立一页 -->
     <section v-if="view === 'select' && activeSource" class="card select-page">
       <header class="select-bar">
-        <div class="bar-top">
         <button class="back" title="返回解析" @click="view = 'input'">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
@@ -754,26 +753,17 @@ async function startSingle(item) {
         </button>
         <h2 class="select-title" :title="headerTitle">{{ headerTitle }}</h2>
         <span v-if="headerTag" class="kind-tag">{{ headerTag }}</span>
-        </div>
 
-        <div class="bar-actions">
+        <span class="spacer"></span>
+
         <template v-if="useShared">
           <span class="loaded-hint num">共 {{ loadedCount }} 条</span>
-          <span class="spacer"></span>
         </template>
         <template v-else-if="activeIsBatch">
-          <span class="loaded-hint num">
-            已加载 {{ loadedCount }} / {{ activeSource.probe.total }} 项
+          <span class="loaded-hint num" title="已加载 / 总数">
+            {{ loadedCount }} / {{ activeSource.probe.total }} 项
           </span>
           <template v-if="!activeSource.probe.exhausted">
-            <label class="inline-field">
-              每批
-              <select v-model.number="batchSize">
-                <option :value="20">20</option>
-                <option :value="50">50</option>
-                <option :value="100">100</option>
-              </select>
-            </label>
             <button class="ghost" :disabled="loadingMore" @click="loadMore">
               {{ loadingMore ? "解析中…" : "继续解析" }}
             </button>
@@ -814,6 +804,15 @@ async function startSingle(item) {
                   </option>
                 </select>
               </label>
+              <label v-if="activeIsBatch" class="pop-field">
+                <span>每次继续解析加载条数</span>
+                <select v-model.number="batchSize">
+                  <option :value="20">20 条</option>
+                  <option :value="50">50 条</option>
+                  <option :value="100">100 条</option>
+                </select>
+              </label>
+
               <label class="pop-field">
                 <span>音轨</span>
                 <select v-model="dlAudio">
@@ -842,7 +841,6 @@ async function startSingle(item) {
         >
           {{ hasTable ? `下载所选 (${selectedCount})` : "加入下载" }}
         </button>
-        </div>
       </header>
 
       <p v-if="activeSource.probe.note" class="note">{{ activeSource.probe.note }}</p>
@@ -1491,27 +1489,10 @@ input:focus {
 
 .select-bar {
   display: flex;
-  flex-direction: column;
-  gap: 9px;
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--line-soft);
-}
-
-/* 第一行放身份：返回、标题、类型、多来源标签。标题独占整行宽度，
-   长标题折行也不会被动作按钮挤成"凡…" */
-.bar-top {
-  display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 0;
-}
-
-/* 第二行放动作：来源多、按钮多也只会自己换行，不影响标题 */
-.bar-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .back {
@@ -1535,14 +1516,16 @@ input:focus {
 }
 
 /* 标题按内容占宽（长标题折行，不会被截断），这样类型标签才能紧跟在标题后面 */
+/* 一行布局下标题可伸缩：优先吃掉空白，实在放不下才省略（悬停看全名） */
 .select-title {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
   margin: 0;
   font-size: 14px;
   font-weight: 700;
-  line-height: 1.35;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .kind-tag {
