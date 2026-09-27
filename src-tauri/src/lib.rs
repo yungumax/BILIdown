@@ -102,6 +102,7 @@ pub fn run() {
             commands::naming_variables,
             commands::preview_naming,
             commands::preview_names,
+            commands::rename_downloaded,
             commands::cleanup_temp,
             commands::cleanup_cache,
             commands::export_diagnostics,

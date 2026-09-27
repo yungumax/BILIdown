@@ -45,6 +45,12 @@ export async function probeRange(input, from) {
   return invoke("probe_range", { input, from });
 }
 
+// 按当前命名规则重命名已下载的条目（dryRun=true 只预演，不改盘）
+export async function renameDownloaded(input, dryRun = true) {
+  if (!hasTauri) return mock.renameDownloaded(input, dryRun);
+  return invoke("rename_downloaded", { input, dryRun });
+}
+
 export async function startDownload(req) {
   if (!hasTauri) return mock.start(req);
   return invoke("start_download", { req });
@@ -589,5 +595,6 @@ const mock = (() => {
     previewNaming,
     probeMore,
     probeRange,
+    renameDownloaded: async () => ({ renamed: 0, skipped: 0, missing: 0, details: [], dry_run: true }),
   };
 })();

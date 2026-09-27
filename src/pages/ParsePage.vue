@@ -734,6 +734,42 @@ async function loadAllForOpus() {
   await loadAll();
 }
 
+// 「重命名已下载」：第一下预演（只报数量），第二下才真改 —— 避免一点就动盘
+const renaming = ref(false);
+const renameArmed = ref(false);
+const renameHint = ref("按当前命名规则改已下载条目的编号与标题（不动目录层级）");
+
+async function renameExisting() {
+  const source = activeSource.value;
+  if (!source || renaming.value) return;
+  renaming.value = true;
+  try {
+    const plan = await api.renameDownloaded(source.input, !renameArmed.value);
+    if (plan.dry_run) {
+      renameArmed.value = true;
+      renameHint.value = plan.details.length
+        ? `${plan.details.length} 项将被改名，例如：${plan.details[0]}`
+        : "没有找到可改名的条目";
+      emit(
+        "toast",
+        `预演完成：可改名 ${plan.renamed} 项，跳过 ${plan.skipped} 项，未找到 ${plan.missing} 项；再点一次「确认改名」执行`
+      );
+      setTimeout(() => {
+        renameArmed.value = false;
+        renameHint.value = "按当前命名规则改已下载条目的编号与标题（不动目录层级）";
+      }, 15000);
+    } else {
+      renameArmed.value = false;
+      renameHint.value = "按当前命名规则改已下载条目的编号与标题（不动目录层级）";
+      emit("toast", `已重命名 ${plan.renamed} 项（跳过 ${plan.skipped}，未找到 ${plan.missing}）`);
+    }
+  } catch (error) {
+    emit("toast", String(error));
+  } finally {
+    renaming.value = false;
+  }
+}
+
 async function parseAll() {
   pickingParse.value = false;
   await loadAll();
@@ -1170,6 +1206,17 @@ async function startSingle(item) {
           @click="downloadAll"
         >
           下载全部
+        </button>
+
+        <!-- 历史文件改名：只改条目名（编号+标题），不动目录层级 -->
+        <button
+          v-if="activeIsBatch"
+          class="ghost"
+          :disabled="renaming"
+          :title="renameHint"
+          @click="renameExisting"
+        >
+          {{ renaming ? "改名中…" : renameArmed ? "确认改名" : "重命名已下载" }}
         </button>
 
         <!-- 清晰度/音轨收进弹层，工具条只留动作 -->

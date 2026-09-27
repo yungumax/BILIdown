@@ -2310,6 +2310,162 @@ pub async fn pick_ffmpeg(app: AppHandle) -> Result<String, String> {
     }
 }
 
+/// 一次重命名动作的结果（预演与实操共用）。
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct RenamePlan {
+    pub renamed: usize,
+    pub skipped: usize,
+    pub missing: usize,
+    /// 逐条明细：旧名 → 新名；跳过/找不到也记一行，便于用户核对
+    pub details: Vec<String>,
+    /// 是否是预演（不落盘）
+    pub dry_run: bool,
+}
+
+/// 按当前命名规则，把已下载的条目重命名成新编号。
+///
+/// 只改"条目名"（编号 + 标题），**不动目录层级**：层级由「文件夹」规则决定，
+/// 而磁盘上的层级是历史结果，重算它需要重新联网确认每个条目的合集归属，
+/// 代价与风险都不划算（密集请求会触发风控）。想调整层级请重新下载。
+///
+/// 匹配方式：在输出目录里递归找"去掉数字前缀后与条目标题相同"的文件或文件夹，
+/// 命中就原地改名。找不到的条目记进 missing，不做任何猜测。
+#[tauri::command]
+pub async fn rename_downloaded(
+    state: State<'_, AppState>,
+    input: String,
+    dry_run: bool,
+) -> Result<RenamePlan, String> {
+    let key = input.trim().to_string();
+    let cache = state
+        .peek_batch(&key)
+        .ok_or_else(|| "这个来源的解析结果已过期，请重新解析后再试".to_string())?;
+    let output_dir = state.output_dir();
+    let settings = state.settings();
+
+    // 编号与前端一致：总数 - 绝对位置 + 1（番剧/课程按集数顺序，不倒）
+    let episode = matches!(cache.target, BatchTarget::Whole);
+    let count = cache.items.len();
+    let total = if cache.total > 0 { cache.total } else { count };
+    let pad = format!("{total}").len().max(2);
+
+    let mut plan = RenamePlan {
+        dry_run,
+        ..Default::default()
+    };
+
+    for (position, item) in cache.items.iter().enumerate() {
+        let absolute = cache.from_index + position;
+        let index = if episode {
+            absolute
+        } else {
+            total.saturating_sub(absolute) + 1
+        };
+        let ctx = crate::naming::NamingContext {
+            title: item.title.clone(),
+            owner_name: item.owner.clone(),
+            collection_title: String::new(),
+            source_kind: kind_label(&cache.kind).to_string(),
+            index: index as u32,
+            index_pad: pad as u32,
+            ..Default::default()
+        };
+        // 条目名：视频/音频是文件名，图文/专栏是文件夹名
+        let wanted = if cache.kind == "opus" || cache.kind == "article" {
+            crate::naming::render_dir(&settings.naming_template, &ctx)
+        } else {
+            settings.output_filename(&ctx)
+        };
+        let wanted = wanted
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if wanted.is_empty() {
+            continue;
+        }
+
+        match find_downloaded(&output_dir, &item.title, &wanted).await {
+            Some(found) => {
+                if found.file_name().map(|s| s.to_string_lossy() == wanted).unwrap_or(false) {
+                    plan.skipped += 1;
+                    continue;
+                }
+                let target = found.with_file_name(&wanted);
+                if target.exists() {
+                    plan.skipped += 1;
+                    plan.details.push(format!("跳过（同名已存在）：{wanted}"));
+                    continue;
+                }
+                let from = found.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                plan.details.push(format!("{from}  →  {wanted}"));
+                if !dry_run {
+                    tokio::fs::rename(&found, &target)
+                        .await
+                        .map_err(|e| format!("重命名失败 {from}: {e}"))?;
+                }
+                plan.renamed += 1;
+            }
+            None => {
+                plan.missing += 1;
+            }
+        }
+    }
+    Ok(plan)
+}
+
+/// 在输出目录里递归找"去掉数字前缀后与标题相同"的文件或文件夹。
+///
+/// 只认两种形态：`标题` 与 `数字前缀 + 标题（可带扩展名）`，其余一律不动 ——
+/// 宁可少改，也不猜错。
+async fn find_downloaded(root: &Path, title: &str, wanted: &str) -> Option<PathBuf> {
+    let wanted_stem = Path::new(wanted)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| wanted.to_string());
+    // 新名字里可能带编号前缀，比对时要把它去掉
+    let wanted_title = strip_number_prefix(&wanted_stem);
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let mut entries = match tokio::fs::read_dir(&dir).await {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            let is_dir = entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false);
+            if is_dir {
+                stack.push(path.clone());
+            }
+            let stem = match path.file_stem() {
+                Some(stem) if !is_dir => stem.to_string_lossy().to_string(),
+                _ => name.clone(),
+            };
+            let bare = strip_number_prefix(&stem);
+            if bare == wanted_title || bare == title || stem == wanted_stem {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+/// 去掉开头的"编号 + 分隔符"：`001 标题` / `12-标题` / `3 标题` 都还原成标题。
+fn strip_number_prefix(name: &str) -> String {
+    let trimmed = name.trim_start();
+    let digits: String = trimmed.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return trimmed.trim().to_string();
+    }
+    trimmed[digits.len()..]
+        .trim_start_matches([' ', '-', '_', '.', '、', '·'])
+        .trim()
+        .to_string()
+}
+
 /// 清理下载临时目录（未完成任务的分轨缓存）。
 #[tauri::command]
 pub async fn cleanup_temp(state: State<'_, AppState>) -> Result<u64, String> {
