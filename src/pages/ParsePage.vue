@@ -90,6 +90,16 @@ const sources = [
     icon: ["M4.6 6.4h14.8v10.6H4.6z", "M9.8 20.4 8.8 17M14.2 20.4l1-3.4"],
   },
   {
+    label: "图文与动态",
+    // 画面 + 右下角的正文线
+    icon: ["M4.6 6.4h15v11.2h-15z", "M7.4 13.6h5.2M7.4 15.8h3.4"],
+  },
+  {
+    label: "音频投稿",
+    // 音符：符头 + 符干 + 旗
+    icon: ["M10.2 16.4a1.9 1.9 0 1 1-3.8 0 1.9 1.9 0 0 1 3.8 0Z", "M10.2 16.4V7.6l6.4-1.6v8.8", "M16.6 14.8a1.9 1.9 0 1 1-3.8 0 1.9 1.9 0 0 1 3.8 0Z"],
+  },
+  {
     label: "UP 空间",
     icon: [
       "M12 5.4a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z",
@@ -1261,7 +1271,7 @@ async function startSingle(item) {
           批量解析
         </button>
         <button :class="{ active: mode === 'single' }" role="tab" @click="mode = 'single'">
-          单个视频
+          单个链接
         </button>
       </div>
 
