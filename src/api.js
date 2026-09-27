@@ -230,7 +230,7 @@ const mock = (() => {
       chunk_mb: 4,
       keep_temp: false,
       naming: "title",
-      naming_template: "{title}",
+      naming_template: "{title}.{ext}",
       naming_presets: [
         { name: "示例收藏命名", template: "{title}_{bvid}" },
       ],

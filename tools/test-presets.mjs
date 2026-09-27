@@ -3,7 +3,7 @@
 // 每个内置模板都符合命名规则（不含 `/`、不重复文件夹变量、以 {ext} 结尾）、
 // 选预设 → 模板与预览跟着变、保存为预设 → 立刻出现在下拉里。
 // 收尾点「撤销」，不动用户真实的 settings.json。
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 const list = await (await fetch("http://127.0.0.1:9222/json/list")).json();
 const page = list.filter((t) => t.type === "page").find((t) => t.url && t.url !== "about:blank") || list[0];
 const ws = new WebSocket(page.webSocketDebuggerUrl);
@@ -61,35 +61,62 @@ const go = async (text) => {
 
 // ── 文件命名页 ─────────────────────────────────────────────
 await go("文件命名");
-const naming = await readSelect("单文件");
+const DEFAULT_NAME = "默认（默认）";
+const naming = await readSelect(DEFAULT_NAME);
 console.log("\n== 文件命名 · 命名预设 ==");
 for (const o of naming.options) console.log(`  ${o.group ? "[" + o.group + "] " : ""}${o.text}`);
 
 check("第一个选项是「自定义模板」", naming.options[0]?.text === "自定义模板");
 const nBuiltin = naming.options.filter((o) => o.group === "内置");
 check("内置精简到 4 个（每种来源形状一个）", nBuiltin.length === 4, nBuiltin.map((o) => o.text).join(" / "));
-check("内置顺序：单文件 → 分P视频 → 合集/列表 → 番剧/课程",
-  JSON.stringify(nBuiltin.map((o) => o.text)) === JSON.stringify(["单文件", "分P视频", "合集/列表", "番剧/课程"]));
+check("内置顺序：默认 → 分P视频 → 合集/列表 → 番剧/课程",
+  JSON.stringify(nBuiltin.map((o) => o.text)) === JSON.stringify([DEFAULT_NAME, "分P视频", "合集/列表", "番剧/课程"]));
 check("变体预设「带清晰度」不再内置（需要就存成我的预设）", !naming.options.some((o) => o.text === "带清晰度"));
+// 反推往返：选中它 → 模板变成它的模板 → 下拉显示回到它自己的名字
+// （不能断言页面一进来就显示它——用户可能存的是别的模板，那就不该显示成默认）
+await pick(DEFAULT_NAME, DEFAULT_NAME);
+const defaultRoundTrip = await readSelect(DEFAULT_NAME);
+check("选「默认（默认）」后模板与显示都回到它", (await inputWith("{")) === "{title}.{ext}" && defaultRoundTrip.selected === DEFAULT_NAME,
+  `${await inputWith("{")} / ${defaultRoundTrip.selected}`);
+
+// 静态对一次：前端的默认设置 template 必须等于内置「默认（默认）」的模板，
+// 否则点「恢复默认」之后下拉会显示"自定义模板"。
+// （不能真点「恢复默认」验证——那个按钮会直接把默认值写进 settings.json。）
+const appSrc = readFileSync("src/App.vue", "utf8");
+const pageSrc = readFileSync("src/pages/SettingsPage.vue", "utf8");
+const defaultTemplate = /naming_template: "([^"]+)"/.exec(appSrc)?.[1];
+const defaultPreset = new RegExp('\{ name: "' + DEFAULT_NAME + '", template: "([^"]+)" \}').exec(pageSrc)?.[1];
+check("默认设置里的模板 = 内置「默认（默认）」的模板", !!defaultTemplate && defaultTemplate === defaultPreset, `${defaultTemplate} vs ${defaultPreset}`);
 
 // 每个内置模板都要符合命名规则：不含 /、不碰文件夹变量、以 {ext} 结尾
 console.log("\n== 内置模板是否守命名规则 ==");
 for (const opt of nBuiltin) {
-  await pick("单文件", opt.text);
+  await pick(DEFAULT_NAME, opt.text);
   const template = await inputWith("{");
   const ok = template.includes("{ext}") && !template.includes("/") && !/\{owner_name\}|\{collection_title\}|\{source_kind\}/.test(template);
   check(`「${opt.text}」`, ok, template);
 }
-await pick("单文件", "合集/列表");
+await pick(DEFAULT_NAME, "合集/列表");
 const previewAfter = await note("文件名预览");
 check("选「合集/列表」→ 模板与预览跟着变", (await inputWith("{")) === "{index} {title}.{ext}" && previewAfter.includes("007"), previewAfter.replace("文件名预览：", ""));
 
+// 更严的做法：与内置重名 → 拒绝保存，内置清单不受影响
+console.log("\n== 与内置重名 ==");
+const setNameTo = async (placeholder, name) => js(`(() => { const i = [...document.querySelectorAll('input')].find(i => i.placeholder === ${JSON.stringify(placeholder)}); i.value = ${JSON.stringify(name)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+await setNameTo("例如：收藏用命名", "分P视频");
+await js(`[...document.querySelectorAll('button')].find(b => b.textContent.includes('保存为预设')).click()`);
+await wait(700);
+const afterClash = await readSelect(DEFAULT_NAME);
+check("与内置同名的预设被拒绝保存", !afterClash.options.some((o) => o.group === "我的预设" && o.text === "分P视频"));
+check("拒绝时给出重名提示", (await js(`document.querySelector('.toast')?.textContent?.trim() || ''`)).includes("重名"),
+  await js(`document.querySelector('.toast')?.textContent?.trim() || ''`));
+check("内置清单不受影响（还是 4 个）", afterClash.options.filter((o) => o.group === "内置").length === 4);
+
 // 保存为预设 → 立刻进"我的预设"并选中
-await js(`[...document.querySelectorAll('input')].find(i => i.placeholder === '例如：收藏用命名').value = '测试命名预设A'`);
-await js(`(() => { const i = [...document.querySelectorAll('input')].find(i => i.placeholder === '例如：收藏用命名'); i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+await setNameTo("例如：收藏用命名", "测试命名预设A");
 await js(`[...document.querySelectorAll('button')].find(b => b.textContent.includes('保存为预设')).click()`);
 await wait(600);
-const afterSave = await readSelect("单文件");
+const afterSave = await readSelect(DEFAULT_NAME);
 check("保存的预设进了「我的预设」分组", afterSave.options.some((o) => o.group === "我的预设" && o.text === "测试命名预设A"));
 check("保存后下拉就显示这个预设", afterSave.selected === "测试命名预设A", afterSave.selected);
 
@@ -116,12 +143,21 @@ check("「不建文件夹」清空模板", (await inputWith("{")) === "", JSON.s
 check("预览显示不建文件夹", (await note("文件夹预览")).includes("不建文件夹"), await note("文件夹预览"));
 
 // 空模板也能存成预设（"不建文件夹"是正当预设，后端不许把它过滤掉）
-await js(`(() => { const i = [...document.querySelectorAll('input')].find(i => i.placeholder === '例如：按来源分目录'); i.value = '测试文件夹预设B'; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+await setNameTo("例如：按来源分目录", "测试文件夹预设B");
 await js(`[...document.querySelectorAll('button')].find(b => b.textContent.includes('保存为预设')).click()`);
 await wait(600);
 const folderSaved = await readSelect("只按 UP 分层");
 check("空模板的预设也能进「我的预设」", folderSaved.options.some((o) => o.group === "我的预设" && o.text === "测试文件夹预设B"));
 check("保存后下拉显示该预设", folderSaved.selected === "测试文件夹预设B", folderSaved.selected);
+
+// 文件夹页同样拒绝与内置重名
+await setNameTo("例如：按来源分目录", "只按 UP 分层");
+await js(`[...document.querySelectorAll('button')].find(b => b.textContent.includes('保存为预设')).click()`);
+await wait(700);
+const folderClash = await readSelect("只按 UP 分层");
+check("文件夹页也拒绝与内置重名", !folderClash.options.some((o) => o.group === "我的预设" && o.text === "只按 UP 分层"));
+check("文件夹页的拒绝也给了提示", (await js(`document.querySelector('.toast')?.textContent?.trim() || ''`)).includes("重名"),
+  await js(`document.querySelector('.toast')?.textContent?.trim() || ''`));
 
 // 收尾：丢弃草稿，用户真实的设置一个字节都没动
 await js(`[...document.querySelectorAll('button')].find(b => b.textContent.includes('撤销'))?.click()`);

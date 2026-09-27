@@ -43,12 +43,19 @@ const draft = ref(null);
 // 每个预设对应**一种来源形状**，多了就是重复：
 // 单条（{title}）／多P（分P）／批量列表（序号）／番剧课程（集）。
 // 想在自己的文件里再挂点别的（比如 {quality}），存成"我的预设"即可。
+// 「默认（默认）」就是"没挑别的时用的那一个"：模板等于后端 naming_template 的兜底值。
 const BUILTIN_PRESETS = [
-  { name: "单文件", template: "{title}.{ext}" },
+  { name: "默认（默认）", template: "{title}.{ext}" },
   { name: "分P视频", template: "P{part_index} - {part_title}.{ext}" },
   { name: "合集/列表", template: "{index} {title}.{ext}" },
   { name: "番剧/课程", template: "第{episode_index}集 - {episode_title}.{ext}" },
 ];
+
+/** 内置名不许被用户预设顶掉：更严的做法，重名直接拒绝保存。
+ *  （旧做法是同名照存，结果下拉里两个同名项、点哪个都走内置，白存一个。） */
+function builtinNameTaken(name, builtins) {
+  return builtins.some((preset) => preset.name === name);
+}
 
 /** 预设名由模板反推：改了模板下拉就跟着变，不会停留在旧预设名上。
  *  自己的预设排在前面——刚存完要能在下拉里看见自己起的名字，
@@ -393,6 +400,10 @@ function saveFolderPreset() {
     emit("toast", "先填写预设名称，再保存为预设");
     return;
   }
+  if (builtinNameTaken(name, FOLDER_PRESETS)) {
+    emit("toast", `「${name}」和内置层级重名了，换一个名字（内置清单不会被覆盖）`);
+    return;
+  }
   const presets = [...(draft.value.folder_presets ?? [])];
   const existing = presets.findIndex((preset) => preset.name === name);
   if (existing >= 0) {
@@ -410,6 +421,10 @@ function savePreset() {
   const name = presetName.value.trim();
   if (!name || !draft.value) {
     emit("toast", "先填写预设名称，再保存为预设");
+    return;
+  }
+  if (builtinNameTaken(name, BUILTIN_PRESETS)) {
+    emit("toast", `「${name}」和内置预设重名了，换一个名字（内置清单不会被覆盖）`);
     return;
   }
   const presets = [...(draft.value.naming_presets ?? [])];

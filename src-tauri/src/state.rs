@@ -204,7 +204,7 @@ impl Default for Settings {
             chunk_mb: 4,
             keep_temp: false,
             naming: "title".to_string(),
-            naming_template: "{title}".to_string(),
+            naming_template: "{title}.{ext}".to_string(),
             naming_presets: Vec::new(),
             folder_presets: Vec::new(),
             rename_conflict: "skip".to_string(),
@@ -261,8 +261,14 @@ impl Settings {
             self.naming_template = match self.naming.as_str() {
                 "title_quality" => "{title}_{quality}".to_string(),
                 "title_bvid" => "{title}_{bvid}".to_string(),
-                _ => "{title}".to_string(),
+                _ => "{title}.{ext}".to_string(),
             };
+        }
+        // 老版本把"默认命名"写成裸 `{title}`：渲染结果一样（渲染器会补扩展名），
+        // 但和「默认（默认）」这个内置预设的模板对不上，界面只能显示"自定义模板"。
+        // 等价改写，让默认能被认出来。
+        if self.naming_template.trim() == "{title}" {
+            self.naming_template = "{title}.{ext}".to_string();
         }
 
         // 旧的单值偏好迁进优先顺序列表。只在用户确实改过旧字段、且还没动过新列表时做，
@@ -306,7 +312,7 @@ impl Settings {
         self.parse_rest_ms = self.parse_rest_ms.clamp(0, 30_000);
         self.parse_cap = self.parse_cap.min(20_000);
         if self.naming_template.trim().is_empty() {
-            self.naming_template = "{title}".to_string();
+            self.naming_template = "{title}.{ext}".to_string();
         }
         self.folder_template = self.folder_template.trim().to_string();
         if self.folder_template.chars().count() > 300 {
@@ -647,6 +653,22 @@ impl AppState {
 #[cfg(test)]
 mod preset_tests {
     use super::*;
+
+    /// 内置预设「默认（默认）」的模板就是后端的默认值——点「恢复默认」之后
+    /// 下拉要能认出它（认不出的表现是显示"自定义模板"）。
+    #[test]
+    fn default_naming_template_is_the_default_preset() {
+        assert_eq!(Settings::default().naming_template, "{title}.{ext}");
+    }
+
+    /// 老设置里的裸 `{title}` 会被等价改写成 `{title}.{ext}`（渲染结果完全一样）。
+    #[test]
+    fn legacy_bare_title_template_is_normalised() {
+        let mut settings = Settings::default();
+        settings.naming_template = "{title}".to_string();
+        settings.migrate();
+        assert_eq!(settings.naming_template, "{title}.{ext}");
+    }
 
     /// 命名预设和文件夹预设过滤规则不同：命名模板是文件名，空模板没有意义；
     /// 文件夹模板空着恰恰是"不建文件夹"，是个正当的预设。曾经共用一个 retain

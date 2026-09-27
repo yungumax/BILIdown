@@ -146,7 +146,7 @@ const DEFAULT_SETTINGS = {
   chunk_concurrency: 4,
   chunk_mb: 4,
   keep_temp: false,
-  naming_template: "{title}",
+  naming_template: "{title}.{ext}",
   naming_presets: [],
   rename_conflict: "skip",
   container: "mp4",
