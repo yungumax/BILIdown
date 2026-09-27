@@ -1,6 +1,5 @@
-// 魔法变量面板的「二级目录」实测：
-// 一级分组 → 二级分组 → 变量 的层级是否真的成形，两个面板（命名/文件夹）是否一致，
-// 面板是否越出窗口，以及层级是否与后端 naming::VARIABLES 完全对上。
+// 魔法变量面板：栏目横排（一列一组）、列内变量是否被截断、面板是否越出窗口、
+// 层级/标签是否与后端 naming::VARIABLES 完全对上、两个面板（命名/文件夹）是否一致。
 import { writeFileSync } from "node:fs";
 const list = await (await fetch("http://127.0.0.1:9222/json/list")).json();
 const page = list.filter(t => t.type === "page").find(t => t.url && t.url !== "about:blank") || list[0];
@@ -25,60 +24,55 @@ const check = (name, ok, detail = "") => {
   if (!ok) fails++;
 };
 
-// 读面板：按 DOM 顺序还原两级树
+// 读面板：栏目（列）→ 变量；顺带量每列的位置和被截断情况
 const READ = `(() => {
   const panel = document.querySelector('.var-panel');
   if (!panel) return JSON.stringify({ missing: true });
   const grid = panel.querySelector('.var-grid');
-  const rows = [];
-  let g = null, s = null;
-  for (const el of grid.children) {
-    if (el.classList.contains('var-heading')) {
-      const text = el.textContent.trim();
-      const lvl = el.classList.contains('lvl1') ? 1 : el.classList.contains('lvl2') ? 2 : 0;
-      if (lvl === 1) { g = { name: text, sections: [], items: [] }; rows.push(g); s = null; }
-      else if (lvl === 2) { s = { name: text, items: [] }; (g ? g.sections : rows).push(s); }
-      else { rows.push({ name: text, lvl0: true }); }
-    } else if (el.classList.contains('var-item')) {
-      const token = (el.querySelector('code')?.textContent || '').trim().replace(/[{}]/g, '');
-      if (s) s.items.push(token); else if (g) g.items.push(token);
-    }
-  }
+  const cols = [...grid.querySelectorAll('.var-col')].map(c => {
+    const r = c.getBoundingClientRect();
+    return {
+      name: c.querySelector('.var-col-name')?.textContent.trim(),
+      box: [Math.round(r.left), Math.round(r.top), Math.round(r.width)],
+      items: [...c.querySelectorAll('.var-item')].map(b => {
+        const code = b.querySelector('code'), span = b.querySelector('span');
+        return {
+          token: (code?.textContent || '').trim().replace(/[{}]/g, ''),
+          label: (span?.textContent || '').trim(),
+          hint: b.getAttribute('title') || '',
+          clipped: code ? code.scrollWidth > code.clientWidth + 1 || span.scrollWidth > span.clientWidth + 1 : null
+        };
+      })
+    };
+  });
   const r = panel.getBoundingClientRect();
   return JSON.stringify({
-    rows,
+    cols,
     box: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)],
     grid: { view: Math.round(grid.clientHeight), full: Math.round(grid.scrollHeight) },
     win: [window.innerWidth, window.innerHeight]
   });
 })()`;
 
-const openPanel = async (label, index = 0) => {
-  await js(`document.querySelectorAll('.var-picker .ghost')[${index}].click()`);
+const openPanel = async (index = 0) => {
+  // 只在关着的时候点开：上一次跑完面板可能是开着的，直接 click 会把它点没
+  await js(`(() => { if (!document.querySelector('.var-panel')) document.querySelectorAll('.var-picker .ghost')[${index}].click(); return true; })()`);
   await wait(350);
-  const raw = await js(READ);
+  const tree = JSON.parse(await js(READ));
   await js(`document.querySelectorAll('.var-picker .ghost')[${index}].click()`);
   await wait(250);
-  return JSON.parse(raw);
+  return tree;
 };
 
-const flatten = (tree) => {
-  const out = [];
-  for (const row of tree.rows) {
-    for (const item of row.items) out.push({ token: item, group: row.name, section: "" });
-    for (const sec of row.sections) for (const item of sec.items) out.push({ token: item, group: row.name, section: sec.name });
-  }
-  return out;
-};
+const flat = (tree) => tree.cols.flatMap(c => c.items.map(i => ({ token: i.token, section: c.name, label: i.label, hint: i.hint })));
 
 const report = (title, tree) => {
   console.log(`\n== ${title} ==`);
-  for (const row of tree.rows) {
-    const own = row.items.length ? ` [${row.items.join(" ")}]` : "";
-    console.log(`  ${row.lvl0 ? "?? 旧式单级标题: " : ""}${row.name}${own}`);
-    for (const sec of row.sections) console.log(`    · ${sec.name}  [${sec.items.join(" ")}]`);
+  for (const col of tree.cols) {
+    console.log(`  ${col.name}  @${col.box[0]},${col.box[1]} 宽${col.box[2]}`);
+    for (const i of col.items) console.log(`    {${i.token}}  ${i.label}${i.clipped ? "  ⚠截断" : ""}${i.hint ? `  （悬停：${i.hint}）` : ""}`);
   }
-  console.log(`  面板 ${tree.box[2]}×${tree.box[3]} @ left=${tree.box[0]}  窗口 ${tree.win[0]}×${tree.win[1]}`);
+  console.log(`  面板 ${tree.box[2]}×${tree.box[3]} @ left=${tree.box[0]} top=${tree.box[1]}  窗口 ${tree.win[0]}×${tree.win[1]}`);
 };
 
 // 进设置 → 文件命名
@@ -87,41 +81,58 @@ await wait(800);
 await js(`[...document.querySelectorAll('.cats button')].find(b => b.textContent.includes('文件命名'))?.click()`);
 await wait(500);
 
-const naming = await openPanel("文件命名", 0);
+const naming = await openPanel(0);
 report("文件命名 → 命名模板", naming);
 
 const backend = JSON.parse(await js(`(async () => JSON.stringify(await window.__TAURI_INTERNALS__.invoke('naming_variables')))()`));
-const rendered = flatten(naming);
-const expected = backend.map(v => ({ token: v.token, group: v.group, section: v.section }));
+const rendered = flat(naming).map(({ token, section, label, hint }) => ({ token, section, label, hint }));
+// 面板上的悬停说明为空时会退回短标签（鼠标停上去总得有点东西），这里按同样规则比
+const expected = backend.map(v => ({ token: v.token, section: v.section, label: v.label, hint: v.hint || v.label }));
 
-console.log("\n[层级]");
-const names = naming.rows.map(r => r.name);
-check("一级标题就是四个分组、顺序对", JSON.stringify(names) === JSON.stringify(["通用", "视频", "批量来源", "番剧与课程"]), names.join(" / "));
-check("没有残留的旧式单级标题", !naming.rows.some(r => r.lvl0));
-check("每个一级分组下都有变量", naming.rows.every(r => r.items.length + r.sections.reduce((n, s) => n + s.items.length, 0) > 0));
-const sub = (g) => (naming.rows.find(r => r.name === g)?.sections || []).map(s => s.name);
-check("通用 的二级目录", JSON.stringify(sub("通用")) === JSON.stringify(["标题与作者", "时间", "来源与格式"]), sub("通用").join(" / "));
-check("视频 的二级目录", JSON.stringify(sub("视频")) === JSON.stringify(["视频标识", "分P", "画质与编码"]), sub("视频").join(" / "));
-check("小分组不再细分（数据里二级为空就不出标题）", sub("批量来源").length === 0 && sub("番剧与课程").length === 0);
+console.log("\n[栏目]");
+const names = naming.cols.map(c => c.name);
+check("八个栏目、顺序对",
+  JSON.stringify(names) === JSON.stringify(["标题与作者", "时间", "来源与格式", "视频标识", "分P", "画质与编码", "合集与序号", "剧集信息"]),
+  names.join(" / "));
+
+console.log("\n[横向排布]");
+const rows = new Map();
+for (const [i, col] of naming.cols.entries()) {
+  const key = col.box[1];
+  if (!rows.has(key)) rows.set(key, []);
+  rows.get(key).push({ i, left: col.box[0] });
+}
+const rowKeys = [...rows.keys()].sort((a, b) => a - b);
+check("8 个栏目排成两行", rowKeys.length === 2, `行数=${rowKeys.length} 每行=${[...rows.values()].map(r => r.length).join("/")}`);
+check("每行 4 列", [...rows.values()].every(r => r.length === 4));
+check("同一行里的列从左到右依次排开",
+  [...rows.values()].every(r => r.every((c, k) => k === 0 || c.left > r[k - 1].left)));
+check("第二行整体在第一行下面", rowKeys.length === 2 && rowKeys[1] > rowKeys[0]);
+
+console.log("\n[精简]");
+const clipped = naming.cols.flatMap(c => c.items.filter(i => i.clipped).map(i => `{${i.token}}`));
+check("列内变量与标签都没有被省略号截断", clipped.length === 0, clipped.join(" "));
+const longest = Math.max(...naming.cols.flatMap(c => c.items.map(i => i.label.length)));
+check("短标签都够短（≤8 字）", longest <= 8, `最长 ${longest} 字`);
+check("带歧义的变量有悬停说明", naming.cols.flatMap(c => c.items).filter(i => i.hint).length >= 8,
+  `${naming.cols.flatMap(c => c.items).filter(i => i.hint).length} / 19 项有说明`);
 
 console.log("\n[数据]");
-check("两级层级与后端 naming_variables 一致", JSON.stringify(rendered) === JSON.stringify(expected),
+check("栏目/短标签/悬停说明与后端 naming_variables 逐项一致", JSON.stringify(rendered) === JSON.stringify(expected),
   `面板 ${rendered.length} 项 / 后端 ${expected.length} 项`);
-check("变量不重复出现", new Set(rendered.map(r => r.token)).size === rendered.length);
-check("没有变量掉在一级标题之前", rendered.length === backend.length);
+check("变量不重复出现", new Set(rendered.map(r => r.token)).size === rendered.length && rendered.length === backend.length);
 
 console.log("\n[几何]");
 check("面板没有越出窗口左侧", naming.box[0] >= 0, `left=${naming.box[0]}`);
 check("面板没有越出窗口右侧", naming.box[0] + naming.box[2] <= naming.win[0], `right=${naming.box[0] + naming.box[2]} / win=${naming.win[0]}`);
 check("面板底部在窗口内（默认尺寸下不切掉）", naming.box[1] + naming.box[3] <= naming.win[1], `bottom=${naming.box[1] + naming.box[3]} / win=${naming.win[1]}`);
-const scroll = naming.grid;
-check("长清单在面板内滚动（不是被裁掉）", scroll.full > scroll.view, `可视 ${scroll.view} < 内容 ${scroll.full}`);
+check("19 个变量一次看全（不再需要滚动）", naming.grid.full <= naming.grid.view + 1, `内容 ${naming.grid.full} / 可视 ${naming.grid.view}`);
 
-// 文件夹页的 + 面板：同一个 rows 构建器，层级应当一模一样
+// 文件夹页的 + 面板：同一个构建器，栏目应当一模一样
 await js(`[...document.querySelectorAll('.cats button')].find(b => b.textContent.includes('文件夹'))?.click()`);
 await wait(500);
-const folderTree = await openPanel("文件夹", 0);
-check("文件夹模板的 + 面板层级与命名模板一致", JSON.stringify(flatten(folderTree)) === JSON.stringify(expected));
+const folderTree = await openPanel(0);
+check("文件夹模板的 + 面板与命名模板一致", JSON.stringify(flat(folderTree)) === JSON.stringify(expected));
 
 const shot = await send("Page.captureScreenshot", { format: "png" });
 writeFileSync("D:/Zcode/BILIdown/tools/var-panel.png", Buffer.from(shot.data, "base64"));

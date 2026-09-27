@@ -247,16 +247,16 @@ pub async fn preview_names(
 }
 
 /// 「魔法变量」面板的数据源：界面直接渲染这份清单，不再手写第二份可能和后端脱节的表。
-/// 一级分组与二级分组一起给出去，面板按两级标题渲染。
+/// 栏目 + 短标签 + 悬停说明一起给出去，面板按栏目分列横排。
 #[tauri::command]
 pub async fn naming_variables() -> Result<Vec<crate::types::NamingVariable>, String> {
     Ok(crate::naming::VARIABLES
         .iter()
-        .map(|(token, label, group, section)| crate::types::NamingVariable {
+        .map(|(token, label, section, hint)| crate::types::NamingVariable {
             token: (*token).to_string(),
             label: (*label).to_string(),
-            group: (*group).to_string(),
             section: (*section).to_string(),
+            hint: (*hint).to_string(),
         })
         .collect())
 }

@@ -6,39 +6,39 @@
 
 use std::path::PathBuf;
 
-/// 魔法变量表：`(标记, 说明, 一级分组, 二级分组)`。顺序即面板顺序，界面按两级渲染。
+/// 魔法变量表：`(标记, 短标签, 栏目, 悬停说明)`。顺序即面板顺序，界面按栏目分列横排。
 ///
-/// **一级分组**回答同一个问题：这个变量在哪些来源里真的有值。模板是共用的，
-/// 视频能用的变量图文/音频拿到的是空，混在一起列会让人写出没用的模板。
-/// **二级分组**在一级里再按"这是什么"分（标识 / 时间 / 序号…）。留空表示
-/// 这一组不必再分，变量直接列在一级标题下——小分组硬加一层标题只会更乱。
+/// **栏目**是面板里唯一的层级，回答"这个变量是什么 / 哪些来源真的有值"：
+/// 标题与作者、时间、来源与格式是所有来源都有的；视频标识 / 分P / 画质与编码
+/// 只有视频有；合集与序号是批量来源；剧集信息是番剧与课程。
 ///
-/// 两级都必须**连续**：同一个分组名只能出现一段，否则面板会插出重复标题
-/// （`variable_groups_stay_contiguous` 守着这条）。
+/// **短标签**是列里显示的字，要短到一列放得下；说不完的那点意思放"悬停说明"，
+/// 鼠标停上去才出来。同一栏目必须**连续**，否则面板会插出重复列
+/// （`variable_sections_stay_contiguous` 守着这条）。
 pub const VARIABLES: &[(&str, &str, &str, &str)] = &[
-    // 通用：任何来源都有值
-    ("title", "标题（视频标题 / 合集条目 / 图文帖子）", "通用", "标题与作者"),
-    ("owner_name", "UP 主名称", "通用", "标题与作者"),
-    ("owner_mid", "UP 主 MID", "通用", "标题与作者"),
-    ("publish_date", "发布时间（B 站发布日期）", "通用", "时间"),
-    ("date", "下载日期（任务创建那天）", "通用", "时间"),
-    ("source_kind", "来源类型：合集 / 收藏夹 / 系列 / UP 空间 / 图文 / 音频 / 番剧 / 课程 / 视频", "通用", "来源与格式"),
-    ("ext", "扩展名（视频 mp4/mkv、音频 m4a）", "通用", "来源与格式"),
-    // 视频：只有视频有值
-    ("bvid", "BV 号", "视频", "视频标识"),
-    ("aid", "AV 号", "视频", "视频标识"),
-    ("cid", "CID", "视频", "视频标识"),
-    ("part_title", "分P标题（多P视频）", "视频", "分P"),
-    ("part_index", "分P序号（多P视频）", "视频", "分P"),
-    ("quality", "清晰度", "视频", "画质与编码"),
-    ("codec", "编码", "视频", "画质与编码"),
-    // 批量来源：合集 / 收藏夹 / 系列 / UP 空间 / 图文 / 音频——只有两个变量，不再分层
-    ("collection_title", "合集/来源名（「文件夹」页的第二层目录）", "批量来源", ""),
-    ("index", "序号（批次内按发布顺序；单条链接为空）", "批量来源", ""),
+    // 标题与作者：任何来源都有
+    ("title", "标题", "标题与作者", "视频标题 / 合集条目 / 图文帖子"),
+    ("owner_name", "UP 名", "标题与作者", "UP 主名称"),
+    ("owner_mid", "UP MID", "标题与作者", "UP 主的数字 ID"),
+    ("publish_date", "发布日期", "时间", "B 站发布日期"),
+    ("date", "下载日期", "时间", "任务创建那天"),
+    ("source_kind", "来源类型", "来源与格式", "合集 / 收藏夹 / 系列 / UP 空间 / 图文 / 音频 / 番剧 / 课程"),
+    ("ext", "扩展名", "来源与格式", "视频 mp4/mkv、音频 m4a"),
+    // 视频专属
+    ("bvid", "BV 号", "视频标识", ""),
+    ("aid", "AV 号", "视频标识", ""),
+    ("cid", "CID", "视频标识", ""),
+    ("part_title", "分P标题", "分P", "多P视频才有"),
+    ("part_index", "分P序号", "分P", "多P视频才有"),
+    ("quality", "清晰度", "画质与编码", ""),
+    ("codec", "编码", "画质与编码", ""),
+    // 批量来源：合集 / 收藏夹 / 系列 / UP 空间 / 图文 / 音频
+    ("collection_title", "合集名", "合集与序号", "合集 / 来源名，也是「文件夹」页的第二层目录"),
+    ("index", "序号", "合集与序号", "批次内按发布顺序；单条链接为空"),
     // 番剧 / 课程
-    ("series_title", "番剧/课程/系列名", "番剧与课程", ""),
-    ("episode_index", "集序号", "番剧与课程", ""),
-    ("episode_title", "集标题", "番剧与课程", ""),
+    ("series_title", "剧集名", "剧集信息", "番剧 / 课程 / 系列名"),
+    ("episode_index", "集序号", "剧集信息", ""),
+    ("episode_title", "集标题", "剧集信息", ""),
 ];
 /// 一次渲染需要的全部取值。取不到的留空——空值在文件名里直接消失，
 /// 不会留下 `{episode_title}` 这种字面标记。
@@ -374,33 +374,21 @@ mod tests {
     }
 
     #[test]
-    fn variable_groups_stay_contiguous() {
-        // 界面是"分组名一变就插一条标题"：同名分组若断开成两段，面板里会出现
-        // 两个同名标题，中间的变量看起来像掉了。二级分组同理。
-        let mut seen_groups: Vec<&str> = Vec::new();
-        let mut current_group = "";
-        let mut seen_sections: Vec<&str> = Vec::new();
-        let mut current_section = "";
-        for (token, _, group, section) in VARIABLES {
-            assert!(!group.is_empty(), "变量 {{{token}}} 没有一级分组");
-            if *group != current_group {
+    fn variable_sections_stay_contiguous() {
+        // 界面是"栏目名一变就另起一列"：同名栏目若断开成两段，面板里会出现
+        // 两个同名栏目，中间的变量看起来像掉了。
+        let mut seen: Vec<&str> = Vec::new();
+        let mut current = "";
+        for (token, label, section, _) in VARIABLES {
+            assert!(!section.is_empty(), "变量 {{{token}}} 没有栏目");
+            assert!(!label.is_empty(), "变量 {{{token}}} 没有短标签");
+            if *section != current {
                 assert!(
-                    !seen_groups.contains(group),
-                    "一级分组「{group}」被拆成了两段（变量 {{{token}}} 处又出现一次）"
+                    !seen.contains(section),
+                    "栏目「{section}」被拆成了两段（变量 {{{token}}} 处又出现一次）"
                 );
-                seen_groups.push(group);
-                current_group = group;
-                // 换组就重算二级：同一个二级名可以出现在不同一级分组下
-                seen_sections.clear();
-                current_section = "";
-            }
-            if !section.is_empty() && *section != current_section {
-                assert!(
-                    !seen_sections.contains(section),
-                    "二级分组「{section}」在「{group}」里被拆成了两段"
-                );
-                seen_sections.push(section);
-                current_section = section;
+                seen.push(section);
+                current = section;
             }
         }
     }

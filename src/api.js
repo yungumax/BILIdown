@@ -495,27 +495,27 @@ const mock = (() => {
   };
   // 仅浏览器预览用的兜底：真值在 Rust 的 naming::VARIABLES，
   // 桌面端一律走 naming_variables 命令，这份副本只影响脱离桌面壳的预览。
-  // 顺序、分组、二级分组都和后端那张表对齐，预览里看到的两级目录才是真的。
+  // 栏目、短标签、悬停说明都和后端那张表逐行对齐，预览里看到的才是真的。
   const VARIABLES = [
-    ["title", "标题（视频标题 / 合集条目 / 图文帖子）", "通用", "标题与作者"],
-    ["owner_name", "UP 主名称", "通用", "标题与作者"],
-    ["owner_mid", "UP 主 MID", "通用", "标题与作者"],
-    ["publish_date", "发布时间（B 站发布日期）", "通用", "时间"],
-    ["date", "下载日期（任务创建那天）", "通用", "时间"],
-    ["source_kind", "来源类型：合集 / 收藏夹 / 系列 / UP 空间 / 图文 / 音频 / 番剧 / 课程 / 视频", "通用", "来源与格式"],
-    ["ext", "扩展名（视频 mp4/mkv、音频 m4a）", "通用", "来源与格式"],
-    ["bvid", "BV 号", "视频", "视频标识"],
-    ["aid", "AV 号", "视频", "视频标识"],
-    ["cid", "CID", "视频", "视频标识"],
-    ["part_title", "分P标题（多P视频）", "视频", "分P"],
-    ["part_index", "分P序号（多P视频）", "视频", "分P"],
-    ["quality", "清晰度", "视频", "画质与编码"],
-    ["codec", "编码", "视频", "画质与编码"],
-    ["collection_title", "合集/来源名（「文件夹」页的第二层目录）", "批量来源", ""],
-    ["index", "序号（批次内按发布顺序；单条链接为空）", "批量来源", ""],
-    ["series_title", "番剧/课程/系列名", "番剧与课程", ""],
-    ["episode_index", "集序号", "番剧与课程", ""],
-    ["episode_title", "集标题", "番剧与课程", ""],
+    ["title", "标题", "标题与作者", "视频标题 / 合集条目 / 图文帖子"],
+    ["owner_name", "UP 名", "标题与作者", "UP 主名称"],
+    ["owner_mid", "UP MID", "标题与作者", "UP 主的数字 ID"],
+    ["publish_date", "发布日期", "时间", "B 站发布日期"],
+    ["date", "下载日期", "时间", "任务创建那天"],
+    ["source_kind", "来源类型", "来源与格式", "合集 / 收藏夹 / 系列 / UP 空间 / 图文 / 音频 / 番剧 / 课程"],
+    ["ext", "扩展名", "来源与格式", "视频 mp4/mkv、音频 m4a"],
+    ["bvid", "BV 号", "视频标识", ""],
+    ["aid", "AV 号", "视频标识", ""],
+    ["cid", "CID", "视频标识", ""],
+    ["part_title", "分P标题", "分P", "多P视频才有"],
+    ["part_index", "分P序号", "分P", "多P视频才有"],
+    ["quality", "清晰度", "画质与编码", ""],
+    ["codec", "编码", "画质与编码", ""],
+    ["collection_title", "合集名", "合集与序号", "合集 / 来源名，也是「文件夹」页的第二层目录"],
+    ["index", "序号", "合集与序号", "批次内按发布顺序；单条链接为空"],
+    ["series_title", "剧集名", "剧集信息", "番剧 / 课程 / 系列名"],
+    ["episode_index", "集序号", "剧集信息", ""],
+    ["episode_title", "集标题", "剧集信息", ""],
   ];
 
   const SAMPLE = {
@@ -539,7 +539,7 @@ const mock = (() => {
   };
 
   const namingVariables = () =>
-    VARIABLES.map(([token, label, group, section]) => ({ token, label, group, section }));
+    VARIABLES.map(([token, label, section, hint]) => ({ token, label, section, hint }));
 
   const previewNaming = (template, ext = "mp4") => {
     const segments = [];

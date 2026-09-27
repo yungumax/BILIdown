@@ -177,14 +177,15 @@ pub struct NamingMeta {
 /// 「魔法变量」面板的一项。
 #[derive(Debug, Clone, Serialize)]
 pub struct NamingVariable {
-    /// 一级分组：通用 / 视频 / 批量来源 / 番剧与课程
-    #[serde(default)]
-    pub group: String,
-    /// 二级分组（面板里的二级标题）；空 = 这一组不再细分
+    /// 栏目（面板里一列一个，横排）
     #[serde(default)]
     pub section: String,
     pub token: String,
+    /// 列里显示的短标签
     pub label: String,
+    /// 悬停说明；空表示短标签已经说清
+    #[serde(default)]
+    pub hint: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
