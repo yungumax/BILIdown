@@ -471,18 +471,23 @@ async fn fetch_batch_page(
         BatchTarget::Space(mid) => {
             let data = client.space_archives(mid, page).await.map_err(describe)?;
             let list = data.list.as_ref();
+            // 列表里的 author 偶尔是空的（风控页、合作稿件等），那就按 mid 反查一次，
+            // 否则来源标题会变成没有名字的" 的投稿"，子文件夹也跟着变空。
+            let mut owner = list
+                .and_then(|l| l.vlist.first())
+                .map(|v| v.author.clone())
+                .unwrap_or_default();
+            if owner.trim().is_empty() && first {
+                owner = client.user_name(mid).await;
+            }
             let meta = first.then(|| BatchMeta {
                 kind: "space".to_string(),
-                title: format!(
-                    "{} 的投稿",
-                    list.and_then(|l| l.vlist.first())
-                        .map(|v| v.author.clone())
-                        .unwrap_or_default()
-                ),
-                owner: list
-                    .and_then(|l| l.vlist.first())
-                    .map(|v| v.author.clone())
-                    .unwrap_or_default(),
+                title: if owner.trim().is_empty() {
+                    "UP 投稿".to_string()
+                } else {
+                    format!("{owner} 的投稿")
+                },
+                owner,
                 total: data.page.count as usize,
                 mid: 0,
                 has_more: true,
@@ -2634,6 +2639,26 @@ mod live_tests {
             "series: {} loaded={} total={} 首条={:?}",
             probe.title, probe.loaded, probe.total, probe.items[0].title
         );
+    }
+
+    /// 实测 UP 空间来源的标题与 UP 名（子文件夹用 {collection_title}，不能是空的"的投稿"）。
+    #[tokio::test]
+    #[ignore = "需要网络与登录态"]
+    async fn live_space_source_carries_owner_name() {
+        let client = client();
+        for url in [
+            "https://space.bilibili.com/486287787/video",
+            "https://space.bilibili.com/927587/video",
+        ] {
+            let probe = probe_one(&client, &app_state(), url, false).await.expect("解析成功");
+            println!("{} -> title={:?} owner={:?} total={}", url, probe.title, probe.owner, probe.total);
+            assert!(!probe.owner.trim().is_empty(), "{url} 的 UP 名是空的");
+            assert!(
+                !probe.title.trim().starts_with("的投稿"),
+                "{url} 的标题丢了 UP 名：{:?}",
+                probe.title
+            );
+        }
     }
 
     /// 实测音频列表与播放地址（拿一个确实有音频的 UP）。

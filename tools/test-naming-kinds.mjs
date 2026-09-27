@@ -4,6 +4,7 @@ const cases = [
   ["批量视频（合集）", "批量解析", "https://space.bilibili.com/927587/lists/108434?type=season"],
   ["图文列表", "批量解析", "https://space.bilibili.com/486287787/upload/opus"],
   ["音频列表", "批量解析", "https://space.bilibili.com/35849261/upload/audio"],
+  ["UP 空间（投稿）", "批量解析", "https://space.bilibili.com/927587/video"],
   ["单个视频", "单个链接", "https://www.bilibili.com/video/BV1j3hd6wE1w"],
   ["单条图文", "单个链接", "https://www.bilibili.com/opus/1179150912883523593"],
 ];
