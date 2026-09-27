@@ -880,7 +880,9 @@ function batchNaming(batch, entry, position) {
     // - 单条图文/专栏：没有合集层，留空（否则标题在路径里出现两次）
     collection_title: folderLevel(batch, entry),
     source_kind: KIND_LABELS[batch.kind] ?? "视频",
-    index: position,
+    // 图文列表的顺序是"新 → 旧"，编号要按发布顺序"由远及近"，
+    // 所以倒过来：本批里最旧的那条是 1，最新的最大。
+    index: (batch.kind === "opus" ? Math.max(batch.items.length - position + 1, 1) : position),
     date: localDate(),
     publish_date: "",
   };

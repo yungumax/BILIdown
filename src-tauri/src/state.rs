@@ -410,9 +410,12 @@ impl Settings {
         crate::naming::render(&self.naming_template, ctx, ext)
     }
 
-    /// 图文/专栏的条目文件夹名。
+    /// 图文/专栏的条目文件夹名：`序号 标题`。
     ///
-    /// 固定用条目自身的标题，**不复用文件名模板**：文件名模板是给视频用的
+    /// 序号 = 发布顺序（由远及近，最旧的在前），前端按列表倒序算好放进 `{index}`；
+    /// 单条图文/专栏没有批次上下文，`{index}` 为 0，名字里就只剩标题。
+    ///
+    /// 固定用标题而不是复用文件名模板：文件名模板是给视频用的
     /// （`P{part_index} - {part_title}` 这类），图文没有分集，套过来会得到
     /// 空名字或 `P - ` —— 这正是"命名规则与文件夹规则重合"的坑。
     pub fn output_folder(&self, ctx: &crate::naming::NamingContext) -> PathBuf {
@@ -420,7 +423,15 @@ impl Settings {
         if name.is_empty() {
             PathBuf::from("图文")
         } else {
-            crate::naming::render_dir("{title}", ctx)
+            // 三位补零：01 → 001，资源管理器按名称排序才是"由远及近"，
+            // 否则 10 会排在 2 前面。上限 999 条，够用。
+            let title = crate::naming::render_dir("{title}", ctx);
+            let prefix = format!("{:03}", ctx.index.min(999));
+            let name = format!(
+                "{prefix} {}",
+                title.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default()
+            );
+            PathBuf::from(name)
         }
     }
 
