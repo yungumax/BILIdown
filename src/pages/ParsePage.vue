@@ -771,8 +771,8 @@ async function startSingle(item) {
         <h2 class="select-title" :title="headerTitle">{{ headerTitle }}</h2>
         <span v-if="headerTag" class="kind-tag">{{ headerTag }}</span>
 
-        <span class="spacer"></span>
-
+        <!-- 计数与动作成组右对齐：窄窗口整体换行后仍然贴右（标签则留在左） -->
+        <div class="bar-right">
         <template v-if="useShared">
           <span class="loaded-hint num">共 {{ loadedCount }} 条</span>
         </template>
@@ -870,6 +870,7 @@ async function startSingle(item) {
         >
           {{ hasTable ? `下载所选 (${selectedCount})` : "加入下载" }}
         </button>
+        </div>
       </header>
 
       <p v-if="activeSource.probe.note" class="note">{{ activeSource.probe.note }}</p>
@@ -1520,9 +1521,20 @@ input:focus {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 8px 10px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--line-soft);
+}
+
+/* 计数与动作成组：整组靠右（margin-left:auto），窄到放不下时整组换行，
+   换行后组内也保持右对齐——标签继续留在左边 */
+.bar-right {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 
 /* 窄版"每批 N"：不带下拉箭头（原生 select 的箭头去不掉，所以自绘菜单） */
@@ -1596,7 +1608,8 @@ input:focus {
 /* 标题按内容占宽（长标题折行，不会被截断），这样类型标签才能紧跟在标题后面 */
 /* 一行布局下标题可伸缩：优先吃掉空白，实在放不下才省略（悬停看全名） */
 .select-title {
-  flex: 1 1 auto;
+  /* 不伸长：换行时若标题伸长，会把「合集」标签顶到整行最右 */
+  flex: 0 1 auto;
   /* 下限保证标题至少能读；一行实在放不下时工具条整行换行兜底 */
   min-width: 110px;
   margin: 0;
