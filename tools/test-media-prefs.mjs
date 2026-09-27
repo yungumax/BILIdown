@@ -173,12 +173,21 @@ check("视频格式至少两个选项且没有 MKV",
 check("音频格式至少两个选项", (formats[1]?.选项.length ?? 0) >= 2, formats[1]?.选项.join(" / "));
 check("图片格式至少两个选项", (formats[2]?.选项.length ?? 0) >= 2, formats[2]?.选项.join(" / "));
 
-await js(`[...document.querySelectorAll('.card-check')].find(l => l.textContent.includes('下载封面')).querySelector('input').click()`);
-await wait(400);
+// 勾选框状态可能是上一条测试留下的：按目标状态点，别盲点（盲点会把它关掉）
+const toggleBox = async (label, want) => {
+  const state = await js(`(() => {
+    const el = [...document.querySelectorAll('.card-check')].find(l => l.textContent.includes(${JSON.stringify(label)}));
+    return el ? el.querySelector('input').checked : null;
+  })()`);
+  if (state === null || state === want) return state !== null;
+  await js(`[...document.querySelectorAll('.card-check')].find(l => l.textContent.includes(${JSON.stringify(label)})).querySelector('input').click()`);
+  await wait(400);
+  return true;
+};
+await toggleBox("下载封面", true);
 check("勾上「下载封面」后说明是独立文件",
   (await js(`[...document.querySelectorAll('.note')].some(n => n.textContent.includes('与视频同名的独立文件'))`)) === true);
-await js(`[...document.querySelectorAll('.card-check')].find(l => l.textContent.includes('下载弹幕')).querySelector('input').click()`);
-await wait(400);
+await toggleBox("下载弹幕", true);
 check("勾上「下载弹幕」后说明是独立 .xml、不合成",
   (await js(`[...document.querySelectorAll('.note')].some(n => n.textContent.includes('不与视频合成'))`)) === true);
 await js(`(() => {
