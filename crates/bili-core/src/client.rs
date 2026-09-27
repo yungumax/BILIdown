@@ -234,6 +234,48 @@ impl BiliClient {
         Ok((bytes.to_vec(), content_type))
     }
 
+    /// 这条视频的字幕清单。番剧用 `ep_id`、普通视频用 `bvid`，都要带 `cid`。
+    ///
+    /// 先试签名接口（网页播放器用的 `x/player/wbi/v2`），被风控挡住再退回未签名的
+    /// `x/player/v2`。两条都通但都是空表就是这条没字幕——这是常态，不算错误。
+    pub async fn subtitles(
+        &self,
+        bvid: Option<&str>,
+        ep_id: Option<u64>,
+        cid: u64,
+    ) -> Result<Vec<crate::subtitle::SubtitleItem>> {
+        let mut params: Vec<(&str, String)> = vec![("cid", cid.to_string())];
+        if let Some(bvid) = bvid.filter(|b| !b.is_empty()) {
+            params.push(("bvid", bvid.to_string()));
+        }
+        if let Some(ep_id) = ep_id.filter(|e| *e > 0) {
+            params.push(("ep_id", ep_id.to_string()));
+        }
+        // **只信签名接口**（网页播放器用的那个）。未签名的老接口 x/player/v2 虽然能通，
+        // 但它会回一份"会话里的字幕"——实测拿到过跟本条视频毫无关系的字幕，
+        // 写出去就是把别人的台词贴在视频旁边，比没有字幕更糟。所以不做这个回退。
+        let url = self
+            .signed_url("https://api.bilibili.com/x/player/wbi/v2", params)
+            .await?;
+        let resp: crate::subtitle::PlayerSubtitles = self.fetch_json(&url).await?;
+        let list = resp.subtitle.map(|s| s.subtitles).unwrap_or_default();
+        // AI 字幕是按需生成的：没生成过时地址是空的，这种条目直接丢掉
+        Ok(list
+            .into_iter()
+            .filter(|item| !item.subtitle_url.trim().is_empty())
+            .collect())
+    }
+
+    /// 取一份字幕内容（清单里的 `subtitle_url` 是协议相对的，这里补 https:）。
+    pub async fn subtitle_text(&self, url: &str) -> Result<String> {
+        let url = if url.starts_with("//") {
+            format!("https:{url}")
+        } else {
+            url.to_string()
+        };
+        self.fetch_text(&url).await
+    }
+
     /// 全量弹幕，转成播放器直接读的 XML。
     ///
     /// 主路是网页播放器用的 `seg.so`（protobuf，按段翻页，翻完即全量）；

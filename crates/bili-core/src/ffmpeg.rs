@@ -117,7 +117,6 @@ pub async fn merge_video_audio(
     out: &Path,
     container: Container,
     hevc: bool,
-    cover: Option<(&Path, &str)>,
 ) -> Result<()> {
     let mut command = Command::new(ffmpeg);
     command
@@ -136,22 +135,12 @@ pub async fn merge_video_audio(
         .arg("-c")
         .arg("copy");
 
-    match container {
-        Container::Mp4 => {
-            if hevc {
-                command.arg("-tag:v").arg("hvc1");
-            }
-            command.arg("-movflags").arg("+faststart");
+    // 封面不再嵌进容器（改成旁边放一份独立图片），所以 MKV 这边没有额外参数
+    if container == Container::Mp4 {
+        if hevc {
+            command.arg("-tag:v").arg("hvc1");
         }
-        Container::Mkv => {
-            if let Some((cover_path, mime)) = cover {
-                command
-                    .arg("-attach")
-                    .arg(cover_path)
-                    .arg("-metadata:s:t")
-                    .arg(format!("mimetype={mime}"));
-            }
-        }
+        command.arg("-movflags").arg("+faststart");
     }
 
     let output = quiet(&mut command)

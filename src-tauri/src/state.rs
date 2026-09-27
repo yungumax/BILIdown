@@ -145,13 +145,21 @@ pub struct Settings {
     pub codec_pref: String,
     /// 请求的清晰度不可用时：nearest=自动降级 / fail=任务失败
     pub quality_fallback: String,
-    /// 嵌入封面（仅 MKV 生效）
-    pub embed_cover: bool,
-    /// 嵌入字幕（仅 MKV；字幕下载在后续版本提供）
-    pub embed_subtitles: bool,
+    /// 下载封面：与视频同名的独立图片文件，不合成进视频
+    #[serde(default)]
+    pub download_cover: bool,
+    /// 下载字幕：与视频同名的独立 .srt，播放器直接读；不合成进视频
+    #[serde(default)]
+    pub download_subtitles: bool,
     /// 下载弹幕：单独存一份与视频同名的 .xml，播放器直接读；不与视频合成
     #[serde(default)]
     pub download_danmaku: bool,
+    /// 旧字段：曾经是"把封面/字幕嵌进 MKV"。现在一律改成独立文件，
+    /// 这两个只用于迁移（勾过就当作要下载），不再写回设置。
+    #[serde(default, skip_serializing)]
+    pub embed_cover: bool,
+    #[serde(default, skip_serializing)]
+    pub embed_subtitles: bool,
     /// 单个分片失败的最大重试次数
     pub retry_count: u32,
     /// 全局限速（MiB/s），0 表示不限速
@@ -214,9 +222,11 @@ impl Default for Settings {
             container: "mp4".to_string(),
             codec_pref: "auto".to_string(),
             quality_fallback: "nearest".to_string(),
+            download_cover: false,
+            download_subtitles: false,
+            download_danmaku: false,
             embed_cover: false,
             embed_subtitles: false,
-            download_danmaku: false,
             retry_count: 3,
             speed_limit_mib: 0,
             auto_refresh_urls: true,
@@ -271,6 +281,14 @@ impl Settings {
         // 等价改写，让默认能被认出来。
         if self.naming_template.trim() == "{title}" {
             self.naming_template = "{title}.{ext}".to_string();
+        }
+
+        // 封面/字幕从"嵌进 MKV"改成"独立文件"：勾过的人就是想要这份东西，搬过来
+        if self.embed_cover {
+            self.download_cover = true;
+        }
+        if self.embed_subtitles {
+            self.download_subtitles = true;
         }
 
         // fdc185a 那一版把单值（视频清晰度 / 编码偏好 / 音频质量）折进了优先顺序表，

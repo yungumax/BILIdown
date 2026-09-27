@@ -792,29 +792,30 @@ async function open(path) {
                   {{ item.label }}
                 </option>
               </select>
-              <p class="note">嵌入封面和字幕时需使用 MKV</p>
+              <p class="note">封面、字幕、弹幕都另存为独立文件，与封装格式无关</p>
             </div>
 
             <div class="grid2 full">
               <label class="check card-check">
-                <input type="checkbox" v-model="draft.embed_cover" />
-                <span>嵌入封面（仅 MKV）</span>
+                <input type="checkbox" v-model="draft.download_cover" />
+                <span>下载封面（独立图片）</span>
               </label>
-              <label class="check card-check" :title="draft.container === 'mp4' ? '请先将封装格式切换为 MKV' : ''">
-                <input type="checkbox" v-model="draft.embed_subtitles" />
-                <span>嵌入字幕（仅 MKV）</span>
+              <label class="check card-check">
+                <input type="checkbox" v-model="draft.download_subtitles" />
+                <span>下载字幕（独立 .srt）</span>
               </label>
               <label class="check card-check">
                 <input type="checkbox" v-model="draft.download_danmaku" />
                 <span>下载弹幕（独立 .xml）</span>
               </label>
             </div>
-            <p v-if="draft.embed_subtitles" class="note">
-              字幕将在后续版本提供，当前仅保存该选项。
+            <p v-if="draft.download_cover || draft.download_subtitles || draft.download_danmaku" class="note">
+              封面、字幕、弹幕都存成<b>与视频同名的独立文件</b>（封面 .jpg/.png、字幕 .srt、弹幕 .xml），
+              不与视频合成，播放器直接读同名文件即可。
+              音频与图文没有字幕弹幕，会跳过。
             </p>
-            <p v-if="draft.download_danmaku" class="note">
-              弹幕单独存成与视频同名的 .xml（不与视频合成），弹弹play、mpv 等播放器可直接读取。
-              音频与图文没有弹幕，跳过。
+            <p v-if="draft.download_subtitles" class="note">
+              字幕清单接口受 B 站风控限制，被挡（412）时这条就跳过、并写进日志 —— 没字幕的视频也走这条。
             </p>
 
             <div class="field full">

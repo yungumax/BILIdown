@@ -13,6 +13,7 @@ pub mod ffmpeg;
 pub mod login;
 pub mod opus;
 pub mod parser;
+pub mod subtitle;
 pub mod util;
 pub mod wbi;
 

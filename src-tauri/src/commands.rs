@@ -1975,6 +1975,9 @@ async fn run_download(
             if out_file.exists() {
                 let path = out_file.to_string_lossy().to_string();
                 settings.log("info", &format!("文件已存在，跳过任务: {path}"));
+                // 视频不重下，但封面/字幕/弹幕这些旁挂文件该补还得补
+                // （用户可能是后来才勾上的）
+                write_sidecars(&client, &settings, &req, &out_file).await;
                 mutate(&shared, &app, |t| {
                     t.status = TaskStatus::Done;
                     t.video_pct = 100.0;
@@ -2071,20 +2074,7 @@ async fn run_download(
             BiliError::FfmpegUnavailable("未找到 ffmpeg：可在「编码与处理」里指定路径".to_string())
         })?;
 
-    // MKV 且开启嵌入封面时，把解析阶段取到的封面 data URL 落盘
     let container = Container::parse(&settings.container);
-    let cover = if container == Container::Mkv && settings.embed_cover && !req.cover.is_empty() {
-        match save_cover(&req.cover, &work_dir).await {
-            Ok(pair) => Some(pair),
-            Err(e) => {
-                settings.log("warn", &format!("封面获取失败（继续合成）: {e}"));
-                None
-            }
-        }
-    } else {
-        None
-    };
-
     ffmpeg::merge_video_audio(
         &ffmpeg_bin,
         &video_path,
@@ -2092,51 +2082,14 @@ async fn run_download(
         &out_file,
         container,
         is_hevc,
-        cover
-            .as_ref()
-            .map(|(path, mime)| (path.as_path(), mime.as_str())),
     )
     .await?;
     if !settings.keep_temp {
         tokio::fs::remove_dir_all(&work_dir).await.ok();
     }
 
-    // 弹幕：单独一份与视频同名的 .xml，**不合成进视频**，播放器自己读。
-    // 失败只记日志——弹幕拿不到不该让整条任务失败。
-    if settings.download_danmaku {
-        let cid = if req.cid > 0 {
-            req.cid
-        } else if req.bvid.is_empty() {
-            0
-        } else {
-            client
-                .video_info(&req.bvid)
-                .await
-                .map(|info| info.cid)
-                .unwrap_or(0)
-        };
-        if cid == 0 {
-            settings.log("info", "这条没有弹幕（音频/图文或查不到 cid），跳过");
-        } else {
-            match client.danmaku_full(cid).await {
-                Ok((xml, count, truncated)) => {
-                    let dm_path = out_file.with_extension("xml");
-                    match tokio::fs::write(&dm_path, xml.as_bytes()).await {
-                        Ok(_) => settings.log(
-                            "info",
-                            &format!(
-                                "弹幕已保存（{count} 条{}）: {}",
-                                if truncated { "，接口只给了这一部分" } else { "" },
-                                dm_path.display()
-                            ),
-                        ),
-                        Err(e) => settings.log("warn", &format!("弹幕写入失败: {e}")),
-                    }
-                }
-                Err(e) => settings.log("warn", &format!("弹幕获取失败（不影响视频）: {e}")),
-            }
-        }
-    }
+    // 封面 / 字幕 / 弹幕：与视频同名的独立文件，都不合成进视频
+    write_sidecars(&client, &settings, &req, &out_file).await;
 
     let out_path = out_file.to_string_lossy().to_string();
     mutate(&shared, &app, |t| {
@@ -2152,7 +2105,150 @@ async fn run_download(
     Ok(())
 }
 
+/// 与视频同名的旁挂文件：封面图片、字幕 SRT、弹幕 XML。
+///
+/// 三样都**不合成进视频**，失败只记 warn —— 旁挂文件拿不到不该让整条任务失败。
+async fn write_sidecars(
+    client: &bili_core::client::BiliClient,
+    settings: &crate::state::Settings,
+    req: &crate::types::DownloadRequest,
+    out_file: &Path,
+) {
+    // 弹幕与字幕都要 cid：任务里带了就用，没带（空间投稿）按 bvid 补查
+    let cid = if req.cid > 0 {
+        req.cid
+    } else if req.bvid.is_empty() {
+        0
+    } else {
+        client
+            .video_info(&req.bvid)
+            .await
+            .map(|info| info.cid)
+            .unwrap_or(0)
+    };
+
+    if settings.download_danmaku {
+        if cid == 0 {
+            settings.log("info", "这条没有弹幕（音频/图文或查不到 cid），跳过");
+        } else {
+            match client.danmaku_full(cid).await {
+                Ok((xml, count, truncated)) => {
+                    let dm_path = out_file.with_extension("xml");
+                    match tokio::fs::write(&dm_path, xml.as_bytes()).await {
+                        Ok(_) => settings.log(
+                            "info",
+                            &format!(
+                                "弹幕已保存（{count} 条{}）: {}",
+                                if truncated {
+                                    "，接口只给了这一部分"
+                                } else {
+                                    ""
+                                },
+                                dm_path.display()
+                            ),
+                        ),
+                        Err(e) => settings.log("warn", &format!("弹幕写入失败: {e}")),
+                    }
+                }
+                Err(e) => settings.log("warn", &format!("弹幕获取失败（不影响视频）: {e}")),
+            }
+        }
+    }
+
+    if settings.download_cover {
+        // 前端解析时带过来的是 data URL；番剧这类没带的，自己按 bvid 取一次封面地址
+        let mut cover_data = req.cover.clone();
+        if cover_data.is_empty() && !req.bvid.is_empty() {
+            match client.video_info(&req.bvid).await {
+                Ok(info) if !info.pic.trim().is_empty() => {
+                    match client.fetch_bytes(&info.pic).await {
+                        Ok((bytes, content_type)) => {
+                            let ext = image_ext(&info.pic, &content_type);
+                            let path = out_file.with_extension(ext);
+                            match tokio::fs::write(&path, &bytes).await {
+                                Ok(_) => settings
+                                    .log("info", &format!("封面已保存: {}", path.display())),
+                                Err(e) => settings.log("warn", &format!("封面写入失败: {e}")),
+                            }
+                            cover_data.clear();
+                        }
+                        Err(e) => {
+                            settings.log("warn", &format!("封面下载失败（不影响视频）: {e}"))
+                        }
+                    }
+                }
+                Ok(_) => settings.log("info", "这条没有封面可取，跳过"),
+                Err(e) => settings.log("warn", &format!("封面地址获取失败: {e}")),
+            }
+        }
+        if !cover_data.is_empty() {
+            match write_cover_file(&cover_data, out_file).await {
+                Ok(path) => settings.log("info", &format!("封面已保存: {}", path.display())),
+                Err(e) => settings.log("warn", &format!("封面保存失败（不影响视频）: {e}")),
+            }
+        }
+    }
+
+    if settings.download_subtitles {
+        if cid == 0 {
+            settings.log("info", "这条没有字幕可取（音频/图文或查不到 cid），跳过");
+        } else {
+            let bvid = (!req.bvid.is_empty()).then(|| req.bvid.clone());
+            match client.subtitles(bvid.as_deref(), req.ep_id, cid).await {
+                Ok(list) if list.is_empty() => settings
+                    .log("info", "这条没有可用字幕（没有人工字幕，AI 字幕也还没生成），跳过"),
+                Ok(list) => {
+                    let mut saved = 0usize;
+                    for (index, item) in list.iter().enumerate() {
+                        let json = match client.subtitle_text(&item.subtitle_url).await {
+                            Ok(json) => json,
+                            Err(e) => {
+                                settings
+                                    .log("warn", &format!("字幕下载失败（{}）: {e}", item.lan_doc));
+                                continue;
+                            }
+                        };
+                        let srt = match bili_core::subtitle::srt_from_json(&json) {
+                            Ok(srt) => srt,
+                            Err(e) => {
+                                settings
+                                    .log("warn", &format!("字幕转换失败（{}）: {e}", item.lan_doc));
+                                continue;
+                            }
+                        };
+                        if srt.trim().is_empty() {
+                            continue;
+                        }
+                        // 第一条用同名 .srt（播放器认这个），其余带语言后缀
+                        let path = if index == 0 {
+                            out_file.with_extension("srt")
+                        } else {
+                            let tag = bili_core::subtitle::lang_tag(item);
+                            out_file.with_extension(format!("{tag}.srt"))
+                        };
+                        match tokio::fs::write(&path, srt.as_bytes()).await {
+                            Ok(_) => {
+                                saved += 1;
+                                settings.log(
+                                    "info",
+                                    &format!("字幕已保存（{}）: {}", item.lan_doc, path.display()),
+                                );
+                            }
+                            Err(e) => settings.log("warn", &format!("字幕写入失败: {e}")),
+                        }
+                    }
+                    if saved == 0 {
+                        settings.log("info", "这条视频的字幕都是空的，没写出文件");
+                    }
+                }
+                Err(e) => settings.log("warn", &format!("字幕清单获取失败（不影响视频）: {e}")),
+            }
+        }
+    }
+}
+
 /// 设置里指定了 ffmpeg 路径就交给查找逻辑优先使用。
+
 fn explicit_ffmpeg(settings: &crate::state::Settings) -> Option<PathBuf> {
     let path = settings.ffmpeg_path.trim();
     (!path.is_empty()).then(|| PathBuf::from(path))
@@ -2183,7 +2279,9 @@ async fn find_free_name(path: PathBuf) -> PathBuf {
 }
 
 /// 把 data URL 封面落盘，返回 (路径, MIME)。按 data URL 声明的类型决定扩展名。
-async fn save_cover(data_url: &str, dir: &Path) -> Result<(PathBuf, String), BiliError> {
+/// 封面存成与视频同名的独立图片文件（`<视频名>.jpg|png|webp`）。
+/// 内容就是解析阶段前端带过来的 data URL，不再需要另外请求。
+async fn write_cover_file(data_url: &str, video_path: &Path) -> Result<PathBuf, BiliError> {
     let (mime, b64) = data_url
         .split_once(",")
         .and_then(|(head, payload)| {
@@ -2203,9 +2301,9 @@ async fn save_cover(data_url: &str, dir: &Path) -> Result<(PathBuf, String), Bil
         "image/webp" => "webp",
         _ => "jpg",
     };
-    let path = dir.join(format!("cover.{ext}"));
+    let path = video_path.with_extension(ext);
     tokio::fs::write(&path, &bytes).await?;
-    Ok((path, mime))
+    Ok(path)
 }
 
 #[tauri::command]

@@ -288,7 +288,6 @@ async fn main() -> Result<()> {
         &out_file,
         ffmpeg::Container::Mp4,
         is_hevc,
-        None,
     )
     .await?;
 
