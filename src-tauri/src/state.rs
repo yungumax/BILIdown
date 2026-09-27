@@ -141,9 +141,6 @@ pub struct Settings {
     /// 用户保存的命名模板预设（同名覆盖）
     #[serde(default)]
     pub naming_presets: Vec<NamingPreset>,
-    /// 内容库：用户存下来的来源清单（收藏夹 / 合集 / UP 空间 …）
-    #[serde(default)]
-    pub library: Vec<crate::types::LibrarySource>,
     /// 用户保存的文件夹模板预设（同名覆盖）。
     /// 模板允许为空——"不建文件夹"本身就是一个正当的预设。
     #[serde(default)]
@@ -243,7 +240,6 @@ impl Default for Settings {
             image_format: "source".to_string(),
             codec_pref: "auto".to_string(),
             quality_fallback: "nearest".to_string(),
-            library: Vec::new(),
             download_cover: false,
             download_subtitles: false,
             download_danmaku: false,
@@ -387,30 +383,6 @@ impl Settings {
             // 老设置里的 mkv 也落这里：改成 mp4（MKV 的用途已被独立文件取代）
             self.container = "mp4".to_string();
         }
-        // 内容库：清空条目、按来源身份去重（同一来源存两次只留先存的那条）、最多 200 条
-        self.library.truncate(500);
-        for item in &mut self.library {
-            item.url = item.url.trim().to_string();
-            item.title = item.title.trim().to_string();
-            item.owner = item.owner.trim().to_string();
-            item.kind = item.kind.trim().to_string();
-        }
-        self.library.retain(|item| !item.url.is_empty());
-        let mut seen: Vec<String> = Vec::new();
-        self.library.retain(|item| {
-            let id = if item.key.trim().is_empty() {
-                item.url.clone()
-            } else {
-                item.key.trim().to_string()
-            };
-            if seen.contains(&id) {
-                false
-            } else {
-                seen.push(id);
-                true
-            }
-        });
-        self.library.truncate(200);
         if !matches!(self.audio_format.as_str(), "source" | "mp3") {
             self.audio_format = "source".to_string();
         }

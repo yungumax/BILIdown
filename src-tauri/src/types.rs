@@ -64,25 +64,6 @@ pub struct BatchVideo {
     pub duration: u64,
 }
 
-/// 内容库：用户存下来的来源（收藏夹 / 合集 / 系列 / UP 空间 / 图文 / 音频）。
-///
-/// 只存"去哪找"和展示要用的几项，条数会随来源变化，所以每次解析都以实时探测为准。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct LibrarySource {
-    /// 用户当初贴的链接（原样留着，方便复制回浏览器）
-    pub url: String,
-    /// 来源身份（与 ProbeSource.key 同一套），用来判重
-    #[serde(default)]
-    pub key: String,
-    /// 来源类型标签：合集 / 收藏夹 / 系列 / UP 空间 / 图文 / 音频
-    pub kind: String,
-    pub title: String,
-    #[serde(default)]
-    pub owner: String,
-    /// 上次探测到的条数；0 表示未知
-    #[serde(default)]
-    pub total: usize,
-}
 
 /// 统一的解析结果：
 /// - kind=video：单视频，bvid/cid/cover/duration 有效，items 为空

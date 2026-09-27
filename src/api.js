@@ -106,16 +106,10 @@ export async function resumePending() {
   return invoke("resume_pending");
 }
 
-/// 内容库：存一个来源（后端会先探测拿到类型 / 标题 / 条数）
-export async function libraryAdd(url) {
-  if (!hasTauri) return mock.libraryAdd(url);
-  return invoke("library_add", { url });
-}
-
-/// 内容库：按来源身份删一条
-export async function libraryRemove(key) {
-  if (!hasTauri) return mock.libraryRemove(key);
-  return invoke("library_remove", { key });
+/// 内容库：读账号里的收藏夹（我创建的）与订阅（我订阅的）
+export async function libraryFolders() {
+  if (!hasTauri) return mock.libraryFolders();
+  return invoke("library_folders");
 }
 
 export async function namingVariables() {
@@ -563,8 +557,11 @@ const mock = (() => {
 
   const resumePending = async () => 0;
 
-  const libraryAdd = async (url) => ({ url, key: `mock:${url}`, kind: "collection", title: "示例合集", owner: "示例UP主", total: 42 });
-  const libraryRemove = async () => 1;
+  const libraryFolders = async () => ({
+    mid: 1,
+    created: [{ id: 52568231, title: "默认收藏夹", media_count: 131, owner: "" }],
+    subscribed: [{ id: 147, title: "示例订阅合集", media_count: 151, owner: "示例UP主" }],
+  });
 
   const namingVariables = () =>
     VARIABLES.map(([token, label, section, hint]) => ({ token, label, section, hint }));
@@ -623,8 +620,7 @@ const mock = (() => {
     poll,
     onUpdate,
     resumePending,
-    libraryAdd,
-    libraryRemove,
+    libraryFolders,
     namingVariables,
     previewNaming,
     probeMore,

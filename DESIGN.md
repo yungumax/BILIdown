@@ -216,10 +216,12 @@ dist —— Tauri 的 `custom-protocol` 在**编译时**把 `dist/` 编进去，
 
 ### 内容库 / 断点续传 / 数据目录（原先标着"没做"的三处）
 
-- **内容库**（`LibraryPage.vue`）：把收藏夹 / 合集 / 系列 / UP 空间 / 图文 / 音频的来源存下来
-  （`settings.library`，按来源身份去重、上限 200 条）。「存入内容库」先在后端探测一次拿到类型、
-  标题、UP 名与条数；「去解析」把 URL 交给解析页（App 的 `pendingSource`）自动填好并开始解析。
-  单条内容不进口袋：后端会拒绝并提示直接去解析页。
+- **内容库**（`LibraryPage.vue`）：**读账号自己的收藏夹与订阅**，不是手填清单。
+  两个标签：收藏夹（`x/v3/fav/folder/created/list-all`）/ 订阅合集（`x/v3/fav/folder/collected/list`），
+  都吃登录态；标题、UP 名、视频数直接来自接口。勾选若干集合 →「去解析所选」把它们的 favlist 链接
+  一行一个交给解析页（`pendingSource` → ParsePage），在那边继续筛具体视频、下载。
+  未登录时是"登录后连接你的内容库"的空状态 +「登录账号」按钮（打开登录框）；
+  副文案只承诺事实：凭据只存在本机数据目录里，内容库不显示也不导出 Cookie 内容。
 - **断点续传**：每个未完成的下载在 `.biltmp/<key>/` 里有 `task.json`（原始请求）与
   `video.ranges` / `audio.ranges`（每行 `offset len`，下完一个分片追加一行）。重启后
   `resume_pending`（设置里 `resume_on_start` 开着时由 `app_status` 之后自动调用）重新入队，

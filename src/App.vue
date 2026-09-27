@@ -347,10 +347,10 @@ async function doLogout() {
         <LibraryPage
           v-if="page === 'library'"
           class="page-in"
-          :settings="settings"
+          :login="login"
           @goto="page = $event"
           @open-source="openSource"
-          @refresh="loadSettings"
+          @login="showLogin = true"
         />
       </main>
     </div>

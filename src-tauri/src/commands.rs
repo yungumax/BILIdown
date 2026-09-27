@@ -264,69 +264,93 @@ pub async fn naming_variables() -> Result<Vec<crate::types::NamingVariable>, Str
         .collect())
 }
 
-/// 内容库：把来源存进清单（先探测一次，拿到类型、标题、UP 名与条数）。
-///
-/// 已经存过的（来源身份相同）直接返回，不重复入库。
-#[tauri::command]
-pub async fn library_add(
-    state: State<'_, AppState>,
-    url: String,
-) -> Result<crate::types::LibrarySource, String> {
-    let client = state.client();
-    let probe = probe_one(&client, &state, &url, false).await?;
-    if !matches!(
-        probe.kind.as_str(),
-        "collection" | "fav" | "series" | "space" | "opus" | "audio"
-    ) {
-        return Err("这是单条内容，不用存进内容库；要下载直接去解析页".to_string());
-    }
-    let entry = crate::types::LibrarySource {
-        url: url.trim().to_string(),
-        key: probe.key.clone(),
-        kind: probe.kind.clone(),
-        title: probe.title.clone(),
-        owner: probe.owner.clone(),
-        total: probe.total,
-    };
-    let mut settings = state.settings();
-    let id = if entry.key.is_empty() {
-        entry.url.clone()
-    } else {
-        entry.key.clone()
-    };
-    let exists = settings.library.iter().any(|item| {
-        let other = if item.key.trim().is_empty() {
-            item.url.clone()
-        } else {
-            item.key.trim().to_string()
-        };
-        other == id
-    });
-    if !exists {
-        settings.library.push(entry.clone());
-        state.apply_settings(settings);
-    }
-    Ok(entry)
+/// 内容库的一行：账号里的一个收藏夹（或订阅的）。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FavFolder {
+    /// 收藏夹 id：打开它要拼 `space.bilibili.com/<mid>/favlist?fid=<id>`
+    pub id: i64,
+    pub title: String,
+    pub media_count: u64,
+    /// 订阅来的那些，这里是被订阅收藏夹的作者
+    #[serde(default)]
+    pub owner: String,
 }
 
-/// 内容库：按来源身份删一条。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FavFolders {
+    pub mid: u64,
+    pub created: Vec<FavFolder>,
+    pub subscribed: Vec<FavFolder>,
+}
+
+/// 内容库：读**账号里的**收藏夹与订阅（不是用户手填的清单）。
+///
+/// 两个接口都吃登录态：`created/list-all` 给"我创建的"，`collected/list` 给"我订阅的"。
+/// 没登录时两个都拿不到，前端会显示"登录后连接你的内容库"。
 #[tauri::command]
-pub async fn library_remove(state: State<'_, AppState>, key: String) -> Result<usize, String> {
-    let mut settings = state.settings();
-    let before = settings.library.len();
-    settings.library.retain(|item| {
-        let id = if item.key.trim().is_empty() {
-            item.url.clone()
-        } else {
-            item.key.trim().to_string()
-        };
-        id != key
-    });
-    let removed = before - settings.library.len();
-    if removed > 0 {
-        state.apply_settings(settings);
+pub async fn library_folders(state: State<'_, AppState>) -> Result<FavFolders, String> {
+    let client = state.client();
+    let login = current_login(&client).await;
+    let mid = login.mid;
+    if mid == 0 {
+        return Err("未登录：登录后才能读账号里的收藏夹与订阅".to_string());
     }
-    Ok(removed)
+
+    // 我创建的（含默认收藏夹）
+    let created: serde_json::Value = client
+        .fetch_json(&format!(
+            "https://api.bilibili.com/x/v3/fav/folder/created/list-all?up_mid={mid}"
+        ))
+        .await
+        .map_err(describe)?;
+    // 我订阅的（别人公开的收藏夹/合集）
+    let collected: serde_json::Value = client
+        .fetch_json(&format!(
+            "https://api.bilibili.com/x/v3/fav/folder/collected/list?up_mid={mid}&pn=1&ps=50&platform=web"
+        ))
+        .await
+        .map_err(describe)?;
+
+    let parse = |value: &serde_json::Value| -> Vec<FavFolder> {
+        value
+            .get("list")
+            .and_then(|list| list.as_array())
+            .map(|list| {
+                list.iter()
+                    .filter_map(|item| {
+                        let id = item.get("id")?.as_i64()?;
+                        let title = item
+                            .get("title")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or_default()
+                            .to_string();
+                        let media_count = item
+                            .get("media_count")
+                            .and_then(|c| c.as_u64())
+                            .unwrap_or_default();
+                        let owner = item
+                            .get("upper")
+                            .and_then(|u| u.get("name"))
+                            .and_then(|n| n.as_str())
+                            .unwrap_or_default()
+                            .to_string();
+                        Some(FavFolder {
+                            id,
+                            title,
+                            media_count,
+                            owner,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    Ok(FavFolders {
+        mid,
+        created: parse(&created),
+        subscribed: parse(&collected),
+    })
 }
 
 /// 文件名预览：与真实落盘共用同一个渲染器，预览不会和结果对不上。
