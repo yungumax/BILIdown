@@ -196,6 +196,13 @@ impl BiliClient {
         self.fetch_json_inner(url, true).await
     }
 
+    /// `data` 允许为 null：翻过列表最后一页时这些接口会这样返回（code 仍是 0），
+    /// 而它们报的 totalSize 常常**大于实际能取到的条数**（实测音频 296 报数、
+    /// 实取 266），所以必然会翻过去一次。调用方把 None 当成"没有更多"。
+    pub async fn fetch_json_opt<T: DeserializeOwned>(&self, url: &str) -> Result<Option<T>> {
+        self.fetch_envelope(url, true, false).await
+    }
+
     /// 取一页 HTML/文本（图文详情只有页面里带完整内容，接口要风控签名）。
     pub async fn fetch_text(&self, url: &str) -> Result<String> {
         let resp = self.http.get(url).send().await?;
@@ -270,6 +277,18 @@ impl BiliClient {
     }
 
     async fn fetch_json_inner<T: DeserializeOwned>(&self, url: &str, lenient: bool) -> Result<T> {
+        self.fetch_envelope(url, false, lenient)
+            .await?
+            .ok_or_else(|| BiliError::Decode("接口返回 code=0 但缺少 data 字段".into()))
+    }
+
+    /// 解析信封；`allow_null` 决定 `data: null` 是 Ok(None) 还是解码错误。
+    async fn fetch_envelope<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        allow_null: bool,
+        lenient: bool,
+    ) -> Result<Option<T>> {
         let resp = self.http.get(url).send().await?;
         let status = resp.status();
         let text = resp.text().await?;
@@ -285,9 +304,10 @@ impl BiliClient {
             .map_err(|e| BiliError::Decode(format!("{e}；响应片段: {}", truncate(&text, 300))))?;
 
         if envelope.code == 0 || (lenient && envelope.data.is_some()) {
-            return envelope
-                .data
-                .ok_or_else(|| BiliError::Decode("接口返回 code=0 但缺少 data 字段".into()));
+            if envelope.data.is_none() && !allow_null {
+                return Err(BiliError::Decode("接口返回 code=0 但缺少 data 字段".into()));
+            }
+            return Ok(envelope.data);
         }
 
         Err(BiliError::Api {

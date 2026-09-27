@@ -766,6 +766,7 @@ fn batch_to_source(cache: &BatchCache) -> ProbeSource {
         from_index: cache.from_index,
         loaded,
         exhausted: cache.exhausted,
+        capped: loaded >= cache.cap,
         qualities: cache.qualities.clone(),
         audios: cache.audios.clone(),
         recommended_quality: cache.recommended_quality,
@@ -968,6 +969,7 @@ async fn probe_range_one(
         Target::FavList(fid) => BatchTarget::Fav(fid),
         Target::Collection { mid, sid } => BatchTarget::Collection { mid, sid },
         Target::Space(mid) => BatchTarget::Space(mid),
+        Target::AudioList(mid) => BatchTarget::Audio(mid),
         _ => return Err("这个来源一次就能全部拿到，不需要按序号分批解析".to_string()),
     };
 
@@ -1033,6 +1035,7 @@ async fn probe_more_one(
         loaded: cache.items.len(),
         total: cache.total,
         exhausted: cache.exhausted,
+        capped: cache.items.len() >= cache.cap,
         note: batch_to_source(&cache).note,
     };
     state.put_batch(key.to_string(), cache);
@@ -1162,6 +1165,7 @@ async fn probe_video_bvid(client: &BiliClient, bvid: &str) -> Result<ProbeSource
         from_index: 1,
         loaded: 1,
         exhausted: true,
+        capped: false,
         qualities,
         audios,
         recommended_quality,
@@ -2558,6 +2562,30 @@ mod live_tests {
             first.duration,
             &stream.cdns[0][..stream.cdns[0].len().min(80)]
         );
+    }
+
+    /// 实测"全部解析"能翻到底：音频接口报的总数大于实取条数，
+    /// 末页之后返回 data: null——原来这里会报格式异常。
+    #[tokio::test]
+    #[ignore = "需要网络与登录态"]
+    async fn live_audio_paging_reaches_the_end_without_decode_error() {
+        let client = client();
+        let state = app_state();
+        let url = "https://space.bilibili.com/649910/upload/audio";
+        let probe = probe_one(&client, &state, url, false).await.expect("解析成功");
+        assert_eq!(probe.kind, "audio");
+
+        let mut cache = state.take_batch(url).expect("缓存");
+        let declared = cache.total;
+        extend_batch(&client, &mut cache, 400).await.expect("翻到底不该报错");
+        let loaded = cache.items.len();
+        let exhausted = cache.exhausted;
+        state.put_batch(url.to_string(), cache.clone());
+        let note = batch_to_source(&state.peek_batch(url).expect("缓存")).note;
+        assert!(exhausted, "应标记为已到底");
+        assert!(loaded < declared, "这个接口报数 {declared} 大于实取 {loaded}，正是触发条件");
+        assert!(note.contains("可下载"), "应说明实际可下载条数：{note}");
+        println!("audio 翻到底: 报数 {declared}，实取 {loaded}；提示 {note}");
     }
 
     /// 实测图文列表与单条图文内容（图片、正文）。

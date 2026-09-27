@@ -340,10 +340,14 @@ const nextRangeFrom = computed(() => {
   return (probe.from_index || 1) + loadedCount.value;
 });
 
-/** 撞到单次上限、但来源后面还有内容：这时要把加载入口留着，否则剩下的永远拿不到 */
-const moreRemain = computed(
-  () => activeIsBatch.value && nextRangeFrom.value <= (activeSource.value?.probe.total || 0)
-);
+/** 撞到单次上限、但来源后面还有内容：这时要把加载入口留着，否则剩下的永远拿不到。
+ *  注意只看"是不是撞上限"——来源自己取完了（比如音频报 296 实取 266）不该再给续拉。 */
+const moreRemain = computed(() => {
+  const probe = activeSource.value?.probe;
+  if (!probe || !activeIsBatch.value || !probe.capped) return false;
+  const total = probe.total || 0;
+  return !total || nextRangeFrom.value <= total;
+});
 const selectedCount = computed(() => tableRows.value.filter((row) => isSelected(row)).length);
 const allLoadedSelected = computed(
   () => loadedCount.value > 0 && selectedCount.value === loadedCount.value
@@ -583,6 +587,7 @@ async function loadMore() {
     source.probe.loaded = more.loaded;
     source.probe.total = more.total;
     source.probe.exhausted = more.exhausted;
+    source.probe.capped = more.capped;
     source.probe.note = more.note;
   } catch (error) {
     emit("toast", String(error));

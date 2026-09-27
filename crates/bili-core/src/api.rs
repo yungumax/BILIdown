@@ -422,7 +422,7 @@ pub struct FavUpper {
 }
 
 /// 合集分页。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct SeasonArchivesPage {
     #[serde(default)]
     pub meta: SeasonMeta,
@@ -777,7 +777,8 @@ impl BiliClient {
         let url = format!(
             "{API_SEASONS_ARCHIVES}?mid={mid}&season_id={season_id}&page_num={page}&page_size=100"
         );
-        self.fetch_json(&url).await
+        // 翻过末页会返回 data: null，按"这一页没有内容"处理
+        Ok(self.fetch_json_opt(&url).await?.unwrap_or_default())
     }
 
     /// UP 主系列内容（一页最多 30 条；条目里没有 cid，下载时按 bvid 补查）。
@@ -790,7 +791,7 @@ impl BiliClient {
         let url = format!(
             "{API_SERIES_ARCHIVES}?mid={mid}&series_id={series_id}&only_normal=true&sort=desc&pn={page}&ps=30"
         );
-        self.fetch_json(&url).await
+        Ok(self.fetch_json_opt(&url).await?.unwrap_or_default())
     }
 
     /// 系列的名称：`archives` 接口只给条目，不给标题。
@@ -816,7 +817,9 @@ impl BiliClient {
         let url = format!(
             "{API_AUDIO_LIST}?uid={mid}&pn={page}&ps=30&order=1&platform=web"
         );
-        self.fetch_json(&url).await
+        // 这个接口末页之后会返回 data: null（报的总数还常常大于实取条数），
+        // 必须按"没有更多"处理，否则翻到底会报格式异常
+        Ok(self.fetch_json_opt(&url).await?.unwrap_or_default())
     }
 
     /// 音频播放地址：拿到可直接下载的 m4a（cdns 首个即推荐线路）。

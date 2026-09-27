@@ -101,6 +101,9 @@ pub struct ProbeSource {
     pub loaded: usize,
     /// 是否已经拉到底（「继续解析」没有更多了）
     pub exhausted: bool,
+    /// 停止是因为撞到单次上限（而不是来源取完了）——只有这种才该给"加载下一批"
+    #[serde(default)]
+    pub capped: bool,
     pub qualities: Vec<QualityOption>,
     pub audios: Vec<AudioOption>,
     pub recommended_quality: u32,
@@ -271,6 +274,9 @@ pub struct ProbeMore {
     pub loaded: usize,
     pub total: usize,
     pub exhausted: bool,
+    /// 见 [`ProbeSource::capped`]：续拉之后也要带着，否则界面会丢掉"加载下一批"
+    #[serde(default)]
+    pub capped: bool,
     pub note: String,
 }
 
