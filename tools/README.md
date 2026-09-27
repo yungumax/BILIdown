@@ -317,7 +317,11 @@ cargo test -p bilidown -- --ignored --nocapture live_incremental_loading
 - 只给列表 `max-height: none` + `flex: 1`，卡会跟着列表内容长高 → "列表内滚动失效"
 - 结果卡 `min-height` 设太大（190）会把整页顶出去；设太小（120）明细框会溢出卡片
 - 输入卡的 `min-height` 必须小于 `max-height`，否则 min 优先、上限失效（实测卡在 503 不动）
-- 输入卡加 `max-height: 40vh`，否则它会把结果卡挤到折线以下
+- **不要用 `max-height` 压输入卡**：上限小于内容的最小高度时，被压的是卡片盒子而不是
+  内容，内容会溢出卡片、被下面的卡片盖住（表现是"解析结果卡盖在解析链接卡上"）。
+  正解是让输入卡 `flex: 0 1 auto`（按内容、不拉伸），把多余高度全给结果卡
+- 输入框给确定高度（`height: 110px` + `min-height` 同值），否则 rows 的固有高度会把
+  输入卡撑高
 
 `test-responsive.mjs` 改窗口尺寸后断言：高窗口（1400x1300）下最后一张卡的底边 =
 内容区底边 - 内边距、整页不可滚；矮窗口下可滚。
