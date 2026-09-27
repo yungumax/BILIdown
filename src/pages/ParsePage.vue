@@ -1454,8 +1454,8 @@ input:focus {
   flex: 1 1 0;
   /* 下限要装得下卡内固定部分 + 明细框的最小需要：
      卡片内边距 40 + 标题行 38 + 预设行 38 + 明细框（外边距 12 + 内边距 20 + 小标题 24
-     + 列表下限 30）≈ 202，取 210。之前取 160 时明细框比卡片还高，列表会被卡片边缘切掉 */
-  min-height: 210px;
+     + 列表下限 80）≈ 252，取 260。取值太小明细框会比卡片还高、列表被卡片边缘切掉 */
+  min-height: 260px;
 }
 
 .parse-page:not(.fill-height) > .results .skipped-box {
@@ -1467,7 +1467,8 @@ input:focus {
 
 .parse-page:not(.fill-height) > .results .skipped-list {
   flex: 1 1 auto;
-  min-height: 30px;
+  /* 至少露出 3 行（每行 26px），不够就在框内滚 */
+  min-height: 80px;
   max-height: none;
 }
 
