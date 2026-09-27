@@ -85,6 +85,34 @@ node tools/test-naming-conflicts.mjs
   选预设后模板与预览跟着变、保存的预设立刻出现；收尾点「撤销」并断言草稿不再是脏的
   （跑测试不许动用户真实的 settings.json）。
 
+### 媒体页：单值打底，优先顺序表是可选的"自定义"
+
+媒体页分两层：上面**视频清晰度 / 音频质量**两个并列下拉是默认，
+下面**画质优先顺序 / 音频优先顺序**两张卡片是可选的自定义。
+
+- 卡片写着"尚未自定义，使用上方的视频清晰度和编码设置"（= 表空着，默认状态）时，
+  挑流走单值：视频 `pick_video(default_quality, codec_pref)`（0 = 最优画质 → 取可用最高档），
+  音频按 `default_audio` 找音轨；任务里带的档位也先在表里找、表空才看单值。
+- 表**非空** = 按表的顺序逐条尝试（原行为不变），并且**不借单值** —— 两套设置不互相打架。
+- 空表是合法状态：`clamp` 不再把空表填回默认行；行也能删到一条不剩
+  （原来最少留一行，等于"加了行就再也回不到未自定义"）。
+- 老设置里被 fdc185a 折进表的那一行（与单值等价、或就是老默认行 `127/auto`、`auto`）
+  读回时清掉，界面回到"未自定义"（`state.rs` 的 `pref_tests` 守着）。
+- 真下载验证：`tools/test-media-pick.mjs` —— 设 480P → 保存 → 解析 → 下载一条 →
+  断言任务上的画质标签是 480P，而不是"可用最高档"。
+
+### 会写用户数据的验证，一律在沙箱里做
+
+落盘、下载这类验证要真的写文件，**别拿用户真实的 settings.json / 下载目录试**：
+
+```bash
+BILIDOWN_COOKIE_FILE='D:\Zcode\_datailidown-sandbox\cookies.json' WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222 ./target/release/bilidown.exe
+```
+
+`BILIDOWN_COOKIE_FILE` 会把数据目录整个挪到旁边（settings.json 也在同一目录），
+cookie 拷一份给沙箱用，验证完把沙箱目录删掉。踩过的坑：直接对着真实 settings.json
+验证"保存能不能落盘"，点了一次保存就把用户的命名模板改掉了。
+
 ## 三、文字对比度（硬规则）
 
 正文、说明、次要、弱化四档文字都必须 ≥4.5:1。粉色当文字色在白底只有 2.6:1，

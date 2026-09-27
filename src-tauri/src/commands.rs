@@ -1876,43 +1876,65 @@ async fn run_download(
     };
     // 候选链：任务里明确选了档位就排在最前，其余按设置里的优先顺序接在后面。
     // 逐条尝试，都没有时按「目标质量不可用」策略处理。
+    // 设置里**没自定义**优先顺序（列表为空）时另一条路：直接按媒体页的「视频清晰度」
+    // 单值挑（不高于该档取最高，0 = 最优画质），编码偏好用 codec_pref。
     let mut chain: Vec<(u32, String)> = Vec::new();
-    if req.quality > 0 {
-        let codec = settings
-            .quality_prefs
-            .first()
-            .map(|pref| pref.codec.clone())
-            .unwrap_or_else(|| "auto".to_string());
-        chain.push((req.quality, codec));
-    }
-    for pref in &settings.quality_prefs {
-        if pref.qn != req.quality {
-            chain.push((pref.qn, pref.codec.clone()));
+    if !settings.quality_prefs.is_empty() {
+        if req.quality > 0 {
+            let codec = settings
+                .quality_prefs
+                .first()
+                .map(|pref| pref.codec.clone())
+                .unwrap_or_else(|| "auto".to_string());
+            chain.push((req.quality, codec));
+        }
+        for pref in &settings.quality_prefs {
+            if pref.qn != req.quality {
+                chain.push((pref.qn, pref.codec.clone()));
+            }
+        }
+        if chain.is_empty() {
+            chain.push((127, "auto".to_string()));
         }
     }
-    if chain.is_empty() {
-        chain.push((127, "auto".to_string()));
-    }
 
-    let video = play
-        .pick_video_chain(&chain, &settings.quality_fallback)
-        .ok_or(BiliError::QualityNotFound(req.quality))?;
+    // 任务选的档位优先，没选就用设置里的「视频清晰度」
+    let target_qn = if req.quality > 0 {
+        req.quality
+    } else {
+        settings.default_quality
+    };
+    let video = if chain.is_empty() {
+        play.pick_video(target_qn, &settings.codec_pref)
+            .ok_or(BiliError::QualityNotFound(target_qn))?
+    } else {
+        play.pick_video_chain(&chain, &settings.quality_fallback)
+            .ok_or(BiliError::QualityNotFound(req.quality))?
+    };
 
     // 「目标质量不可用」策略：fail 时请求档位没拿到就直接失败
-    if settings.quality_fallback == "fail" && req.quality > 0 && video.id < req.quality {
+    if settings.quality_fallback == "fail" && target_qn > 0 && video.id < target_qn {
         settings.log(
             "warn",
             &format!(
                 "任务失败：{} 未提供 qn={}（{}）",
-                req.title, req.quality, req.bvid
+                req.title, target_qn, req.bvid
             ),
         );
-        return Err(BiliError::QualityNotFound(req.quality));
+        return Err(BiliError::QualityNotFound(target_qn));
     }
 
+    // 音轨：自定义优先顺序 > 任务里选过的 > 媒体页的「音频质量」
     let mut audio_chain = settings.audio_prefs.clone();
     if audio_chain.is_empty() {
-        audio_chain = vec![req.audio.clone()];
+        audio_chain = if req.audio.trim().is_empty() || req.audio == "auto" {
+            vec![settings.default_audio.clone()]
+        } else {
+            vec![req.audio.clone()]
+        };
+        if audio_chain[0].trim().is_empty() {
+            audio_chain = vec!["auto".to_string()];
+        }
     }
     let audio = play
         .pick_audio_chain(&audio_chain)

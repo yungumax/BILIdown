@@ -228,13 +228,11 @@ impl Default for Settings {
             log_level: "info".to_string(),
             data_dir: String::new(),
             default_quality: 0,
-            default_audio: "normal".to_string(),
-            // 默认与界面一致：第 1 优先画质 8K、编码不限；第 1 优先音质 最佳可用
-            quality_prefs: vec![QualityPref {
-                qn: 127,
-                codec: "auto".to_string(),
-            }],
-            audio_prefs: vec!["auto".to_string()],
+            default_audio: "auto".to_string(),
+            // 优先顺序表**默认空着**：媒体页上面那两个单值（视频清晰度 / 音频质量）就是默认，
+            // 空表时挑流走单值那条路。用户真要自定义顺序，才在媒体页往里加行。
+            quality_prefs: Vec::new(),
+            audio_prefs: Vec::new(),
             proxy: String::new(),
             theme: "system".to_string(),
         }
@@ -271,24 +269,29 @@ impl Settings {
             self.naming_template = "{title}.{ext}".to_string();
         }
 
-        // 旧的单值偏好迁进优先顺序列表。只在用户确实改过旧字段、且还没动过新列表时做，
-        // 否则会把用户在新界面上排好的顺序覆盖掉。
-        let default_prefs = Self::default().quality_prefs;
-        if self.quality_prefs == default_prefs
-            && (self.default_quality != 0 || self.codec_pref != "auto")
-        {
-            self.quality_prefs = vec![QualityPref {
-                qn: if self.default_quality == 0 {
-                    127
-                } else {
-                    self.default_quality
-                },
-                codec: self.codec_pref.clone(),
-            }];
+        // fdc185a 那一版把单值（视频清晰度 / 编码偏好 / 音频质量）折进了优先顺序表，
+        // 因为那时界面上只剩表、没有单值。现在单值自己就是媒体页上面的两个下拉，
+        // 表反而是"自定义"——折出来的那一行留着会让表非空、把单值选择顶掉。
+        // 当年折出来的行与单值完全等价，认出来清掉即可：即便用户自己加过一模一样的行，
+        // 清掉后挑流结果也分毫不差（同一个档位 + 同一个编码）。
+        let implied = QualityPref {
+            qn: if self.default_quality == 0 {
+                127
+            } else {
+                self.default_quality
+            },
+            codec: self.codec_pref.clone(),
+        };
+        if self.quality_prefs.len() == 1 && self.quality_prefs[0] == implied {
+            self.quality_prefs.clear();
         }
-        let default_audio_prefs = Self::default().audio_prefs;
-        if self.audio_prefs == default_audio_prefs && self.default_audio != "normal" {
-            self.audio_prefs = vec![self.default_audio.clone()];
+        // 音轨还多一种情形：老版本的默认行是 ["auto"]，而老版本的单值默认是 "normal"，
+        // 两者天生对不上，所以"只等于单值"这条认不出它，得把老默认行也认掉。
+        // 清掉后走单值：auto 与 normal 在挑流那边都是"普通音轨里取最好的一条"，结果一样。
+        if self.audio_prefs.len() == 1
+            && (self.audio_prefs[0] == self.default_audio || self.audio_prefs[0] == "auto")
+        {
+            self.audio_prefs.clear();
         }
     }
 
@@ -348,13 +351,8 @@ impl Settings {
         if !matches!(self.default_audio.as_str(), "normal" | "dolby" | "flac") {
             self.default_audio = "normal".to_string();
         }
-        // 优先顺序列表：不能为空（空列表等于没有偏好），条数与取值都收敛
-        if self.quality_prefs.is_empty() {
-            self.quality_prefs = vec![QualityPref {
-                qn: 127,
-                codec: "auto".to_string(),
-            }];
-        }
+        // 优先顺序列表：**空着是合法的**（= 没自定义，用媒体页上面的视频清晰度 / 音频质量），
+        // 这里只管条数与取值收敛
         self.quality_prefs.truncate(12);
         for pref in &mut self.quality_prefs {
             if pref.qn != 0
@@ -368,9 +366,6 @@ impl Settings {
             if !matches!(pref.codec.as_str(), "auto" | "avc" | "hevc" | "av1") {
                 pref.codec = "auto".to_string();
             }
-        }
-        if self.audio_prefs.is_empty() {
-            self.audio_prefs = vec!["auto".to_string()];
         }
         self.audio_prefs.truncate(12);
         for kind in &mut self.audio_prefs {
@@ -695,5 +690,61 @@ mod preset_tests {
         assert_eq!(settings.folder_presets[0].name, "不建文件夹");
         assert_eq!(settings.folder_presets[0].template, "");
         assert_eq!(settings.folder_presets[1].template, "{owner_name}", "两端空白要清掉");
+    }
+}
+
+#[cfg(test)]
+mod pref_tests {
+    use super::*;
+
+    /// 媒体页的默认状态：优先顺序表空着，挑流用上面两个单值。
+    #[test]
+    fn priority_lists_start_empty() {
+        let s = Settings::default();
+        assert!(s.quality_prefs.is_empty(), "默认不该预置优先顺序行");
+        assert!(s.audio_prefs.is_empty());
+        assert_eq!(s.default_quality, 0, "0 = 最优画质");
+        assert_eq!(s.default_audio, "auto", "auto = 最佳可用");
+    }
+
+    /// 空表是合法状态（= 未自定义），clamp 不许把它填回默认行。
+    #[test]
+    fn clamp_does_not_refill_empty_lists() {
+        let mut s = Settings::default();
+        s.clamp();
+        assert!(s.quality_prefs.is_empty());
+        assert!(s.audio_prefs.is_empty());
+    }
+
+    /// fdc185a 把单值折成了单行表；那一行与单值完全等价，读回时清掉，
+    /// 让界面回到"未自定义"，单值下拉重新说了算。
+    #[test]
+    fn legacy_single_row_is_unfolded() {
+        let mut s = Settings::default();
+        s.default_quality = 80;
+        s.codec_pref = "hevc".to_string();
+        s.quality_prefs = vec![QualityPref { qn: 80, codec: "hevc".to_string() }];
+        s.default_audio = "flac".to_string();
+        s.audio_prefs = vec!["flac".to_string()];
+        s.migrate();
+        assert!(s.quality_prefs.is_empty());
+        assert!(s.audio_prefs.is_empty());
+        assert_eq!(s.default_quality, 80, "单值本身不动");
+        assert_eq!(s.codec_pref, "hevc");
+        assert_eq!(s.default_audio, "flac");
+    }
+
+    /// 真正自定义过的顺序（两行以上）不能被清掉。
+    #[test]
+    fn real_custom_order_is_kept() {
+        let mut s = Settings::default();
+        s.quality_prefs = vec![
+            QualityPref { qn: 80, codec: "avc".to_string() },
+            QualityPref { qn: 64, codec: "auto".to_string() },
+        ];
+        s.audio_prefs = vec!["flac".to_string(), "auto".to_string()];
+        s.migrate();
+        assert_eq!(s.quality_prefs.len(), 2);
+        assert_eq!(s.audio_prefs.len(), 2);
     }
 }

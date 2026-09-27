@@ -103,6 +103,10 @@ const QUALITY_PREFS = [
   { value: 16, label: "360P / 16" },
 ];
 
+// 媒体页上面的「视频清晰度」下拉：0 = 最优画质（不高于任何档 → 取可用最高），
+// 其余选项复用优先顺序表里的档位（带 qn，好对文档）
+const QUALITY_CHOICES = [{ value: 0, label: "最优画质" }, ...QUALITY_PREFS];
+
 const AUDIO_PREFS = [
   { value: "auto", label: "最佳可用" },
   { value: "flac", label: "Hi-Res 无损" },
@@ -356,8 +360,7 @@ function movePref(key, index, delta) {
 function removePref(key, index) {
   if (!draft.value) return;
   const list = [...(draft.value[key] ?? [])];
-  // 至少留一条：空列表等于没有偏好，后端也会补回默认值
-  if (list.length <= 1) return;
+  // 可以删到一条不剩：空表 = 没自定义，挑流回到上面两个单值（后端也是这个约定）
   list.splice(index, 1);
   draft.value[key] = list;
 }
@@ -765,6 +768,25 @@ async function open(path) {
 
           <!-- 媒体 -->
           <div v-else-if="active === 'media'" class="fields">
+            <div class="grid2">
+              <div class="field">
+                <label>视频清晰度</label>
+                <select v-model.number="draft.default_quality">
+                  <option v-for="item in QUALITY_CHOICES" :key="item.value" :value="item.value">
+                    {{ item.label }}
+                  </option>
+                </select>
+              </div>
+              <div class="field">
+                <label>音频质量</label>
+                <select v-model="draft.default_audio">
+                  <option v-for="item in AUDIO_PREFS" :key="item.value" :value="item.value">
+                    {{ item.label }}
+                  </option>
+                </select>
+              </div>
+            </div>
+
             <div class="field full">
               <label>封装格式</label>
               <select v-model="draft.container">
@@ -777,8 +799,20 @@ async function open(path) {
 
             <div class="sub-card full">
               <div class="sub-head">
-                <span class="sub-title">画质优先顺序</span>
-                <span class="sub-note">从上到下匹配画质与编码。</span>
+                <svg class="sub-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M4.6 7.4h14.8v9.2H4.6zM9.8 10v4l3.6-2-3.6-2Z"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                <span class="sub-text">
+                  <span class="sub-title">画质优先顺序</span>
+                  <span class="sub-note">从上到下匹配画质与编码。</span>
+                </span>
                 <span class="spacer"></span>
                 <button class="ghost" @click="addQualityPref">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -836,20 +870,34 @@ async function open(path) {
                   <button
                     class="act"
                     title="删除"
-                    :disabled="draft.quality_prefs.length === 1"
                     @click="removePref('quality_prefs', index)"
                   >
                     ×
                   </button>
                 </div>
               </div>
-              <p class="note">逐条尝试，命中即用；编码偏好在同档位内生效，不会为编码牺牲清晰度。</p>
+              <p v-if="!draft.quality_prefs.length" class="note">
+                尚未自定义，使用上方的视频清晰度和编码设置。
+              </p>
+              <p v-else class="note">逐条尝试，命中即用；编码偏好在同档位内生效，不会为编码牺牲清晰度。</p>
             </div>
 
             <div class="sub-card full">
               <div class="sub-head">
-                <span class="sub-title">音频优先顺序</span>
-                <span class="sub-note">独立选择音轨，再与选中的视频合并。</span>
+                <svg class="sub-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M5.4 9.4h3.2L12.6 6v12L8.6 14.6H5.4zM15.8 9.6a3.6 3.6 0 0 1 0 4.8"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                <span class="sub-text">
+                  <span class="sub-title">音频优先顺序</span>
+                  <span class="sub-note">独立选择音轨，再与选中的视频合并。</span>
+                </span>
                 <span class="spacer"></span>
                 <button class="ghost" @click="addAudioPref">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -895,14 +943,14 @@ async function open(path) {
                   <button
                     class="act"
                     title="删除"
-                    :disabled="draft.audio_prefs.length === 1"
                     @click="removePref('audio_prefs', index)"
                   >
                     ×
                   </button>
                 </div>
               </div>
-              <p class="note">链上都拿不到时退回普通音轨，不会出现没有音轨的任务。</p>
+              <p v-if="!draft.audio_prefs.length" class="note">尚未自定义，使用上方的音频质量设置。</p>
+              <p v-else class="note">链上都拿不到时退回普通音轨，不会出现没有音轨的任务。</p>
             </div>
 
             <div class="field full">
@@ -1762,6 +1810,24 @@ input::placeholder {
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+/* 卡片头上的小图标：发丝描边的方片，和侧栏分类图标同一个语言 */
+.sub-icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 5px;
+  color: var(--accent-ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.sub-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .sub-title {

@@ -138,6 +138,12 @@ function pickDefaultQuality(probe) {
   for (const pref of prefs) {
     if (probe.qualities?.some((q) => q.qn === pref.qn && q.available)) return pref.qn;
   }
+  // 只有**没自定义**优先顺序时，媒体页的「视频清晰度」才说话；
+  // 表非空就按表走，表里的档位都不可用才退回推荐值（不去借单值，免得两套设置互相打架）
+  if (!prefs.length) {
+    const single = props.settings?.default_quality ?? 0;
+    if (single > 0 && probe.qualities?.some((q) => q.qn === single && q.available)) return single;
+  }
   return probe.recommended_quality;
 }
 
@@ -147,6 +153,12 @@ function pickDefaultAudio(probe) {
   for (const kind of prefs) {
     const hit = probe.audios?.find((a) => a.kind === kind);
     if (hit?.available) return kind;
+  }
+  // 同上：只有没自定义时，媒体页的「音频质量」才说话
+  if (!prefs.length) {
+    const single = props.settings?.default_audio ?? "auto";
+    const hit = probe.audios?.find((a) => a.kind === single);
+    if (hit?.available) return single;
   }
   return "normal";
 }
