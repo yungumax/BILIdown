@@ -34,6 +34,9 @@ pub struct DownloadOptions {
     pub retries: usize,
     /// 全局限速（字节/秒），None 或 0 表示不限速
     pub speed_limit_bps: u64,
+    /// 断点续传：已完成分片的记录文件。传了它，已记下的分片就不再重下；
+    /// 每下完一个分片追加一行 `offset len`（崩溃时最多丢最后一行，重下那个分片即可）。
+    pub resume_log: Option<std::path::PathBuf>,
 }
 
 impl Default for DownloadOptions {
@@ -43,6 +46,7 @@ impl Default for DownloadOptions {
             chunk_size: DEFAULT_CHUNK_SIZE,
             retries: DEFAULT_RETRIES,
             speed_limit_bps: 0,
+            resume_log: None,
         }
     }
 }
@@ -226,9 +230,19 @@ async fn download_chunked(
     let semaphore = Arc::new(Semaphore::new(opts.concurrency.max(1)));
     let mut tasks = tokio::task::JoinSet::new();
 
+    // 断点续传：读已完成分片；已下过的直接跳过（并把字节数记进进度）
+    let done = read_resume_log(opts.resume_log.as_deref());
     let mut offset: u64 = 0;
+    let mut skipped = 0u64;
     while offset < total {
         let end = (offset + opts.chunk_size - 1).min(total - 1);
+        let len = end - offset + 1;
+        if done.contains(&offset) {
+            skipped += len;
+            downloaded.fetch_add(len, Ordering::Relaxed);
+            offset = end + 1;
+            continue;
+        }
         let permit = semaphore
             .clone()
             .acquire_owned()
@@ -241,6 +255,7 @@ async fn download_chunked(
         let downloaded = downloaded.clone();
         let retries = opts.retries;
         let throttle = throttle.cloned();
+        let resume_log = opts.resume_log.clone();
 
         tasks.spawn(async move {
             let _permit = permit;
@@ -251,6 +266,10 @@ async fn download_chunked(
                 t.acquire(len).await;
             }
             write_at(&dest, offset, data).await?;
+            // 先写数据再记账：崩在中间最多重下这一个分片
+            if let Some(log) = resume_log.as_deref() {
+                append_resume_log(log, offset, len).await;
+            }
             downloaded.fetch_add(len, Ordering::Relaxed);
             Ok::<(), BiliError>(())
         });
@@ -261,7 +280,46 @@ async fn download_chunked(
     while let Some(joined) = tasks.join_next().await {
         joined.map_err(|e| BiliError::Unavailable(format!("下载任务异常终止: {e}")))??;
     }
+    if skipped > 0 {
+        eprintln!("续传：跳过已完成的 {skipped} 字节");
+    }
     Ok(())
+}
+
+/// 读已完成分片的记录（`offset len` 每行一条）。文件不存在或最后一行写坏了都按"没完成"处理。
+fn read_resume_log(path: Option<&Path>) -> std::collections::HashSet<u64> {
+    let mut done = std::collections::HashSet::new();
+    let Some(path) = path else {
+        return done;
+    };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return done;
+    };
+    for line in text.lines() {
+        let mut parts = line.split_whitespace();
+        if let (Some(offset), Some(len)) = (parts.next(), parts.next()) {
+            if let (Ok(offset), Ok(len)) = (offset.parse::<u64>(), len.parse::<u64>()) {
+                if len > 0 {
+                    done.insert(offset);
+                }
+            }
+        }
+    }
+    done
+}
+
+/// 追加一条已完成分片。写失败不影响下载本身（下一次会重下那个分片）。
+async fn append_resume_log(path: &Path, offset: u64, len: u64) {
+    use tokio::io::AsyncWriteExt;
+    if let Ok(mut file) = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .await
+    {
+        let _ = file.write_all(format!("{offset} {len}
+").as_bytes()).await;
+    }
 }
 
 /// 取一个分片，失败按指数退避重试。

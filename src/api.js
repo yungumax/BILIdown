@@ -100,6 +100,24 @@ export async function ffmpegStatus(refresh = false) {
 }
 
 // 「魔法变量」清单由后端提供，界面不再自己写一份——否则界面会列出后端不支持的变量。
+/// 启动续传：把 `.bilitmp` 里没下完的任务重新入队（设置里打开了才真的做）
+export async function resumePending() {
+  if (!hasTauri) return mock.resumePending();
+  return invoke("resume_pending");
+}
+
+/// 内容库：存一个来源（后端会先探测拿到类型 / 标题 / 条数）
+export async function libraryAdd(url) {
+  if (!hasTauri) return mock.libraryAdd(url);
+  return invoke("library_add", { url });
+}
+
+/// 内容库：按来源身份删一条
+export async function libraryRemove(key) {
+  if (!hasTauri) return mock.libraryRemove(key);
+  return invoke("library_remove", { key });
+}
+
 export async function namingVariables() {
   if (!hasTauri) return mock.namingVariables();
   return invoke("naming_variables");
@@ -543,6 +561,11 @@ const mock = (() => {
     publish_date: "2026-01-02",
   };
 
+  const resumePending = async () => 0;
+
+  const libraryAdd = async (url) => ({ url, key: `mock:${url}`, kind: "collection", title: "示例合集", owner: "示例UP主", total: 42 });
+  const libraryRemove = async () => 1;
+
   const namingVariables = () =>
     VARIABLES.map(([token, label, section, hint]) => ({ token, label, section, hint }));
 
@@ -599,6 +622,9 @@ const mock = (() => {
     qrcode,
     poll,
     onUpdate,
+    resumePending,
+    libraryAdd,
+    libraryRemove,
     namingVariables,
     previewNaming,
     probeMore,

@@ -141,6 +141,9 @@ pub struct Settings {
     /// 用户保存的命名模板预设（同名覆盖）
     #[serde(default)]
     pub naming_presets: Vec<NamingPreset>,
+    /// 内容库：用户存下来的来源清单（收藏夹 / 合集 / UP 空间 …）
+    #[serde(default)]
+    pub library: Vec<crate::types::LibrarySource>,
     /// 用户保存的文件夹模板预设（同名覆盖）。
     /// 模板允许为空——"不建文件夹"本身就是一个正当的预设。
     #[serde(default)]
@@ -240,6 +243,7 @@ impl Default for Settings {
             image_format: "source".to_string(),
             codec_pref: "auto".to_string(),
             quality_fallback: "nearest".to_string(),
+            library: Vec::new(),
             download_cover: false,
             download_subtitles: false,
             download_danmaku: false,
@@ -383,6 +387,30 @@ impl Settings {
             // 老设置里的 mkv 也落这里：改成 mp4（MKV 的用途已被独立文件取代）
             self.container = "mp4".to_string();
         }
+        // 内容库：清空条目、按来源身份去重（同一来源存两次只留先存的那条）、最多 200 条
+        self.library.truncate(500);
+        for item in &mut self.library {
+            item.url = item.url.trim().to_string();
+            item.title = item.title.trim().to_string();
+            item.owner = item.owner.trim().to_string();
+            item.kind = item.kind.trim().to_string();
+        }
+        self.library.retain(|item| !item.url.is_empty());
+        let mut seen: Vec<String> = Vec::new();
+        self.library.retain(|item| {
+            let id = if item.key.trim().is_empty() {
+                item.url.clone()
+            } else {
+                item.key.trim().to_string()
+            };
+            if seen.contains(&id) {
+                false
+            } else {
+                seen.push(id);
+                true
+            }
+        });
+        self.library.truncate(200);
         if !matches!(self.audio_format.as_str(), "source" | "mp3") {
             self.audio_format = "source".to_string();
         }
@@ -484,14 +512,32 @@ impl Settings {
         }
     }
 
-    /// 日志目录：自定义数据目录优先，否则用默认数据目录。
-    pub fn logs_dir(&self) -> PathBuf {
+    /// 默认数据目录（凭据、日志、下载默认都在这下面）。
+    pub fn default_data_dir() -> PathBuf {
+        bili_core::login::default_cookie_path()
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."))
+    }
+
+    /// 生效的数据目录：设置里填了就用它，否则用默认。
+    pub fn data_root(&self) -> PathBuf {
         let custom = self.data_dir.trim();
         if custom.is_empty() {
-            bili_core::login::default_cookie_path().with_file_name("logs")
+            Self::default_data_dir()
         } else {
-            PathBuf::from(custom).join("logs")
+            PathBuf::from(custom)
         }
+    }
+
+    /// 登录凭据放哪 —— 跟着数据目录走，所以「数据目录」一改，凭据也跟着搬。
+    pub fn cookies_path(&self) -> PathBuf {
+        self.data_root().join("cookies.json")
+    }
+
+    /// 日志目录：同样跟着数据目录。
+    pub fn logs_dir(&self) -> PathBuf {
+        self.data_root().join("logs")
     }
 
     /// 按配置级别写一行任务日志；失败静默（日志不该反过来影响下载）。
@@ -611,7 +657,8 @@ impl AppState {
     /// 建会话并装上已保存的登录态。
     fn build_client(settings: &Settings) -> anyhow::Result<BiliClient> {
         let client = BiliClient::with_proxy(Some(&settings.proxy))?;
-        if let Some(cookies) = bili_core::login::Cookies::load(&Self::default_cookies_path())? {
+        // 凭据跟着「数据目录」走（默认目录就是 B 站数据目录旁边那份 cookies.json）
+        if let Some(cookies) = bili_core::login::Cookies::load(&settings.cookies_path())? {
             client.set_cookies(&cookies)?;
         }
         Ok(client)
@@ -662,6 +709,25 @@ impl AppState {
     /// 覆盖设置并落盘；返回生效后的设置。
     pub fn apply_settings(&self, mut next: Settings) -> Settings {
         next.clamp();
+        // 数据目录换了：把现有登录凭据复制过去（目标已有就不动，旧目录保留）
+        let previous_data = self
+            .settings
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .cookies_path();
+        let next_data = next.cookies_path();
+        if previous_data != next_data && previous_data.exists() && !next_data.exists() {
+            if let Some(parent) = next_data.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            match std::fs::copy(&previous_data, &next_data) {
+                Ok(_) => next.log(
+                    "info",
+                    &format!("数据目录已更换，登录凭据已复制到 {}", next_data.display()),
+                ),
+                Err(e) => next.log("warn", &format!("换数据目录时复制凭据失败（重新登录即可）: {e}")),
+            }
+        }
         let previous = {
             let mut guard = self.settings.lock().unwrap_or_else(|e| e.into_inner());
             let previous = guard.clone();
@@ -701,7 +767,7 @@ impl AppState {
     }
 
     pub fn cookies_path(&self) -> PathBuf {
-        Self::default_cookies_path()
+        self.settings().cookies_path()
     }
 }
 

@@ -52,6 +52,15 @@ onMounted(async () => {
 
   await loadSettings();
   refreshFfmpeg();
+  // 上次没下完的任务：设置里开了「启动时自动继续」就接着下（分片记录让已下载的字节不重下）
+  if (settings.value?.resume_on_start) {
+    api
+      .resumePending()
+      .then((count) => {
+        if (count > 0) showToast(`继续未完成的下载：${count} 个任务`);
+      })
+      .catch(() => {});
+  }
 
   unlistenTask = await api.onTaskUpdate((task) => {
     const index = tasks.value.findIndex((item) => item.id === task.id);
@@ -110,6 +119,14 @@ async function loadSettings() {
 
 /** 改动即时保存；失败则回读一次，避免界面与磁盘不一致 */
 /** 设置页点「保存」：整份提交，成功后同步主题 */
+/** 内容库点「去解析」时带过来的来源：设置后切到解析页，那边看到就自动解析 */
+const pendingSource = ref(null);
+
+function openSource(url) {
+  pendingSource.value = { url, stamp: Date.now() };
+  page.value = "parse";
+}
+
 async function saveSettings(next) {
   const ffmpegChanged = next.ffmpeg_path !== settings.value?.ffmpeg_path;
   try {
@@ -303,6 +320,7 @@ async function doLogout() {
           :settings="settings"
           @toast="showToast"
           @goto="page = $event"
+          :pending-source="pendingSource"
         />
         <TransferPage
           v-if="page === 'transfer'"
@@ -326,7 +344,14 @@ async function doLogout() {
           @reset="resetSettings"
         />
         <AboutPage v-if="page === 'about'" class="page-in" :version="version" />
-        <LibraryPage v-if="page === 'library'" class="page-in" @goto="page = $event" />
+        <LibraryPage
+          v-if="page === 'library'"
+          class="page-in"
+          :settings="settings"
+          @goto="page = $event"
+          @open-source="openSource"
+          @refresh="loadSettings"
+        />
       </main>
     </div>
 

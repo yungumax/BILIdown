@@ -264,6 +264,71 @@ pub async fn naming_variables() -> Result<Vec<crate::types::NamingVariable>, Str
         .collect())
 }
 
+/// 内容库：把来源存进清单（先探测一次，拿到类型、标题、UP 名与条数）。
+///
+/// 已经存过的（来源身份相同）直接返回，不重复入库。
+#[tauri::command]
+pub async fn library_add(
+    state: State<'_, AppState>,
+    url: String,
+) -> Result<crate::types::LibrarySource, String> {
+    let client = state.client();
+    let probe = probe_one(&client, &state, &url, false).await?;
+    if !matches!(
+        probe.kind.as_str(),
+        "collection" | "fav" | "series" | "space" | "opus" | "audio"
+    ) {
+        return Err("这是单条内容，不用存进内容库；要下载直接去解析页".to_string());
+    }
+    let entry = crate::types::LibrarySource {
+        url: url.trim().to_string(),
+        key: probe.key.clone(),
+        kind: probe.kind.clone(),
+        title: probe.title.clone(),
+        owner: probe.owner.clone(),
+        total: probe.total,
+    };
+    let mut settings = state.settings();
+    let id = if entry.key.is_empty() {
+        entry.url.clone()
+    } else {
+        entry.key.clone()
+    };
+    let exists = settings.library.iter().any(|item| {
+        let other = if item.key.trim().is_empty() {
+            item.url.clone()
+        } else {
+            item.key.trim().to_string()
+        };
+        other == id
+    });
+    if !exists {
+        settings.library.push(entry.clone());
+        state.apply_settings(settings);
+    }
+    Ok(entry)
+}
+
+/// 内容库：按来源身份删一条。
+#[tauri::command]
+pub async fn library_remove(state: State<'_, AppState>, key: String) -> Result<usize, String> {
+    let mut settings = state.settings();
+    let before = settings.library.len();
+    settings.library.retain(|item| {
+        let id = if item.key.trim().is_empty() {
+            item.url.clone()
+        } else {
+            item.key.trim().to_string()
+        };
+        id != key
+    });
+    let removed = before - settings.library.len();
+    if removed > 0 {
+        state.apply_settings(settings);
+    }
+    Ok(removed)
+}
+
 /// 文件名预览：与真实落盘共用同一个渲染器，预览不会和结果对不上。
 /// `date` / `publish_date` 由前端按本地时区算好传进来。
 #[tauri::command]
@@ -1521,6 +1586,11 @@ pub async fn start_download(
     state: State<'_, AppState>,
     req: DownloadRequest,
 ) -> Result<String, String> {
+    Ok(enqueue_download(&app, &state, req))
+}
+
+/// 把一条下载请求放进队列（`start_download` 与启动续传共用）。
+fn enqueue_download(app: &AppHandle, state: &AppState, req: DownloadRequest) -> String {
     let id = state.next_task_id();
     let mut initial = TaskUpdate::new(id.clone(), &req);
     initial.quality_label = if req.source == "opus" {
@@ -1543,23 +1613,41 @@ pub async fn start_download(
         .log("info", &format!("任务入队: {}（{task_id}）", req.title));
 
     let handle = tokio::spawn(async move {
-        let result = run_download(
-            task_app.clone(),
-            client,
-            slots,
-            settings,
-            output_dir,
-            &req,
-            shared_for_task.clone(),
-        )
-        .await;
-        if let Err(e) = result {
-            mutate(&shared_for_task, &task_app, |t| {
-                if t.status != TaskStatus::Done && t.status != TaskStatus::Canceled {
-                    t.status = TaskStatus::Failed;
-                    t.message = e.to_string();
+        // 播放地址会自动过期：开着「链接过期时自动刷新」时，失败就重取地址再来一次。
+        // 分片记录（*.ranges）让已经下过的字节不重下，所以这个重试很便宜。
+        let mut attempt = 0u32;
+        loop {
+            let result = run_download(
+                task_app.clone(),
+                client.clone(),
+                slots.clone(),
+                settings.clone(),
+                output_dir.clone(),
+                &req,
+                shared_for_task.clone(),
+            )
+            .await;
+            match result {
+                Ok(()) => break,
+                Err(e) => {
+                    let expired = e.to_string().contains("403") || e.to_string().contains("410");
+                    if expired && settings.auto_refresh_urls && attempt < 2 {
+                        attempt += 1;
+                        settings.log(
+                            "warn",
+                            &format!("播放地址可能过期，重取地址后继续（第 {attempt} 次）: {e}"),
+                        );
+                        continue;
+                    }
+                    mutate(&shared_for_task, &task_app, |t| {
+                        if t.status != TaskStatus::Done && t.status != TaskStatus::Canceled {
+                            t.status = TaskStatus::Failed;
+                            t.message = e.to_string();
+                        }
+                    });
+                    break;
                 }
-            });
+            }
         }
     });
 
@@ -1576,7 +1664,41 @@ pub async fn start_download(
         );
 
     let _ = app.emit(TASK_EVENT, initial);
-    Ok(id)
+    id
+}
+
+/// 启动续传：把 `.bilitmp` 里没下完的任务重新入队。
+///
+/// 每个未完成的下载目录里有一份 `task.json`（原始请求）；重新入队会重新取播放地址，
+/// 分片记录（`*.ranges`）让已经下过的字节不再重下 —— 这就是"断点续传 + 播放地址自动刷新"。
+#[tauri::command]
+pub async fn resume_pending(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    if !state.settings().resume_on_start {
+        return Ok(0);
+    }
+    let dir = state.output_dir().join(".bilitmp");
+    let Ok(mut entries) = tokio::fs::read_dir(&dir).await else {
+        return Ok(0);
+    };
+    let mut started = 0usize;
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let task_file = entry.path().join("task.json");
+        let Ok(text) = tokio::fs::read_to_string(&task_file).await else {
+            continue;
+        };
+        let Ok(req) = serde_json::from_str::<DownloadRequest>(&text) else {
+            continue;
+        };
+        state
+            .settings()
+            .log("info", &format!("续传未完成任务: {}", req.title));
+        enqueue_download(&app, &state, req);
+        started += 1;
+    }
+    Ok(started)
 }
 
 /// 图文下载：一个条目一个文件夹，里面是原图（按序号）与正文 txt。
@@ -1750,6 +1872,8 @@ async fn run_audio_download(
         chunk_size: settings.chunk_mb * 1024 * 1024,
         retries: settings.retry_count as usize,
         speed_limit_bps: settings.speed_limit_mib as u64 * 1024 * 1024,
+        // 音频来源是小文件、直接写成品，不做分片续传
+        resume_log: None,
     };
     let throttle = Throttle::new(opts.speed_limit_bps);
     let final_path = out_file.clone();
@@ -2100,13 +2224,22 @@ async fn run_download(
     tokio::fs::create_dir_all(&work_dir).await?;
     let video_path = work_dir.join("video.m4s");
     let audio_path = work_dir.join("audio.m4s");
-    let opts = DownloadOptions {
+    // 未完成时留下原始请求：下次启动（或重新下这条）能接着下，见 resume_pending
+    if let Ok(text) = serde_json::to_string(req) {
+        tokio::fs::write(work_dir.join("task.json"), text).await.ok();
+    }
+    let video_opts = DownloadOptions {
         concurrency: settings.chunk_concurrency,
         chunk_size: settings.chunk_mb * 1024 * 1024,
         retries: settings.retry_count as usize,
         speed_limit_bps: settings.speed_limit_mib as u64 * 1024 * 1024,
+        resume_log: Some(work_dir.join("video.ranges")),
     };
-    let throttle = Throttle::new(opts.speed_limit_bps);
+    let audio_opts = DownloadOptions {
+        resume_log: Some(work_dir.join("audio.ranges")),
+        ..video_opts.clone()
+    };
+    let throttle = Throttle::new(video_opts.speed_limit_bps);
 
     let video_url = video.base_url.clone();
     let video_backup = video.backup_url.clone();
@@ -2129,7 +2262,7 @@ async fn run_download(
             &video_url,
             &video_backup,
             &video_path,
-            &opts,
+            &video_opts,
             on_progress,
             throttle.as_ref(),
         )
@@ -2156,7 +2289,7 @@ async fn run_download(
             &audio_url,
             &audio_backup,
             &audio_path,
-            &opts,
+            &audio_opts,
             on_progress,
             throttle.as_ref(),
         )

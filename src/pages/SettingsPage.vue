@@ -1254,7 +1254,10 @@ async function open(path) {
                 />
                 <button class="ghost" @click="chooseDataDir">选择</button>
               </div>
-              <p class="note">日志立即写入新目录；任务库与登录凭据的迁移将在后续版本支持。</p>
+              <p class="note">
+                登录凭据与日志都跟着这个目录走；改目录时会把现有的凭据复制过去（旧目录保留）。
+                留空就用默认目录。
+              </p>
             </div>
 
             <div class="btn-row full">

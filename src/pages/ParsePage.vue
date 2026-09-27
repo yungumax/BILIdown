@@ -1,12 +1,14 @@
 <script setup>
 import Icon from "../components/Icon.vue";
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import * as api from "../api";
 import StepHeader from "../components/StepHeader.vue";
 
 const props = defineProps({
   login: { type: Object, required: true },
   settings: { type: Object, default: null },
+  /// 内容库点「去解析」时带过来的来源：{ url, stamp }，看到就自动解析
+  pendingSource: { type: Object, default: null },
 });
 const emit = defineEmits(["toast", "goto"]);
 
@@ -136,6 +138,21 @@ function pickDefaultAudio(probe) {
   }
   return "normal";
 }
+
+/// 内容库送来的来源：填进输入框、切到批量解析、直接解析一次。
+/// 用 stamp 判重（同一条点两次也要能重新解析），所以不"吃掉"这个值。
+watch(
+  () => props.pendingSource?.stamp,
+  async (stamp) => {
+    const url = props.pendingSource?.url;
+    if (!stamp || !url) return;
+    mode.value = "batch";
+    text.value = url;
+    view.value = "input";
+    await nextTick();
+    if (!parsing.value) await parse();
+  }
+);
 
 async function parse() {
   // 同一链接贴两次不必解析两遍；被跳过的记下来，回头列在解析结果里

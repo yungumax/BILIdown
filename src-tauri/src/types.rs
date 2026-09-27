@@ -64,6 +64,26 @@ pub struct BatchVideo {
     pub duration: u64,
 }
 
+/// 内容库：用户存下来的来源（收藏夹 / 合集 / 系列 / UP 空间 / 图文 / 音频）。
+///
+/// 只存"去哪找"和展示要用的几项，条数会随来源变化，所以每次解析都以实时探测为准。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LibrarySource {
+    /// 用户当初贴的链接（原样留着，方便复制回浏览器）
+    pub url: String,
+    /// 来源身份（与 ProbeSource.key 同一套），用来判重
+    #[serde(default)]
+    pub key: String,
+    /// 来源类型标签：合集 / 收藏夹 / 系列 / UP 空间 / 图文 / 音频
+    pub kind: String,
+    pub title: String,
+    #[serde(default)]
+    pub owner: String,
+    /// 上次探测到的条数；0 表示未知
+    #[serde(default)]
+    pub total: usize,
+}
+
 /// 统一的解析结果：
 /// - kind=video：单视频，bvid/cid/cover/duration 有效，items 为空
 /// - kind=fav/collection/space：普通视频批量
@@ -114,8 +134,9 @@ pub struct ProbeSource {
     pub items: Vec<BatchVideo>,
 }
 
-/// 前端发起的下载请求。
-#[derive(Debug, Clone, Deserialize)]
+/// 前端发起的下载请求。要序列化是因为未完成的下载会把它写进 `.bilitmp/<key>/task.json`，
+/// 下次启动按它续传。
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadRequest {
     pub bvid: String,
     pub cid: u64,
@@ -148,7 +169,7 @@ pub struct DownloadRequest {
 
 /// 命名模板里前端能提供的变量取值。取不到的留空——空值在文件名里直接消失。
 /// 清晰度、编码、扩展名由后端在任务执行时补齐。
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct NamingMeta {
     /// 来源类型中文名（文件夹模板里的 {source_kind}）
