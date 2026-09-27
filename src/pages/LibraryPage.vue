@@ -1,4 +1,5 @@
 <script setup>
+import Icon from "../components/Icon.vue";
 const emit = defineEmits(["goto"]);
 </script>
 
@@ -9,15 +10,7 @@ const emit = defineEmits(["goto"]);
       <p class="lead">收藏夹、合集与 UP 空间浏览。</p>
 
       <div class="placeholder">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            d="M7.4 4.6h9.2v14.8l-4.6-3.6-4.6 3.6Z"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.7"
-            stroke-linejoin="round"
-          />
-        </svg>
+        <Icon name="books" class="icon" />
         <p class="title">这部分还没做</p>
         <p class="hint">
           计划在 M3 提供：收藏夹与合集列表、UP 空间投稿翻页、按页批量下载。

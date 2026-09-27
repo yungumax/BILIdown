@@ -1,4 +1,5 @@
 <script setup>
+import Icon from "../components/Icon.vue";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import * as api from "../api";
 
@@ -10,14 +11,15 @@ const props = defineProps({
 });
 const emit = defineEmits(["toast", "save", "reset", "reload", "login", "logout"]);
 
+// 分类图标：值是 iconfont 图标名（见 src/icons.js）
 const CATEGORY_ICONS = {
-  download: "M4.8 14.6v3.2a1.6 1.6 0 0 0 1.6 1.6h11.2a1.6 1.6 0 0 0 1.6-1.6v-3.2M12 4.6v9.4M7.8 10.2 12 14.4l4.2-4.2",
-  media: "M5.6 4.6h12.8a2 2 0 0 1 2 2v10.8a2 2 0 0 1-2 2H5.6a2 2 0 0 1-2-2V6.6a2 2 0 0 1 2-2ZM7 7.8v.5M7 11.9v.5M7 16v.5M17 7.8v.5M17 11.9v.5M17 16v.5M10.4 8h3.2v2.6h-3.2zM10.4 13.4h3.2V16h-3.2z",
-  naming: "M7 4.6h7l4 4v10.8H7zM14 4.6V9h4M9.4 13h5.2M9.4 16.4h5.2",
-  folder: "M4.8 7.2h4.4l1.8 2.2h8.2a1 1 0 0 1 1 1v7.4a1 1 0 0 1-1 1H4.8a1 1 0 0 1-1-1V8.2a1 1 0 0 1 1-1Z",
-  encode: "M5 7.4h14M5 12h14M5 16.6h14M7.8 7.4a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0-3.6 0M12.6 12a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0-3.6 0M6.6 16.6a1.8 1.8 0 1 0 3.6 0 1.8 1.8 0 1 0-3.6 0",
-  update: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5",
-  network: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z",
+  download: "download",
+  media: "album",
+  naming: "fileText",
+  folder: "folder",
+  encode: "slidersH",
+  update: "refresh",
+  network: "server",
 };
 
 const categories = [
@@ -560,42 +562,15 @@ async function open(path) {
         <h1>设置</h1>
         <span class="spacer"></span>
         <button class="ghost" :disabled="!settings" @click="reset">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
+          <Icon name="reload" />
           恢复默认
         </button>
         <button class="ghost" :disabled="!dirty" @click="undo">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M9.4 14.2 5 9.8l4.4-4.4M5 9.8h9.4a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5h-1.4"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
+          <Icon name="undo" />
           撤销
         </button>
         <button class="primary" :disabled="!dirty" @click="save">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M6.4 5.4h9.2l3 3v10.2H6.4zM9.4 5.4v3.6h5.2M9 13.6h6"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
+          <Icon name="check" />
           保存
         </button>
       </header>
@@ -608,16 +583,7 @@ async function open(path) {
             :class="{ active: active === category.key }"
             @click="active = category.key"
           >
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                :d="CATEGORY_ICONS[category.key]"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
+            <Icon :name="CATEGORY_ICONS[category.key]" class="icon" />
             <span class="text">
               <span class="label">{{ category.label }}</span>
               <span class="hint">{{ category.hint }}</span>
@@ -627,16 +593,7 @@ async function open(path) {
 
         <div class="panel">
           <div class="panel-head">
-            <svg class="panel-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                :d="CATEGORY_ICONS[activeCategory.key]"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
+                          <Icon :name="CATEGORY_ICONS[activeCategory.key]" class="panel-icon" />
             <div>
               <h2>{{ activeCategory.label }}</h2>
               <p class="panel-hint">{{ activeCategory.hint }}</p>
@@ -860,31 +817,14 @@ async function open(path) {
 
             <div class="sub-card full">
               <div class="sub-head">
-                <svg class="sub-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M4.6 7.4h14.8v9.2H4.6zM9.8 10v4l3.6-2-3.6-2Z"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
+                <Icon name="funnel" class="sub-icon" />
                 <span class="sub-text">
                   <span class="sub-title">画质优先顺序</span>
                   <span class="sub-note">从上到下匹配画质与编码。</span>
                 </span>
                 <span class="spacer"></span>
                 <button class="ghost" @click="addQualityPref">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      d="M12 5.6v12.8M5.6 12h12.8"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                    />
-                  </svg>
+                  <Icon name="plus" />
                   添加画质
                 </button>
               </div>
@@ -945,31 +885,14 @@ async function open(path) {
 
             <div class="sub-card full">
               <div class="sub-head">
-                <svg class="sub-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M5.4 9.4h3.2L12.6 6v12L8.6 14.6H5.4zM15.8 9.6a3.6 3.6 0 0 1 0 4.8"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
+                <Icon name="microphone" class="sub-icon" />
                 <span class="sub-text">
                   <span class="sub-title">音频优先顺序</span>
                   <span class="sub-note">独立选择音轨，再与选中的视频合并。</span>
                 </span>
                 <span class="spacer"></span>
                 <button class="ghost" @click="addAudioPref">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      d="M12 5.6v12.8M5.6 12h12.8"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                    />
-                  </svg>
+                  <Icon name="plus" />
                   添加音质
                 </button>
               </div>
@@ -1060,15 +983,7 @@ async function open(path) {
                     :aria-expanded="pickingVar"
                     @click="pickingVar = !pickingVar"
                   >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path
-                        d="M12 5.6v12.8M5.6 12h12.8"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                      />
-                    </svg>
+                    <Icon name="plus" />
                   </button>
 
                   <Transition name="picker">
@@ -1119,16 +1034,7 @@ async function open(path) {
                   @keydown.enter="savePreset"
                 />
                 <button class="ghost" @click="savePreset">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      d="M6.4 5.4h9.2l3 3v10.2H6.4zM9.4 5.4v3.6h5.2"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.8"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
+                  <Icon name="check" />
                   保存为预设
                 </button>
               </div>
@@ -1190,15 +1096,7 @@ async function open(path) {
                     :aria-expanded="pickingFolderVar"
                     @click="pickingFolderVar = !pickingFolderVar"
                   >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path
-                        d="M12 5.6v12.8M5.6 12h12.8"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                      />
-                    </svg>
+                    <Icon name="plus" />
                   </button>
 
                   <Transition name="picker">
@@ -1241,16 +1139,7 @@ async function open(path) {
                   @keydown.enter="saveFolderPreset"
                 />
                 <button class="ghost" @click="saveFolderPreset">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      d="M6.4 5.4h9.2l3 3v10.2H6.4zM9.4 5.4v3.6h5.2"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.8"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
+                  <Icon name="check" />
                   保存为预设
                 </button>
               </div>

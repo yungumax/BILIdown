@@ -1,5 +1,6 @@
 <script setup>
 import { computed, h, onBeforeUnmount, onMounted, ref } from "vue";
+import Icon from "./Icon.vue";
 
 import * as api from "../api";
 
@@ -111,19 +112,7 @@ function onDrag(event) {
 <template>
   <header class="titlebar">
     <div class="brand" @mousedown="onDrag">
-      <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
-        <rect width="24" height="24" rx="5.5" fill="#fb7299" />
-        <path d="M12 6.6v6.2" stroke="#fff" stroke-width="2.2" stroke-linecap="round" />
-        <path
-          d="M8.4 10.6 12 14.2l3.6-3.6"
-          fill="none"
-          stroke="#fff"
-          stroke-width="2.2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-        <path d="M7.8 17.6h8.4" stroke="#fff" stroke-width="2.2" stroke-linecap="round" />
-      </svg>
+      <Icon name="download" class="mark" />
       <span class="name">BILIdown</span>
       <span class="sub">
         Bilibili Download Lab
@@ -158,74 +147,27 @@ function onDrag(event) {
           >
             <ThemeIcon :mode="option.value" />
             <span class="label">{{ option.label }}</span>
-            <svg v-if="option.value === theme" class="check" viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="m5 12.5 4.5 4.5L19 7.5"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
+            <Icon v-if="option.value === theme" name="check" class="check" />
           </button>
         </div>
       </Transition>
     </div>
 
     <button class="login-chip" :class="{ on: login.logged_in }" @click="emit('login')">
-      <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="8.5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.9" />
-        <path
-          d="M5.6 19.2c.9-3.1 3.4-4.7 6.4-4.7s5.5 1.6 6.4 4.7"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.9"
-          stroke-linecap="round"
-        />
-      </svg>
+      <Icon name="login" class="glyph" />
       <span class="label">{{ login.logged_in ? login.uname : "未登录" }}</span>
-      <svg class="caret" viewBox="0 0 24 24" aria-hidden="true">
-        <path
-          d="m7 10 5 5 5-5"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg>
+      <Icon name="chevronDown" class="caret" />
     </button>
 
     <div class="window-controls">
       <button class="ctrl" title="最小化" @click="api.minimizeWindow()">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M5.5 12h13" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
-        </svg>
+        <Icon name="minus" />
       </button>
       <button class="ctrl" title="最大化 / 还原" @click="api.toggleMaximizeWindow()">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <rect
-            x="6"
-            y="6"
-            width="12"
-            height="12"
-            rx="1.6"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.7"
-          />
-        </svg>
+        <Icon name="maximize" />
       </button>
       <button class="ctrl close" title="关闭" @click="api.closeWindow()">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            d="m7 7 10 10M17 7 7 17"
-            stroke="currentColor"
-            stroke-width="1.7"
-            stroke-linecap="round"
-          />
-        </svg>
+        <Icon name="close" />
       </button>
     </div>
   </header>

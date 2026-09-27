@@ -1,4 +1,5 @@
 <script setup>
+import Icon from "../components/Icon.vue";
 defineProps({
   version: { type: String, default: "" },
 });
@@ -8,19 +9,7 @@ defineProps({
   <div>
     <section class="card">
       <div class="identity">
-        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
-          <rect width="24" height="24" rx="5.5" fill="#fb7299" />
-          <path d="M12 6.6v6.2" stroke="#fff" stroke-width="2.2" stroke-linecap="round" />
-          <path
-            d="M8.4 10.6 12 14.2l3.6-3.6"
-            fill="none"
-            stroke="#fff"
-            stroke-width="2.2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-          <path d="M7.8 17.6h8.4" stroke="#fff" stroke-width="2.2" stroke-linecap="round" />
-        </svg>
+        <Icon name="download" class="mark" />
         <div>
           <h1>BILIdown</h1>
           <p class="ver num">v{{ version || "—" }}</p>

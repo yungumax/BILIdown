@@ -1,4 +1,5 @@
 <script setup>
+import Icon from "./Icon.vue";
 defineProps({
   steps: { type: Array, required: true },
 });
@@ -22,16 +23,7 @@ function go(step) {
       @click="go(step)"
     >
       <span class="dot">
-        <svg v-if="step.state === 'done'" viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            d="m6.5 12.4 3.6 3.6 7.4-8"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.4"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
+        <Icon v-if="step.state === 'done'" name="check" />
         <template v-else>{{ step.index }}</template>
       </span>
       <span class="text">

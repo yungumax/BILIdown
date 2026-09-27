@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from "vue";
+import Icon from "./Icon.vue";
 
 const props = defineProps({
   current: { type: String, required: true },
@@ -11,33 +12,33 @@ const emit = defineEmits(["navigate"]);
 const items = [
   {
     key: "parse",
+    icon: "link",
     label: "解析",
     hint: "添加与选择",
-    path: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
   },
   {
     key: "library",
+    icon: "books",
     label: "内容库",
     hint: "收藏与订阅",
-    path: "M4.4 4.4v15.2M8.8 6v13.6M13.2 4.4v15.2M17.6 6l2.4 13.2",
   },
   {
     key: "transfer",
+    icon: "transfer",
     label: "传输",
     hint: "队列与恢复",
-    path: "M15.6 4.2 19.8 8.4l-4.2 4.2M19.8 8.4H4.2M8.4 19.8 4.2 15.6l4.2-4.2M4.2 15.6h15.6",
   },
   {
     key: "settings",
+    icon: "slidersV",
     label: "设置",
     hint: "偏好与维护",
-    path: "M7 4.4v7.2M7 15.4v4.2M12 4.4v2.4M12 10.8v8.8M17 4.4v9.2M17 17.6v2M5.5 13.5a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0M10.5 9a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0M15.5 15.8a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0",
   },
   {
     key: "about",
+    icon: "info",
     label: "关于",
     hint: "版本与链接",
-    path: "M12 20.2a8.2 8.2 0 1 0 0-16.4 8.2 8.2 0 0 0 0 16.4ZM12 11v5.4M12 7.6v.9",
   },
 ];
 
@@ -72,16 +73,7 @@ const speedText = computed(() => {
         :class="{ active: current === item.key }"
         @click="emit('navigate', item.key)"
       >
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            :d="item.path"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
+        <Icon :name="item.icon" class="icon" />
         <span class="text">
           <span class="label">{{ item.label }}</span>
           <span class="hint">{{ item.hint }}</span>

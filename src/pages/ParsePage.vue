@@ -1,4 +1,5 @@
 <script setup>
+import Icon from "../components/Icon.vue";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import * as api from "../api";
 import StepHeader from "../components/StepHeader.vue";
@@ -77,40 +78,13 @@ const steps = computed(() => {
 
 // 支持的来源；图标用路径数据，避免为五个小图标各写一段模板
 const sources = [
-  {
-    label: "视频与分P",
-    icon: ["M4.6 6.4h14.8v11.2H4.6z", "m10.6 10.2 3.4 1.8-3.4 1.8z"],
-  },
-  {
-    label: "收藏夹与合集",
-    icon: ["M6.6 4.6h10.8v14.8l-5.4-3.6-5.4 3.6z"],
-  },
-  {
-    label: "番剧与课程",
-    // 屏幕 + 两侧支脚，支脚在 14px 下要画得够开才看得出来
-    icon: ["M4.6 6.4h14.8v10.6H4.6z", "M9.8 20.4 8.8 17M14.2 20.4l1-3.4"],
-  },
-  {
-    label: "图文与专栏",
-    // 画面 + 右下角的正文线
-    icon: ["M4.6 6.4h15v11.2h-15z", "M7.4 13.6h5.2M7.4 15.8h3.4"],
-  },
-  {
-    label: "音频投稿",
-    // 音符：符头 + 符干 + 旗
-    icon: ["M10.2 16.4a1.9 1.9 0 1 1-3.8 0 1.9 1.9 0 0 1 3.8 0Z", "M10.2 16.4V7.6l6.4-1.6v8.8", "M16.6 14.8a1.9 1.9 0 1 1-3.8 0 1.9 1.9 0 0 1 3.8 0Z"],
-  },
-  {
-    label: "UP 空间",
-    icon: [
-      "M12 5.4a3.2 3.2 0 1 1 0 6.4 3.2 3.2 0 0 1 0-6.4Z",
-      "M5.8 19.4c.9-3 3.4-4.6 6.2-4.6s5.3 1.6 6.2 4.6",
-    ],
-  },
-  {
-    label: "多行批量",
-    icon: ["M5.4 7.4h1.4M9.6 7.4h9M5.4 12h1.4M9.6 12h9M5.4 16.6h1.4M9.6 16.6h9"],
-  },
+  { label: "视频与分P", icon: "play" },
+  { label: "收藏夹与合集", icon: "star" },
+  { label: "番剧与课程", icon: "broadcast" },
+  { label: "图文与专栏", icon: "photo" },
+  { label: "音频投稿", icon: "microphone" },
+  { label: "UP 空间", icon: "user" },
+  { label: "多行批量", icon: "listLine" },
 ];
 
 function formatDuration(seconds) {
@@ -1007,16 +981,7 @@ async function startSingle(item) {
     <section v-if="view === 'select' && activeSource" class="card select-page">
       <header class="select-bar">
         <button class="back" title="返回解析" @click="view = 'input'">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M19 12H5.6M11 5.6 4.6 12l6.4 6.4"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
+          <Icon name="chevronLeft" />
         </button>
         <h2 class="select-title" :title="headerTitle">{{ headerTitle }}</h2>
         <span v-if="headerTag" class="kind-tag">{{ headerTag }}</span>
@@ -1038,16 +1003,7 @@ async function startSingle(item) {
                 @click="pickingBatch = !pickingBatch"
               >
                 每批 {{ batchSize }}
-                <svg class="caret" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="m6 9.5 6 6 6-6"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
+                <Icon name="chevronDown" class="caret" />
               </button>
               <Transition name="picker">
                 <div v-if="pickingBatch" class="batch-pop pop-in">
@@ -1076,43 +1032,16 @@ async function startSingle(item) {
                 title="更多解析方式"
                 @click="pickingParse = !pickingParse"
               >
-                <svg class="caret" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="m6 9.5 6 6 6-6"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
+                <Icon name="chevronDown" class="caret" />
               </button>
               <Transition name="picker">
                 <div v-if="pickingParse" class="parse-pop pop-in">
                   <button class="parse-item" @click="parseAll">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path
-                        d="M3.6 6.6 5.2 8.2l3-3.6M3.6 12.2 5.2 13.8l3-3.6M3.6 17.8 5.2 19.4l3-3.6M12 7.2h8.4M12 12.8h8.4M12 18.4h8.4"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.9"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      />
-                    </svg>
+                    <Icon name="listDetails" />
                     解析全部
                   </button>
                   <button class="parse-item" @click="parseAllAndDownload">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path
-                        d="M12 4v9.6m0 0L8.4 10m3.6 3.6L15.6 10M4.5 18.6h15"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.9"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      />
-                    </svg>
+                    <Icon name="cloudDownload" />
                     后台解析全部并下载
                   </button>
                   <!-- 超过单次上限的来源：从这里按序号取下一批，两批不重叠 -->
@@ -1121,16 +1050,7 @@ async function startSingle(item) {
                     class="parse-item"
                     @click="openRange"
                   >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path
-                        d="M4.5 7.4h9M4.5 12h6M4.5 16.6h9M17 9.6V6m0 3.6L15.2 7.8M17 9.6l1.8-1.8M17 14.4v3.6m0-3.6 1.8 1.8M17 18l-1.8-1.8"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.9"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      />
-                    </svg>
+                    <Icon name="sortAscending" />
                     按序号加载…
                   </button>
                   <form v-else class="parse-range" @submit.prevent="loadRange">
@@ -1165,30 +1085,12 @@ async function startSingle(item) {
                 title="按序号加载"
                 @click="pickingParse = !pickingParse"
               >
-                <svg class="caret" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="m6 9.5 6 6 6-6"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
+                <Icon name="chevronDown" class="caret" />
               </button>
               <Transition name="picker">
                 <div v-if="pickingParse" class="parse-pop pop-in">
                   <button v-if="!pickingRange" class="parse-item" @click="openRange">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path
-                        d="M4.5 7.4h9M4.5 12h6M4.5 16.6h9M17 9.6V6m0 3.6L15.2 7.8M17 9.6l1.8-1.8M17 14.4v3.6m0-3.6 1.8 1.8M17 18l-1.8-1.8"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.9"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      />
-                    </svg>
+                    <Icon name="sortAscending" />
                     按序号加载…
                   </button>
                   <form v-else class="parse-range" @submit.prevent="loadRange">
@@ -1234,17 +1136,7 @@ async function startSingle(item) {
         <!-- 清晰度/音轨收进弹层，工具条只留动作 -->
         <div ref="dlPanel" class="dl-settings">
           <button class="ghost" :class="{ on: pickingDl }" @click="pickingDl = !pickingDl">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                d="M5 7.4h14M5 12h14M5 16.6h14"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.9"
-                stroke-linecap="round"
-              />
-              <circle cx="9" cy="7.4" r="1.9" fill="var(--card)" stroke="currentColor" stroke-width="1.7" />
-              <circle cx="15" cy="16.6" r="1.9" fill="var(--card)" stroke="currentColor" stroke-width="1.7" />
-            </svg>
+            <Icon name="slidersH" />
             下载设置
           </button>
 
@@ -1332,16 +1224,7 @@ async function startSingle(item) {
                     @click.stop
                     @change="toggleGroupSelect(group, $event.target.checked)"
                   />
-                  <svg class="fold-arrow" viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      d="m9 6 6 6-6 6"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
+                  <Icon name="chevronRight" class="fold-arrow" />
                   <span class="group-kind">{{ kindLabel(group.source.probe.kind) }}</span>
                   <span class="group-title" :title="group.source.probe.title">
                     {{ group.source.probe.title }}
@@ -1428,25 +1311,7 @@ async function startSingle(item) {
 
       <div class="actions">
         <button class="ghost" @click="pasteFromClipboard">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <rect
-              x="8.4"
-              y="4.4"
-              width="11.2"
-              height="14.4"
-              rx="2.2"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-            />
-            <path
-              d="M15.6 4.4v2.2M6.6 7.4v10.4a2 2 0 0 0 2 2h6"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-            />
-          </svg>
+          <Icon name="clipboard" />
           粘贴链接
         </button>
         <span class="spacer"></span>
@@ -1459,18 +1324,7 @@ async function startSingle(item) {
       <div v-if="mode === 'batch'" class="sources">
         <span class="sources-label">支持来源</span>
         <span v-for="source in sources" :key="source.label" class="source">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              v-for="(d, index) in source.icon"
-              :key="index"
-              :d="d"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
+          <Icon :name="source.icon" />
           {{ source.label }}
         </span>
       </div>
