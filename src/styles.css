@@ -1,6 +1,17 @@
 /* 设计令牌与基础样式。
    浅色为默认；深色通过 <html data-theme="dark"> 切换（见 app 里的主题处理）。 */
 
+/* 界面字体：阿里妈妈数黑体（免费商用，版权归淘宝（中国）软件有限公司，见 public/fonts/README.md）。
+   只内置这一款 Bold，声明 100 900 整个字重区间 —— 界面上的粗细交给浏览器合成，
+   免得 400 的字落到回退字体、出现两种字形混排。 */
+@font-face {
+  font-family: "Alimama ShuHeiTi";
+  src: url("/fonts/alimama-shuheiti-bold.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
 
@@ -46,8 +57,8 @@
   --radius: 10px;
   --radius-sm: 8px;
 
-  --font: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC",
-    -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font: "Alimama ShuHeiTi", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+    "Noto Sans SC", -apple-system, "Segoe UI", system-ui, sans-serif;
 }
 
 /* 深色主题：中性深灰，避免偏色；粉色强调保持不变。
