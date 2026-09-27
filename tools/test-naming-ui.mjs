@@ -23,7 +23,8 @@ await evalJs(`[...document.querySelectorAll('.cat, .cat-item, nav button, .cats 
 await new Promise(r => setTimeout(r, 500));
 
 console.log("1) 变量面板按钮存在: " + await evalJs(`!!document.querySelector('.var-picker .ghost')`));
-await evalJs(`document.querySelector('.var-picker .ghost').click()`);
+// 只在关着的时候点开：上一次跑完面板是开着的，直接 click 会把它点没
+await evalJs(`(() => { if (!document.querySelector('.var-panel')) document.querySelector('.var-picker .ghost').click(); return true; })()`);
 await new Promise(r => setTimeout(r, 400));
 const panel = await evalJs(`JSON.stringify({
   open: !!document.querySelector('.var-panel'),
@@ -43,7 +44,9 @@ console.log("3) 点击插入后模板/预览: " + await evalJs(`JSON.stringify({
 await evalJs(`(() => { const s = [...document.querySelectorAll('select')].find(s => [...s.options].some(o => o.textContent.includes('分P视频'))); s.value = '分P视频'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
 await new Promise(r => setTimeout(r, 600));
 const tpl = await evalJs(`document.querySelector('input[spellcheck]')?.value`);
-const preview = await evalJs(`document.querySelector('.note b')?.textContent`);
+// 页面上有好几条 .note，取"文件名预览"那一条里的 <b>，
+// 不然拿到的是第一条说明（曾经的输出一直是错的，还看不出错）
+const preview = await evalJs(`[...document.querySelectorAll('.note')].find(p => p.textContent.includes('文件名预览'))?.querySelector('b')?.textContent`);
 // 同一个模板直接问后端，确认预览 = 后端渲染
 const backend = await evalJs(`(async () => {
   const I = window.__TAURI_INTERNALS__;

@@ -226,15 +226,25 @@ const pickingVar = ref(false);
 const varPicker = ref(null);
 const templateInput = ref(null);
 
-/** 面板行：每换一个分组插一条分组标题（网格里跨两列） */
+/** 面板行：一级分组 / 二级分组各插一条标题（网格里跨两列）。
+ *  两级都靠"名字变了"触发——Rust 那边的表和这里同一份真值，
+ *  分组名保证连续（naming.rs 的 variable_groups_stay_contiguous 守着）。
+ *  二级为空表示这一组不再细分，变量直接列在一级标题下。 */
 const variableRows = computed(() => {
   const out = [];
-  let last = "";
+  let lastGroup = "";
+  let lastSection = "";
   for (const item of variables.value) {
     const group = item.group || "通用";
-    if (group !== last) {
-      out.push({ heading: group, key: `h-${group}` });
-      last = group;
+    if (group !== lastGroup) {
+      out.push({ heading: group, level: 1, key: `g-${group}` });
+      lastGroup = group;
+      lastSection = "";
+    }
+    const section = item.section || "";
+    if (section && section !== lastSection) {
+      out.push({ heading: section, level: 2, key: `s-${group}-${section}` });
+      lastSection = section;
     }
     out.push(item);
   }
@@ -910,7 +920,13 @@ async function open(path) {
                       </div>
                       <div class="var-grid">
                         <template v-for="item in variableRows" :key="item.key">
-                          <p v-if="item.heading" class="var-heading">{{ item.heading }}</p>
+                          <p
+                            v-if="item.heading"
+                            class="var-heading"
+                            :class="`lvl${item.level}`"
+                          >
+                            {{ item.heading }}
+                          </p>
                           <button
                           v-else
                           :key="item.token"
@@ -1035,7 +1051,13 @@ async function open(path) {
                       </div>
                       <div class="var-grid">
                         <template v-for="item in variableRows" :key="item.key">
-                          <p v-if="item.heading" class="var-heading">{{ item.heading }}</p>
+                          <p
+                            v-if="item.heading"
+                            class="var-heading"
+                            :class="`lvl${item.level}`"
+                          >
+                            {{ item.heading }}
+                          </p>
                           <button
                           v-else
                           :key="item.token"
@@ -1509,7 +1531,7 @@ input::placeholder {
   top: calc(100% + 6px);
   right: 0;
   z-index: 15;
-  width: 396px;
+  width: 420px;
   padding: 10px;
   text-align: left;
   background: var(--card);
@@ -1535,20 +1557,43 @@ input::placeholder {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 3px;
-  max-height: 320px;
+  /* 两级标题占掉不少高度：这档刚好让面板在默认窗口（1100×740）里整个露出来，
+     再高就会有一截被窗口下沿切掉（面板挂在输入框下方，不能自己往上翻）。
+     清单本身 993px 高，滚动是常态，面板不切边比多露两行重要。 */
+  max-height: 286px;
   overflow-y: auto;
 }
 
-/* 分组标题：跨两列，比变量说明更弱一档 */
-.var-heading {
+/* 一级标题：面板里的"目录"，跨两列、带分隔线，比变量本身更重 */
+.var-heading.lvl1 {
   grid-column: 1 / -1;
-  margin: 7px 0 1px;
-  font-size: 11px;
-  color: var(--muted);
+  margin: 10px 0 1px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
 }
 
-.var-heading:first-child {
+.var-heading.lvl1:first-child {
   margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* 二级标题：比一级弱一档，靠点号与缩进分层 */
+.var-heading.lvl2 {
+  grid-column: 1 / -1;
+  margin: 6px 0 0;
+  padding-left: 7px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.var-heading.lvl2::before {
+  content: "·";
+  margin-right: 5px;
+  color: var(--muted);
 }
 
 .var-item {
