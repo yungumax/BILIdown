@@ -106,7 +106,14 @@ function human(bytes) {
         class="seg"
         :class="[stage.state, index === 2 && isMergeIndeterminate ? 'indeterminate' : '']"
       >
-        <span class="fill" :style="{ width: `${stage.pct}%` }"></span>
+        <span
+          class="fill"
+          :style="
+            index === 2 && isMergeIndeterminate
+              ? null
+              : { transform: `scaleX(${stage.pct / 100})` }
+          "
+        ></span>
       </div>
     </div>
 
@@ -227,10 +234,12 @@ function human(bytes) {
 .fill {
   display: block;
   height: 100%;
-  width: 0;
+  width: 100%;
   background: var(--accent);
   border-radius: 3px;
-  transition: width 0.25s ease;
+  /* 用 scaleX 推进而不是 width：width 动画会触发布局抖动 */
+  transform: scaleX(0);
+  transform-origin: left center;
 }
 
 .seg.done .fill {
@@ -248,12 +257,13 @@ function human(bytes) {
 
 /* 进度推进要平滑：后端每几百毫秒推一次，直接跳格像卡顿 */
 .seg .fill {
-  transition: width var(--motion) linear;
+  transition: transform var(--motion) linear;
 }
 
 /* 合成阶段没有百分比，用流动填充表示进行中 */
 .seg.indeterminate .fill {
   width: 100%;
+  transform: none;
   background: linear-gradient(
     90deg,
     var(--accent-soft) 0%,

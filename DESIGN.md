@@ -62,13 +62,33 @@ node tools/ui-geometry.mjs geometry-after.json   # 逐项对比：必须"无差�
 页面组件的 `<style scoped>` 带 `[data-v-*]` 属性选择器，特异性比同名全局规则高。
 全局覆盖必须加 `body` 前缀（如 `body .content .card { ... }`），否则写了不生效。
 
-## 七、动效原则
+## 七、反模式检测（技能引擎）
+
+技能 `impeccable` 的引擎已装好，检测器可用：
+
+```bash
+node D:/Zcode/toolchain/npm-global/node_modules/impeccable/cli/bin/cli.js detect src/
+```
+
+- 引擎来自 npm 包 `impeccable@4.1.0`（`D:\Zcode	oolchain
+pm-global`），
+  同目录下 `impeccable.exe` 是把它包成原生 exe 的 shim（技能的启动器只认 exe）。
+  用户级环境变量 `IMPECCABLE_BIN` 已指向该 shim，技能的
+  `scripts/impeccable.cmd <verb>` 可直接调用。
+- **提交前跑一次 detect，必须 0 反模式。**
+- 检测器已抓出并修掉的两类问题，改版时别再犯：
+  - `transition: width` → 用 `transform: scaleX()`（宽度动画会触发布局抖动）。
+  - 回弹/弹性缓动（`cubic-bezier` 带过冲）→ 用指数缓出 `--ease-out-expo`。
+
+## 八、动效原则
 
 - **一个编排好的时刻**：栏目切换整页淡入一次。
+- **不做回弹**：物品是减速停下的，缓动只用指数缓出（`--ease-out-expo`），
+  勾选框也一样（不再有 1.12 的过冲）。
 - 其余动效只回答用户动作：展开弹层、按下按钮、选中勾选框、进度推进。
 - 不要"每个区块套同一套入场动画"（曾经给表格每行加逐行淡入，已移除）。
 
-## 八、版本标签
+## 九、版本标签
 
 | 标签 | 内容 |
 | --- | --- |
