@@ -426,6 +426,17 @@ mod tests {
     }
 
     #[test]
+    fn compact_date_encodes_local_date() {
+        // 实测取值：详情页 pub_ts=1773380866 + 东八区 = 2026-03-13
+        assert_eq!(compact_date(1773380866, 480), 20_260_313);
+        // 时区差一天：UTC 时是 03-12 22:00，东八区已是 03-13
+        assert_eq!(compact_date(1773343200, 480), 20_260_313);
+        assert_eq!(compact_date(1773343200, 0), 20_260_312);
+        // 取不到时间戳就不编号
+        assert_eq!(compact_date(0, 480), 0);
+    }
+
+    #[test]
     fn single_segment_shell_template_falls_back_to_title() {
         // 批量来源没有分集：整条模板都是空变量时不能产出 "P - .mp4"
         let batch = NamingContext {

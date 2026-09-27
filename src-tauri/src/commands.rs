@@ -1606,6 +1606,13 @@ async fn run_opus_download(
     // 列表接口不给日期、也不给总数（算不出名次），而日期只取决于这条内容自己，
     // 分批加载多少次都不会变。拿不到日期就不编号，绝不用会漂移的批内序号。
     let day = crate::naming::compact_date(post.pub_ts, req.naming.tz_offset_min as i64);
+    settings.log(
+        "debug",
+        &format!(
+            "图文编号：pub_ts={} tz={} 日期编号={} 模板index原值={}",
+            post.pub_ts, req.naming.tz_offset_min, day, req.naming.index
+        ),
+    );
     naming.index = if day > 0 { day as u32 } else { 0 };
     naming.index_pad = 8;
     let folder = output_dir

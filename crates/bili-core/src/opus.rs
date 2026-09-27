@@ -79,9 +79,14 @@ pub fn parse_page(html: &str) -> Result<OpusPost> {
             }
             k if k.contains("AUTHOR") => {
                 post.pub_time = text_of(module.pointer("/module_author/pub_time"));
+                // pub_ts 在页面里可能是数字，也可能是数字字符串（不同页面版本都见过），
+                // 只按数字读会静默拿到 0，日期编号就整条失效。
                 post.pub_ts = module
                     .pointer("/module_author/pub_ts")
-                    .and_then(|v| v.as_i64())
+                    .and_then(|v| {
+                        v.as_i64()
+                            .or_else(|| v.as_str().and_then(|t| t.trim().parse::<i64>().ok()))
+                    })
                     .unwrap_or(0);
                 post.author = text_of(module.pointer("/module_author/name"));
             }
