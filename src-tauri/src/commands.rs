@@ -60,6 +60,9 @@ async fn current_login(client: &BiliClient) -> LoginInfo {
 
 #[tauri::command]
 pub async fn app_status(state: State<'_, AppState>) -> Result<AppStatus, String> {
+    // 启动时预热一次（访问首页拿 buvid3 等风控 Cookie）：字幕、播放地址这些接口
+    // 被 412 挡掉，常见原因就是会话里缺这些 Cookie
+    state.warmup_once().await;
     let client = state.client();
     let login = current_login(&client).await;
     Ok(AppStatus {

@@ -29,6 +29,9 @@ pub struct AppState {
     ffmpeg: Mutex<Option<FfmpegStatus>>,
     /// 批量来源的增量加载缓存，按来源输入索引
     batches: Mutex<HashMap<String, BatchCache>>,
+    /// 会话里是否已经"热过身"（访问过首页、拿到 buvid3 等风控 Cookie）。
+    /// 只做一次：这些 Cookie 是字幕、播放地址这些接口被 412 挡掉的一个常见原因。
+    warmed: std::sync::atomic::AtomicBool,
 }
 
 /// ffmpeg 可用性：`ok` 表示探测通过，`info` 为版本行或失败原因。
@@ -542,6 +545,7 @@ impl AppState {
             counter: Mutex::new(0),
             ffmpeg: Mutex::new(None),
             batches: Mutex::new(HashMap::new()),
+            warmed: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -593,6 +597,18 @@ impl AppState {
 
     fn default_cookies_path() -> PathBuf {
         bili_core::login::default_cookie_path()
+    }
+
+    /// 首次调用时访问一次首页，把 buvid3 之类的风控 Cookie 放进会话（只做一次）。
+    pub async fn warmup_once(&self) {
+        use std::sync::atomic::Ordering;
+        if self.warmed.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let client = self.client();
+        if let Err(e) = client.warmup().await {
+            eprintln!("启动预热失败（不影响使用）: {e}");
+        }
     }
 
     pub fn client(&self) -> Arc<BiliClient> {
