@@ -53,39 +53,39 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --app-bg: #1b1d21;
-  --side-bg: #1f2126;
-  --card: #24262b;
-  --raised: #2a2c32;
+  --app-bg: #0f1011;
+  --side-bg: #141517;
+  --card: #17181a;
+  --raised: #1e2022;
 
-  --line: #35383f;
-  --line-soft: #2c2f35;
+  --line: #282a2d;
+  --line-soft: #202224;
 
-  --text: #e9eaec;
-  --muted: #9ba0a8;
-  --faint: #767b83;
+  --text: #e8e9ea;
+  --muted: #9a9da1;
+  --faint: #71757a;
 
   --accent: #fb7299;
   --accent-dark: #ff86a8;
   --accent-soft: rgba(251, 114, 153, 0.15);
-  --accent-line: #5d424c;
+  --accent-line: #553b45;
 
   --ok: #46c08c;
   --err: #ec6a62;
   --warn: #dda93f;
 
-  --hover: #2e3138;
-  --field: #1e2024;
-  --thumb: #2b2e34;
-  --seg-track: #303339;
-  --seg-idle: #4a4e56;
-  --done-bg: #1d2220;
-  --done-line: #2f4a3b;
-  --fail-bg: #241d1d;
-  --fail-line: #4d3232;
-  --scroll: #3a3d44;
-  --scroll-hover: #474b52;
-  --shade: rgba(8, 9, 11, 0.6);
+  --hover: #212326;
+  --field: #131416;
+  --thumb: #1c1e20;
+  --seg-track: #202225;
+  --seg-idle: #3d4044;
+  --done-bg: #121a16;
+  --done-line: #26443a;
+  --fail-bg: #1c1515;
+  --fail-line: #452c2c;
+  --scroll: #2f3236;
+  --scroll-hover: #3b3f43;
+  --shade: rgba(4, 5, 6, 0.66);
 }
 
 /* 跟随系统：显式 data-theme="system"、以及属性完全缺失时都走这里。
@@ -95,39 +95,39 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
 
-    --app-bg: #1b1d21;
-    --side-bg: #1f2126;
-    --card: #24262b;
-    --raised: #2a2c32;
+    --app-bg: #0f1011;
+    --side-bg: #141517;
+    --card: #17181a;
+    --raised: #1e2022;
 
-    --line: #35383f;
-    --line-soft: #2c2f35;
+    --line: #282a2d;
+    --line-soft: #202224;
 
-    --text: #e9eaec;
-    --muted: #9ba0a8;
-    --faint: #767b83;
+    --text: #e8e9ea;
+    --muted: #9a9da1;
+    --faint: #71757a;
 
     --accent: #fb7299;
     --accent-dark: #ff86a8;
     --accent-soft: rgba(251, 114, 153, 0.15);
-    --accent-line: #5d424c;
+    --accent-line: #553b45;
 
     --ok: #46c08c;
     --err: #ec6a62;
     --warn: #dda93f;
 
-    --hover: #2e3138;
-    --field: #1e2024;
-    --thumb: #2b2e34;
-    --seg-track: #303339;
-    --seg-idle: #4a4e56;
-    --done-bg: #1d2220;
-    --done-line: #2f4a3b;
-    --fail-bg: #241d1d;
-    --fail-line: #4d3232;
-    --scroll: #3a3d44;
-    --scroll-hover: #474b52;
-    --shade: rgba(8, 9, 11, 0.6);
+    --hover: #212326;
+    --field: #131416;
+    --thumb: #1c1e20;
+    --seg-track: #202225;
+    --seg-idle: #3d4044;
+    --done-bg: #121a16;
+    --done-line: #26443a;
+    --fail-bg: #1c1515;
+    --fail-line: #452c2c;
+    --scroll: #2f3236;
+    --scroll-hover: #3b3f43;
+    --shade: rgba(4, 5, 6, 0.66);
   }
 }
 

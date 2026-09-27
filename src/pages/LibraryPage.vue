@@ -89,7 +89,7 @@ h1 {
 }
 
 .ghost:hover {
-  border-color: #ded6da;
+  border-color: var(--line);
   background: var(--raised);
 }
 </style>

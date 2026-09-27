@@ -246,13 +246,13 @@ h2 {
 }
 
 .ghost:hover {
-  border-color: #ded6da;
+  border-color: var(--line);
   background: var(--raised);
 }
 
 .ghost.danger:hover {
   color: var(--err);
-  border-color: #f0cfcc;
-  background: #fdf6f5;
+  border-color: var(--fail-line);
+  background: var(--fail-bg);
 }
 </style>

@@ -205,7 +205,7 @@ function human(bytes) {
 
 .action:hover {
   color: var(--text);
-  border-color: #ded6da;
+  border-color: var(--line);
   background: var(--raised);
 }
 

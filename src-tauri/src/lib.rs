@@ -7,7 +7,7 @@ mod types;
 
 use tauri::{Theme, WebviewUrl, WebviewWindowBuilder};
 
-const BG_DARK: tauri::window::Color = tauri::window::Color(27, 29, 33, 255);
+const BG_DARK: tauri::window::Color = tauri::window::Color(15, 16, 17, 255);
 const BG_LIGHT: tauri::window::Color = tauri::window::Color(245, 243, 244, 255);
 
 pub fn run() {

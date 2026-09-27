@@ -75,7 +75,7 @@ function applyTheme(mode) {
   // system 模式的原生底色由 Rust 启动时按真实系统主题设置，前端不干预；
   // 显式切换时同步，避免边缘露出旧色
   if (mode !== "system") {
-    api.setWindowBackground(mode === "dark" ? "#1b1d21" : "#f5f3f4");
+    api.setWindowBackground(mode === "dark" ? "#0f1011" : "#f5f3f4");
   }
 }
 

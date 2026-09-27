@@ -1414,7 +1414,7 @@ h1 {
 
 .tabs button:hover {
   color: var(--text);
-  border-color: #ded6da;
+  border-color: var(--line);
 }
 
 .tabs button.active {
