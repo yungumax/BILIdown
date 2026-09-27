@@ -1452,7 +1452,10 @@ input:focus {
 .parse-page:not(.fill-height) > .results {
   /* 输入卡不拉伸，所以结果卡吃掉全部剩余高度 */
   flex: 1 1 0;
-  min-height: 160px;
+  /* 下限要装得下卡内固定部分 + 明细框的最小需要：
+     卡片内边距 40 + 标题行 38 + 预设行 38 + 明细框（外边距 12 + 内边距 20 + 小标题 24
+     + 列表下限 30）≈ 202，取 210。之前取 160 时明细框比卡片还高，列表会被卡片边缘切掉 */
+  min-height: 210px;
 }
 
 .parse-page:not(.fill-height) > .results .skipped-box {
