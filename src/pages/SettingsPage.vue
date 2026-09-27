@@ -38,12 +38,14 @@ const activeCategory = computed(() =>
 
 /** 本地草稿：编辑期间不落盘，点「保存」才提交 */
 const draft = ref(null);
+// 命名预设只决定"条目自己叫什么"，**不写目录层级**：层级由「文件夹」页的规则负责。
+// 所以这里一律不含 `/`，也不重复使用文件夹模板里的变量（{owner_name}/{collection_title}）。
 const BUILTIN_PRESETS = [
-  { name: "分P视频", template: "{title}/P{part_index} - {part_title}.{ext}" },
+  { name: "分P视频", template: "P{part_index} - {part_title}.{ext}" },
   { name: "单文件", template: "{title}.{ext}" },
-  { name: "合集/列表", template: "{collection_title}/{index} - {title}.{ext}" },
-  { name: "番剧/课程", template: "{series_title}/第{episode_index}集 - {episode_title}.{ext}" },
-  { name: "直接保存到下载目录", template: "{title}_{quality}.{ext}" },
+  { name: "合集/列表", template: "{index} {title}.{ext}" },
+  { name: "番剧/课程", template: "第{episode_index}集 - {episode_title}.{ext}" },
+  { name: "带清晰度", template: "{title}_{quality}.{ext}" },
 ];
 
 /** 预设名由模板反推：改了模板下拉就跟着变，不会停留在旧预设名上 */
@@ -224,12 +226,29 @@ const pickingVar = ref(false);
 const varPicker = ref(null);
 const templateInput = ref(null);
 
+/** 面板行：每换一个分组插一条分组标题（网格里跨两列） */
+const variableRows = computed(() => {
+  const out = [];
+  let last = "";
+  for (const item of variables.value) {
+    const group = item.group || "通用";
+    if (group !== last) {
+      out.push({ heading: group, key: `h-${group}` });
+      last = group;
+    }
+    out.push(item);
+  }
+  return out;
+});
+
 async function loadVariables() {
   try {
     const list = await api.namingVariables();
     // 显示文本在这里拼好：模板里直接写 `{...}` 会和 Vue 的插值定界符打架
     variables.value = list.map((item) => ({ ...item, text: `{${item.token}}` }));
-  } catch {
+  } catch (error) {
+    // 不静默吞：面板空掉时必须能在控制台看到真实原因
+    console.error("魔法变量加载失败:", error);
     variables.value = [];
   }
 }
@@ -890,8 +909,10 @@ async function open(path) {
                         <span>点击后插入到光标位置</span>
                       </div>
                       <div class="var-grid">
-                        <button
-                          v-for="item in variables"
+                        <template v-for="item in variableRows" :key="item.key">
+                          <p v-if="item.heading" class="var-heading">{{ item.heading }}</p>
+                          <button
+                          v-else
                           :key="item.token"
                           class="var-item"
                           @click="insertToken(item.token)"
@@ -899,6 +920,7 @@ async function open(path) {
                           <code>{{ item.text }}</code>
                           <span>{{ item.label }}</span>
                         </button>
+                      </template>
                       </div>
                     </div>
                   </Transition>
@@ -1012,8 +1034,10 @@ async function open(path) {
                         <span>点击后插入到光标位置</span>
                       </div>
                       <div class="var-grid">
-                        <button
-                          v-for="item in variables"
+                        <template v-for="item in variableRows" :key="item.key">
+                          <p v-if="item.heading" class="var-heading">{{ item.heading }}</p>
+                          <button
+                          v-else
                           :key="item.token"
                           class="var-item"
                           @click="insertToken(item.token, 'folder')"
@@ -1021,6 +1045,7 @@ async function open(path) {
                           <code>{{ item.text }}</code>
                           <span>{{ item.label }}</span>
                         </button>
+                      </template>
                       </div>
                     </div>
                   </Transition>
@@ -1510,8 +1535,20 @@ input::placeholder {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 3px;
-  max-height: 292px;
+  max-height: 320px;
   overflow-y: auto;
+}
+
+/* 分组标题：跨两列，比变量说明更弱一档 */
+.var-heading {
+  grid-column: 1 / -1;
+  margin: 7px 0 1px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.var-heading:first-child {
+  margin-top: 0;
 }
 
 .var-item {
