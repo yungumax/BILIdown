@@ -24,6 +24,7 @@ const categories = [
   { key: "download", label: "下载", hint: "目录、并发与恢复" },
   { key: "media", label: "媒体", hint: "清晰度与封装格式" },
   { key: "naming", label: "文件命名", hint: "模板与重名处理" },
+  { key: "folder", label: "文件夹", hint: "层级与文件夹命名" },
   { key: "encode", label: "编码与处理", hint: "编码、分段与 FFmpeg" },
   { key: "extras", label: "附加内容", hint: "封面、字幕与弹幕" },
   { key: "update", label: "应用更新", hint: "版本检测与安装" },
@@ -162,6 +163,18 @@ function localDate(unixSecs) {
 
 // 预览走后端同一个渲染器：预览里能出什么，落盘就能出什么
 const namingPreview = ref("");
+// 文件夹层级：输入框引用 + 预览 + 弹出面板状态
+const folderInput = ref(null);
+const folderPreview = ref("");
+const pickingFolderVar = ref(false);
+const folderPicker = ref(null);
+
+const FOLDER_PRESETS = [
+  { value: "{owner_name}/{collection_title}", label: "UP → 合集 → 条目（默认）" },
+  { value: "{owner_name}/{source_kind}", label: "UP → 来源类型（图文/音频不混在一起）" },
+  { value: "{owner_name}", label: "只按 UP 分层" },
+  { value: "", label: "不建文件夹（全部平铺）" },
+];
 let previewSeq = 0;
 
 async function refreshPreview() {
@@ -178,10 +191,19 @@ async function refreshPreview() {
   } catch {
     if (seq === previewSeq) namingPreview.value = "";
   }
+
+  const folder = draft.value?.folder_template ?? "";
+  const fseq = ++previewSeq;
+  try {
+    const text = await api.previewNaming(folder, { date: localDate(), dir: true });
+    if (fseq === previewSeq) folderPreview.value = text;
+  } catch {
+    if (fseq === previewSeq) folderPreview.value = "";
+  }
 }
 
 watch(
-  () => [draft.value?.naming_template, draft.value?.container],
+  () => [draft.value?.naming_template, draft.value?.folder_template, draft.value?.container],
   refreshPreview,
   { immediate: true }
 );
@@ -202,18 +224,20 @@ async function loadVariables() {
   }
 }
 
-/** 插到光标处；没有焦点时追加到末尾，插完把光标放到标记之后 */
-function insertToken(token) {
+/** 插到光标处；没有焦点时追加到末尾，插完把光标放到标记之后。
+ *  target 决定写进哪个字段：文件名模板 or 文件夹层级模板。 */
+function insertToken(token, target = "naming") {
   if (!draft.value) return;
   const snippet = `{${token}}`;
-  const el = templateInput.value;
+  const key = target === "folder" ? "folder_template" : "naming_template";
+  const el = target === "folder" ? folderInput.value : templateInput.value;
   if (!el) {
-    draft.value.naming_template = `${draft.value.naming_template ?? ""}${snippet}`;
+    draft.value[key] = `${draft.value[key] ?? ""}${snippet}`;
     return;
   }
   const start = el.selectionStart ?? el.value.length;
   const end = el.selectionEnd ?? start;
-  draft.value.naming_template = el.value.slice(0, start) + snippet + el.value.slice(end);
+  draft.value[key] = el.value.slice(0, start) + snippet + el.value.slice(end);
   nextTick(() => {
     el.focus();
     const caret = start + snippet.length;
@@ -222,12 +246,19 @@ function insertToken(token) {
 }
 
 function onVarDocumentDown(event) {
-  if (!pickingVar.value) return;
-  if (varPicker.value && !varPicker.value.contains(event.target)) pickingVar.value = false;
+  if (pickingVar.value && varPicker.value && !varPicker.value.contains(event.target)) {
+    pickingVar.value = false;
+  }
+  if (pickingFolderVar.value && folderPicker.value && !folderPicker.value.contains(event.target)) {
+    pickingFolderVar.value = false;
+  }
 }
 
 function onVarKeydown(event) {
-  if (event.key === "Escape") pickingVar.value = false;
+  if (event.key === "Escape") {
+    pickingVar.value = false;
+    pickingFolderVar.value = false;
+  }
 }
 
 onMounted(() => {
@@ -909,6 +940,87 @@ async function open(path) {
                       ? "文件名后追加 (1) (2) … 序号，直到不冲突。"
                       : "直接覆盖已存在的同名文件。"
                 }}
+              </p>
+            </div>
+          </div>
+
+          <!-- 文件夹层级 -->
+          <div v-else-if="active === 'folder'" class="fields">
+            <div class="field full">
+              <label>层级预设</label>
+              <select
+                :value="FOLDER_PRESETS.some((p) => p.value === draft.folder_template) ? draft.folder_template : '__custom__'"
+                @change="draft.folder_template = $event.target.value === '__custom__' ? draft.folder_template : $event.target.value"
+              >
+                <option
+                  v-for="preset in FOLDER_PRESETS"
+                  :key="preset.label"
+                  :value="preset.value"
+                >
+                  {{ preset.label }}
+                </option>
+                <option value="__custom__">自定义模板</option>
+              </select>
+            </div>
+
+            <div class="field full">
+              <label>文件夹模板</label>
+              <div class="row-flex">
+                <input ref="folderInput" v-model="draft.folder_template" spellcheck="false" placeholder="留空表示不建文件夹" />
+                <div ref="folderPicker" class="var-picker">
+                  <button
+                    class="ghost"
+                    :class="{ on: pickingFolderVar }"
+                    title="插入变量"
+                    aria-haspopup="menu"
+                    :aria-expanded="pickingFolderVar"
+                    @click="pickingFolderVar = !pickingFolderVar"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M12 5.6v12.8M5.6 12h12.8"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                  </button>
+
+                  <Transition name="picker">
+                    <div v-if="pickingFolderVar" class="var-panel">
+                      <div class="var-head">
+                        <b>魔法变量</b>
+                        <span>点击后插入到光标位置</span>
+                      </div>
+                      <div class="var-grid">
+                        <button
+                          v-for="item in variables"
+                          :key="item.token"
+                          class="var-item"
+                          @click="insertToken(item.token, 'folder')"
+                        >
+                          <code>{{ item.text }}</code>
+                          <span>{{ item.label }}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </Transition>
+                </div>
+              </div>
+              <p class="note">
+                文件夹预览：<b>{{ folderPreview || "（不建文件夹）" }}</b>
+              </p>
+            </div>
+
+            <div class="field full">
+              <label>层级规则</label>
+              <p class="note">
+                解析 UP 链接（投稿 / 合集 / 收藏夹 / 系列 / 图文 / 音频）时按
+                <b>UP → 合集 → 条目</b> 分层：合集名取自来源，没有合集（例如 UP 投稿、图文、音频）时那一层自动消失。
+                单个视频或单条图文/专栏直链不会进 UP 目录，除非模板里写了变量。
+                想区分同一 UP 的不同内容，可在模板里用 <code>{source_kind}</code>（合集 / 收藏夹 / 图文 / 音频 …）。
+                条目自身的文件名仍由「文件命名」决定，最终路径 = 文件夹层级 + 文件名。
               </p>
             </div>
           </div>

@@ -215,25 +215,30 @@ pub async fn preview_names(
                 bvid: item.bvid.clone(),
                 aid: item.naming.aid,
                 cid: item.cid,
-                owner_name: String::new(),
+                owner_name: item.owner.clone(),
                 owner_mid: item.naming.owner_mid,
                 series_title: item.naming.series_title.clone(),
                 episode_index: item.naming.episode_index,
                 episode_title: item.naming.episode_title.clone(),
                 collection_title: item.naming.collection_title.clone(),
+                source_kind: kind_label(&item.kind).to_string(),
                 index: item.naming.index,
                 quality: quality.map(quality_name).unwrap_or_default().to_string(),
                 codec: codec_label.to_string(),
                 date: date.clone().unwrap_or_default(),
                 publish_date: item.naming.publish_date.clone(),
             };
-            // 预告的名字要和真正落盘的一致：音频固定 m4a，图文/专栏是文件夹
-            let path = match item.kind.as_str() {
+            // 预告的名字要和真正落盘的一致：先拼文件夹层级，再按来源类型定文件名/文件夹
+            let leaf = match item.kind.as_str() {
                 "audio" => crate::naming::render(&settings.naming_template, &ctx, "m4a"),
                 "opus" | "article" => crate::naming::render_dir(&settings.naming_template, &ctx),
                 _ => crate::naming::render(&settings.naming_template, &ctx, &ext),
             };
-            path.to_string_lossy().replace('\\', "/")
+            settings
+                .output_folder_template(&ctx)
+                .join(leaf)
+                .to_string_lossy()
+                .replace('\\', "/")
         })
         .collect();
     Ok(names)
@@ -260,15 +265,20 @@ pub async fn preview_naming(
     date: Option<String>,
     publish_date: Option<String>,
     ext: Option<String>,
+    // true = 按「文件夹层级」渲染（不补扩展名、丢掉空壳段落）
+    dir: Option<bool>,
 ) -> Result<String, String> {
     let mut ctx = crate::naming::NamingContext::sample();
     ctx.date = date.unwrap_or_default();
     ctx.publish_date = publish_date.unwrap_or_default();
     let ext = ext.unwrap_or_else(|| state.settings().container_ext().to_string());
+    let path = if dir.unwrap_or(false) {
+        crate::naming::render_dir(&template, &ctx)
+    } else {
+        crate::naming::render(&template, &ctx, &ext)
+    };
     // 用 / 显示，和用户在模板里打的保持一致（Windows 的 PathBuf 会显示成 \）
-    Ok(crate::naming::render(&template, &ctx, &ext)
-        .to_string_lossy()
-        .replace('\\', "/"))
+    Ok(path.to_string_lossy().replace('\\', "/"))
 }
 
 /// 单次加载上限，避免超大来源被一次拉上千条（界面上可以「继续解析」分批拉）。
@@ -1387,6 +1397,22 @@ fn parse_mmss(length: &str) -> u64 {
     seconds
 }
 
+/// 来源类型的中文名：文件夹分层模板里用 `{source_kind}` 时取这个值。
+fn kind_label(kind: &str) -> &'static str {
+    match kind {
+        "fav" => "收藏夹",
+        "collection" => "合集",
+        "series" => "系列",
+        "opus" => "图文",
+        "article" => "专栏",
+        "audio" => "音频",
+        "space" => "UP 空间",
+        "bangumi" => "番剧",
+        "cheese" => "课程",
+        _ => "视频",
+    }
+}
+
 /// 把下载请求 + 本次实际选到的流，拼成命名模板的取值。
 ///
 /// 单独拎出来是为了可测：这里把字段接错（比如 part_index 接了标题）不会报错，
@@ -1409,6 +1435,7 @@ fn naming_context(
         episode_index: req.naming.episode_index,
         episode_title: req.naming.episode_title.clone(),
         collection_title: req.naming.collection_title.clone(),
+        source_kind: kind_label(&req.source).to_string(),
         index: req.naming.index,
         quality: quality.to_string(),
         codec: codec_name(codecs).to_string(),
@@ -1556,7 +1583,9 @@ async fn run_opus_download(
     let post = bili_core::opus::parse_page(&html)?;
 
     let naming = naming_context(req, "", "图文");
-    let folder = output_dir.join(settings.output_folder(&naming));
+    let folder = output_dir
+        .join(settings.output_folder_template(&naming))
+        .join(settings.output_folder(&naming));
     let text_path = folder.join("正文.txt");
 
     // 重名策略与视频一致：跳过 / 自动加序号 / 覆盖
@@ -1642,7 +1671,9 @@ async fn run_audio_download(
 
     // 音频就是 m4a：用固定的扩展名渲染，不跟视频的封装设置走
     let naming = naming_context(req, "", "音频");
-    let out_file = output_dir.join(settings.output_filename_with_ext(&naming, audio_ext(&url)));
+    let out_file = output_dir
+        .join(settings.output_folder_template(&naming))
+        .join(settings.output_filename_with_ext(&naming, audio_ext(&url)));
     if let Some(parent) = out_file.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
@@ -1873,7 +1904,10 @@ async fn run_download(
     // 目标文件：命名模板 + 封装格式 + 重名处理
     // 模板里的 `/` 会成为子目录，所以还要把中间目录建出来
     let naming = naming_context(req, &video.codecs, quality_name(video.id));    tokio::fs::create_dir_all(&output_dir).await?;
-    let out_file = output_dir.join(settings.output_filename(&naming));
+    // 目录 = 文件夹层级（UP/合集…）+ 文件名模板；层级模板为空时前缀为空路径
+    let out_file = output_dir
+        .join(settings.output_folder_template(&naming))
+        .join(settings.output_filename(&naming));
     if let Some(parent) = out_file.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }

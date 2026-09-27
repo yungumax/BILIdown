@@ -20,6 +20,7 @@ pub const VARIABLES: &[(&str, &str)] = &[
     ("episode_index", "集序号"),
     ("episode_title", "集标题"),
     ("collection_title", "合集名"),
+    ("source_kind", "来源类型（合集/收藏夹/系列/UP 空间/图文/音频/番剧/课程/视频）"),
     ("index", "列表序号"),
     ("quality", "清晰度"),
     ("codec", "编码"),
@@ -44,6 +45,8 @@ pub struct NamingContext {
     pub episode_index: u32,
     pub episode_title: String,
     pub collection_title: String,
+    /// 来源类型的中文名：文件夹分层常用（例如 {owner_name}/{source_kind}）
+    pub source_kind: String,
     pub index: u32,
     pub quality: String,
     pub codec: String,
@@ -68,6 +71,7 @@ impl NamingContext {
             episode_index: 3,
             episode_title: "第 3 集".to_string(),
             collection_title: "示例合集".to_string(),
+            source_kind: "合集".to_string(),
             index: 7,
             quality: "1080P60".to_string(),
             codec: "AVC".to_string(),
@@ -93,6 +97,7 @@ impl NamingContext {
             "episode_index" => sequence(self.episode_index),
             "episode_title" => self.episode_title.clone(),
             "collection_title" => self.collection_title.clone(),
+            "source_kind" => self.source_kind.clone(),
             "index" => sequence(self.index),
             "quality" => self.quality.clone(),
             "codec" => self.codec.clone(),
@@ -109,16 +114,7 @@ impl NamingContext {
 /// - 模板里写了 `{ext}` 就用模板的位置，没写则给最后一段补上扩展名
 /// - 未知标记原样保留；已知但为空的值直接消失；空段与 `.` `..` 丢弃
 pub fn render(template: &str, ctx: &NamingContext, ext: &str) -> PathBuf {
-    let mut used_ext = false;
-    let mut segments: Vec<String> = Vec::new();
-
-    for raw in template.split(['/', '\\']) {
-        let (text, had_ext) = substitute(raw, ctx, ext);
-        used_ext |= had_ext;
-        if let Some(segment) = sanitize_segment(&text) {
-            segments.push(segment);
-        }
-    }
+    let (mut segments, used_ext) = render_segments(template, ctx, ext);
 
     if !used_ext {
         match segments.last_mut() {
@@ -157,22 +153,34 @@ pub fn render(template: &str, ctx: &NamingContext, ext: &str) -> PathBuf {
 
 /// 目录名：图文这类"一个条目一个文件夹"的输出用它。
 ///
-/// 和文件名的区别只是不补扩展名——`render` 在没用到 `{ext}` 时会补上
-/// `.` + ext，这里传空扩展名会留下一个尾巴点，去掉即可。
+/// 把模板渲染成段落列表（拆 `/`、替换标记、清理非法字符），并报告是否用到 `{ext}`。
+fn render_segments(template: &str, ctx: &NamingContext, ext: &str) -> (Vec<String>, bool) {
+    let mut used_ext = false;
+    let mut segments: Vec<String> = Vec::new();
+    for raw in template.split(['/', '\\']) {
+        let (text, had_ext) = substitute(raw, ctx, ext);
+        used_ext |= had_ext;
+        if let Some(segment) = sanitize_segment(&text) {
+            segments.push(segment);
+        }
+    }
+    (segments, used_ext)
+}
+
+/// 目录名：图文条目文件夹与「文件夹层级」都用它。
+///
+/// 与 [`render`] 的区别：不补扩展名，且**变量全空时返回空路径**而不是兜底成
+/// `video` —— 文件夹层级本来就允许整层消失（例如单个视频没有合集这一层）。
 pub fn render_dir(template: &str, ctx: &NamingContext) -> PathBuf {
-    let path = render(template, ctx, "");
+    let (segments, _) = render_segments(template, ctx, "");
     let mut trimmed = PathBuf::new();
-    for segment in path.components() {
-        let text = segment.as_os_str().to_string_lossy().to_string();
-        let text = text.trim_end_matches('.').trim().to_string();
+    for segment in segments {
+        let text = segment.trim_end_matches('.').trim().to_string();
         // 图文没有"分集"，像 `P{part_index} - {part_title}` 这种只依赖分集的段落
         // 会替换成 "P - "，这种空壳段落直接丢掉，别生成 `标题/P - /`
         if !text.is_empty() && has_content(&text) {
             trimmed.push(text);
         }
-    }
-    if trimmed.as_os_str().is_empty() {
-        trimmed.push("图文");
     }
     trimmed
 }
@@ -261,6 +269,7 @@ mod tests {
             episode_index: 3,
             episode_title: "第三集".to_string(),
             collection_title: "合集".to_string(),
+            source_kind: "合集".to_string(),
             index: 7,
             quality: "1080P60".to_string(),
             codec: "AVC".to_string(),
@@ -365,6 +374,31 @@ mod tests {
     }
 
     #[test]
+    fn folder_template_layers_by_up_and_collection() {
+        let c = ctx();
+        // UP → 合集：两层都在
+        assert_eq!(
+            render_dir("{owner_name}/{collection_title}", &c),
+            PathBuf::from("UP主/合集")
+        );
+        // 不是 UP 来源（owner 与合集都为空）时整层消失，而不是兜底出假目录
+        let single = NamingContext {
+            owner_name: String::new(),
+            collection_title: String::new(),
+            ..ctx()
+        };
+        assert_eq!(
+            render_dir("{owner_name}/{collection_title}", &single),
+            PathBuf::from("")
+        );
+        // 也可以用来源类型分层，避免同一 UP 的图文与视频撞目录
+        assert_eq!(
+            render_dir("{owner_name}/{source_kind}", &c),
+            PathBuf::from("UP主/合集")
+        );
+    }
+
+    #[test]
     fn render_dir_drops_extension() {
         let ctx = NamingContext {
             title: "两天在读".to_string(),
@@ -382,10 +416,9 @@ mod tests {
             render_dir("{title}/P{part_index} - {part_title}.{ext}", &ctx),
             PathBuf::from("两天在读")
         );
-        // 变量全空时也不能产出空目录名或带尾巴点的名字
-        let fallback = render_dir("{bvid}", &NamingContext::default());
-        assert!(!fallback.as_os_str().is_empty());
-        assert!(!fallback.to_string_lossy().ends_with('.'));
+        // 变量全空就是不建层级（返回空路径），且不会留下尾巴点
+        assert!(render_dir("{bvid}", &NamingContext::default()).as_os_str().is_empty());
+        assert!(!render_dir("{title}.", &ctx).to_string_lossy().ends_with('.'));
     }
 
     #[test]

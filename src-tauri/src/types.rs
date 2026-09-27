@@ -286,6 +286,9 @@ pub struct ProbeMore {
 #[derive(Debug, Clone, Deserialize)]
 pub struct NamingPreviewItem {
     pub title: String,
+    /// 条目的 UP 主名（文件夹层级模板里的 {owner_name} 用它）
+    #[serde(default)]
+    pub owner: String,
     #[serde(default)]
     pub bvid: String,
     #[serde(default)]

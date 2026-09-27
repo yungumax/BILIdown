@@ -84,6 +84,10 @@ pub struct BatchCache {
     pub best_quality: u32,
 }
 
+/// 文件夹层级的默认模板：UP → 合集 →（条目自身）。
+/// 不是 UP 来源（例如单个视频直链）时 owner_name 为空，整层自然消失。
+pub const DEFAULT_FOLDER_TEMPLATE: &str = "{owner_name}/{collection_title}";
+
 /// 缓存条目上限：同一来源边看边拉时只会有几条，超了丢最早的一条。
 const MAX_BATCH_CACHE: usize = 8;
 
@@ -111,6 +115,9 @@ pub struct NamingPreset {
 #[serde(default)]
 pub struct Settings {
     pub output_dir: PathBuf,
+    /// 文件夹层级模板：用 `/` 分层，为空表示不建层级。
+    /// 默认按"UP → 合集"分层（不是 UP 来源时那一层自然消失）。
+    pub folder_template: String,
     /// 同时下载的任务数上限
     pub max_concurrent_tasks: usize,
     /// 单个任务的分片并发数
@@ -187,6 +194,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             output_dir: bili_core::login::default_cookie_path().with_file_name("downloads"),
+            folder_template: DEFAULT_FOLDER_TEMPLATE.to_string(),
             max_concurrent_tasks: DEFAULT_MAX_CONCURRENT_TASKS,
             chunk_concurrency: 4,
             chunk_mb: 4,
@@ -295,6 +303,10 @@ impl Settings {
         if self.naming_template.trim().is_empty() {
             self.naming_template = "{title}".to_string();
         }
+        self.folder_template = self.folder_template.trim().to_string();
+        if self.folder_template.chars().count() > 300 {
+            self.folder_template = self.folder_template.chars().take(300).collect();
+        }
         self.naming_presets.truncate(50);
         for preset in &mut self.naming_presets {
             preset.name = preset.name.trim().to_string();
@@ -373,6 +385,14 @@ impl Settings {
         }
     }
 
+    /// 文件夹层级：把 folder_template 渲染成目录前缀；模板为空表示不建层级。
+    pub fn output_folder_template(&self, ctx: &crate::naming::NamingContext) -> PathBuf {
+        if self.folder_template.trim().is_empty() {
+            return PathBuf::new();
+        }
+        crate::naming::render_dir(&self.folder_template, ctx)
+    }
+
     /// 按命名模板渲染输出文件名（不含目录）。
     /// 按命名模板渲染输出相对路径（可含子目录）。
     ///
@@ -391,8 +411,14 @@ impl Settings {
     }
 
     /// 按命名模板渲染输出目录（图文这类"一条目一文件夹"用它）。
+    /// 条目文件夹不能为空，所以这里保留兜底名。
     pub fn output_folder(&self, ctx: &crate::naming::NamingContext) -> PathBuf {
-        crate::naming::render_dir(&self.naming_template, ctx)
+        let path = crate::naming::render_dir(&self.naming_template, ctx);
+        if path.as_os_str().is_empty() {
+            PathBuf::from("图文")
+        } else {
+            path
+        }
     }
 
     /// 日志目录：自定义数据目录优先，否则用默认数据目录。

@@ -566,6 +566,7 @@ async function refreshNames() {
     const names = await api.previewNames(
       rows.map((row) => ({
         title: row.title,
+        owner: row.owner || row.source.probe.owner || "",
         bvid: row.entry ? row.entry.bvid : row.source.probe.bvid,
         cid: row.entry ? row.entry.cid : row.source.probe.cid,
         kind: row.source.probe.kind,
@@ -843,6 +844,7 @@ function singleNaming(probe) {
     episode_index: 0,
     episode_title: "",
     collection_title: "",
+    source_kind: KIND_LABELS[probe.kind] ?? "视频",
     index: 0,
     date: localDate(),
     publish_date: localDate(probe.pubdate),
@@ -861,6 +863,7 @@ function batchNaming(batch, entry, position) {
     episode_index: episode ? position : 0,
     episode_title: episode ? entry.title : "",
     collection_title: episode ? "" : batch.title,
+    source_kind: KIND_LABELS[batch.kind] ?? "视频",
     index: position,
     date: localDate(),
     publish_date: "",

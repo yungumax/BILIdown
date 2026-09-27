@@ -106,9 +106,9 @@ export async function previewNames(items, quality, date, ext) {
 }
 
 // 文件名预览走后端同一个渲染器，预览与真实落盘不会不一致。
-export async function previewNaming(template, { date, publish_date, ext } = {}) {
+export async function previewNaming(template, { date, publish_date, ext, dir } = {}) {
   if (!hasTauri) return mock.previewNaming(template, ext);
-  return invoke("preview_naming", { template, date, publish_date, ext });
+  return invoke("preview_naming", { template, date, publish_date, ext, dir });
 }
 
 export async function cleanupTemp() {
