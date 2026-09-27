@@ -290,6 +290,9 @@ pub struct NamingPreviewItem {
     pub bvid: String,
     #[serde(default)]
     pub cid: u64,
+    /// 来源类型：音频固定 m4a，图文/专栏是文件夹（不给扩展名），其余按封装设置
+    #[serde(default)]
+    pub kind: String,
     #[serde(default)]
     pub naming: NamingMeta,
 }

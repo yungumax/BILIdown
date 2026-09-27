@@ -568,6 +568,7 @@ async function refreshNames() {
         title: row.title,
         bvid: row.entry ? row.entry.bvid : row.source.probe.bvid,
         cid: row.entry ? row.entry.cid : row.source.probe.cid,
+        kind: row.source.probe.kind,
         naming: row.entry
           ? batchNaming(row.source.probe, row.entry, row.abs)
           : singleNaming(row.source.probe),

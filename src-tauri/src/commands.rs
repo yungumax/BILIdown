@@ -227,9 +227,13 @@ pub async fn preview_names(
                 date: date.clone().unwrap_or_default(),
                 publish_date: item.naming.publish_date.clone(),
             };
-            crate::naming::render(&settings.naming_template, &ctx, &ext)
-                .to_string_lossy()
-                .replace('\\', "/")
+            // 预告的名字要和真正落盘的一致：音频固定 m4a，图文/专栏是文件夹
+            let path = match item.kind.as_str() {
+                "audio" => crate::naming::render(&settings.naming_template, &ctx, "m4a"),
+                "opus" | "article" => crate::naming::render_dir(&settings.naming_template, &ctx),
+                _ => crate::naming::render(&settings.naming_template, &ctx, &ext),
+            };
+            path.to_string_lossy().replace('\\', "/")
         })
         .collect();
     Ok(names)
