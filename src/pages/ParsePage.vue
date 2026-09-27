@@ -527,6 +527,8 @@ const tableRows = computed(() => {
     const total = source.probe.total || 0;
     const absOf = (position) => {
       const absolute = fromIndex + position;
+      // 图文/专栏没有总数可锚：用"从头数的固定位置"，冻结且与预览一致
+      if (source.probe.kind === "opus" || source.probe.kind === "article") return absolute;
       if (!reversed) return absolute;
       if (total > 0) return Math.max(total - absolute + 1, 1);
       return Math.max(count - position, 1);
@@ -912,9 +914,10 @@ function batchNaming(batch, entry, position) {
     tz_offset_min: -new Date().getTimezoneOffset(),
     // 序号由表格按"由旧到新"算好后传进来（row.abs），这里不再倒第二次。
     // 单条图文/专栏没有批次上下文，不给编号。
-    // 图文/专栏的编号：后端在下载时用发布日期覆盖成 YYYYMMDD（列表接口不给日期）。
-    // 这里先按批次给出，万一覆盖没生效也不会比之前更差。
-    index: (batch.kind === "opus" || batch.kind === "article") && batch.items.length <= 1 ? 0 : position,
+    // 图文/专栏：编号 = 在来源里的固定位置（从最新那头数，1 起）。
+    // 列表只会在末尾追加，已加载条目的位置永远不变 —— 所以编号冻结、不会漂移，
+    // 而且预览与落盘用的是同一个值（图文接口不给总数，没法像其它来源那样换算成"由旧到新"）。
+    index: position,
     date: localDate(),
     publish_date: "",
   };

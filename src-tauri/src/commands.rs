@@ -1601,20 +1601,9 @@ async fn run_opus_download(
         .await?;
     let post = bili_core::opus::parse_page(&html)?;
 
-    let mut naming = naming_context(req, "", "图文");
-    // 图文/专栏的编号用发布日期编码成定宽数字（YYYYMMDD）：
-    // 列表接口不给日期、也不给总数（算不出名次），而日期只取决于这条内容自己，
-    // 分批加载多少次都不会变。拿不到日期就不编号，绝不用会漂移的批内序号。
-    let day = crate::naming::compact_date(post.pub_ts, req.naming.tz_offset_min as i64);
-    settings.log(
-        "debug",
-        &format!(
-            "图文编号：pub_ts={} tz={} 日期编号={} 模板index原值={}",
-            post.pub_ts, req.naming.tz_offset_min, day, req.naming.index
-        ),
-    );
-    naming.index = if day > 0 { day as u32 } else { 0 };
-    naming.index_pad = 8;
+    // 编号由前端统一给出（图文用"来源内固定位置"，冻结不漂移），
+    // 这里不再用发布日期覆盖 —— 预览与落盘必须是同一个值。
+    let naming = naming_context(req, "", "图文");
     let folder = output_dir
         .join(settings.output_folder_template(&naming))
         .join(settings.output_folder(&naming));
