@@ -20,6 +20,7 @@ const PICK = [
   ["check", "check"], ["clipboard", "clipboard-text"], ["edit", "edit"], ["plus", "plus"],
   ["minus", "minus"], ["close", "close"], ["maximize", "maximize"], ["microphone", "microphone"],
   ["user", "user-check"], ["clock", "clock"], ["ruler", "ruler"], ["scan", "scan"],
+  ["search", "search"], ["lock", "lock"],
 ];
 
 const resp = await fetch(API, {
