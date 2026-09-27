@@ -133,6 +133,10 @@ pub struct Settings {
     /// 用户保存的命名模板预设（同名覆盖）
     #[serde(default)]
     pub naming_presets: Vec<NamingPreset>,
+    /// 用户保存的文件夹模板预设（同名覆盖）。
+    /// 模板允许为空——"不建文件夹"本身就是一个正当的预设。
+    #[serde(default)]
+    pub folder_presets: Vec<NamingPreset>,
     /// 重名处理：skip=跳过任务 / overwrite=覆盖 / auto=自动加序号
     pub rename_conflict: String,
     /// 封装格式：mp4 / mkv
@@ -202,6 +206,7 @@ impl Default for Settings {
             naming: "title".to_string(),
             naming_template: "{title}".to_string(),
             naming_presets: Vec::new(),
+            folder_presets: Vec::new(),
             rename_conflict: "skip".to_string(),
             container: "mp4".to_string(),
             codec_pref: "auto".to_string(),
@@ -314,6 +319,14 @@ impl Settings {
         }
         self.naming_presets
             .retain(|preset| !preset.name.is_empty() && !preset.template.is_empty());
+        // 文件夹预设和命名预设差在一点：空模板是合法的（= 不建文件夹），
+        // 所以只按名字过滤，别把"不建文件夹"这个预设吞掉
+        self.folder_presets.truncate(50);
+        for preset in &mut self.folder_presets {
+            preset.name = preset.name.trim().to_string();
+            preset.template = preset.template.trim().to_string();
+        }
+        self.folder_presets.retain(|preset| !preset.name.is_empty());
         if !matches!(self.rename_conflict.as_str(), "skip" | "overwrite" | "auto") {
             self.rename_conflict = "skip".to_string();
         }
@@ -628,5 +641,37 @@ impl AppState {
 
     pub fn cookies_path(&self) -> PathBuf {
         Self::default_cookies_path()
+    }
+}
+
+#[cfg(test)]
+mod preset_tests {
+    use super::*;
+
+    /// 命名预设和文件夹预设过滤规则不同：命名模板是文件名，空模板没有意义；
+    /// 文件夹模板空着恰恰是"不建文件夹"，是个正当的预设。曾经共用一个 retain
+    /// 会把这类预设悄悄吞掉。
+    #[test]
+    fn folder_presets_may_be_empty_but_naming_presets_may_not() {
+        let mut settings = Settings::default();
+        settings.naming_presets = vec![
+            NamingPreset { name: "空模板".into(), template: "   ".into() },
+            NamingPreset { name: "  ".into(), template: "{title}.{ext}".into() },
+            NamingPreset { name: "留下".into(), template: "{title}.{ext}".into() },
+        ];
+        settings.folder_presets = vec![
+            NamingPreset { name: "不建文件夹".into(), template: String::new() },
+            NamingPreset { name: "  ".into(), template: "{owner_name}".into() },
+            NamingPreset { name: "留下".into(), template: " {owner_name} ".into() },
+        ];
+
+        settings.clamp();
+
+        assert_eq!(settings.naming_presets.len(), 1, "空模板的命名预设应当被丢掉");
+        assert_eq!(settings.naming_presets[0].name, "留下");
+        assert_eq!(settings.folder_presets.len(), 2, "空模板的文件夹预设要留下");
+        assert_eq!(settings.folder_presets[0].name, "不建文件夹");
+        assert_eq!(settings.folder_presets[0].template, "");
+        assert_eq!(settings.folder_presets[1].template, "{owner_name}", "两端空白要清掉");
     }
 }

@@ -40,23 +40,28 @@ const activeCategory = computed(() =>
 const draft = ref(null);
 // 命名预设只决定"条目自己叫什么"，**不写目录层级**：层级由「文件夹」页的规则负责。
 // 所以这里一律不含 `/`，也不重复使用文件夹模板里的变量（{owner_name}/{collection_title}）。
+// 每个预设对应**一种来源形状**，多了就是重复：
+// 单条（{title}）／多P（分P）／批量列表（序号）／番剧课程（集）。
+// 想在自己的文件里再挂点别的（比如 {quality}），存成"我的预设"即可。
 const BUILTIN_PRESETS = [
-  { name: "分P视频", template: "P{part_index} - {part_title}.{ext}" },
   { name: "单文件", template: "{title}.{ext}" },
+  { name: "分P视频", template: "P{part_index} - {part_title}.{ext}" },
   { name: "合集/列表", template: "{index} {title}.{ext}" },
   { name: "番剧/课程", template: "第{episode_index}集 - {episode_title}.{ext}" },
-  { name: "带清晰度", template: "{title}_{quality}.{ext}" },
 ];
 
-/** 预设名由模板反推：改了模板下拉就跟着变，不会停留在旧预设名上 */
+/** 预设名由模板反推：改了模板下拉就跟着变，不会停留在旧预设名上。
+ *  自己的预设排在前面——刚存完要能在下拉里看见自己起的名字，
+ *  哪怕模板和内置信一模一样（模板相同，叫什么由用户说了算）。 */
 const selectedPreset = computed(() => {
   const template = draft.value?.naming_template ?? "";
-  const builtin = BUILTIN_PRESETS.find((preset) => preset.template === template);
-  if (builtin) return builtin.name;
   const saved = (draft.value?.naming_presets ?? []).find((preset) => preset.template === template);
-  return saved ? saved.name : "";
+  if (saved) return saved.name;
+  const builtin = BUILTIN_PRESETS.find((preset) => preset.template === template);
+  return builtin ? builtin.name : "";
 });
 const presetName = ref("");
+const folderPresetName = ref("");
 
 const proxyDraft = ref("");
 const ffmpegDraft = ref("");
@@ -182,10 +187,10 @@ const overlapVars = computed(() => {
 });
 
 const FOLDER_PRESETS = [
-  { value: "{owner_name}/{collection_title}", label: "UP → 合集 → 条目（默认）" },
-  { value: "{owner_name}/{source_kind}", label: "UP → 来源类型（图文/音频不混在一起）" },
-  { value: "{owner_name}", label: "只按 UP 分层" },
-  { value: "", label: "不建文件夹（全部平铺）" },
+  { name: "UP → 合集 → 条目（默认）", template: "{owner_name}/{collection_title}" },
+  { name: "UP → 来源类型（图文/音频不混在一起）", template: "{owner_name}/{source_kind}" },
+  { name: "只按 UP 分层", template: "{owner_name}" },
+  { name: "不建文件夹（全部平铺）", template: "" },
 ];
 let previewSeq = 0;
 
@@ -358,6 +363,46 @@ function selectPreset(name) {
   }
   const saved = draft.value.naming_presets?.find((preset) => preset.name === name);
   if (saved) draft.value.naming_template = saved.template;
+}
+
+/** 文件夹页的预设名同样由模板反推，「自定义模板」就是没有预设对得上的时候。
+ *  自己的预设优先，理由同命名预设。 */
+const selectedFolderPreset = computed(() => {
+  const template = draft.value?.folder_template ?? "";
+  const saved = (draft.value?.folder_presets ?? []).find((preset) => preset.template === template);
+  if (saved) return saved.name;
+  const builtin = FOLDER_PRESETS.find((preset) => preset.template === template);
+  return builtin ? builtin.name : "";
+});
+
+function selectFolderPreset(name) {
+  if (!name || !draft.value) return;
+  const builtin = FOLDER_PRESETS.find((preset) => preset.name === name);
+  if (builtin) {
+    draft.value.folder_template = builtin.template;
+    return;
+  }
+  const saved = draft.value.folder_presets?.find((preset) => preset.name === name);
+  if (saved) draft.value.folder_template = saved.template;
+}
+
+/** 保存文件夹预设：和命名预设同一套做法，只是模板可以是空的（不建文件夹） */
+function saveFolderPreset() {
+  const name = folderPresetName.value.trim();
+  if (!name || !draft.value) {
+    emit("toast", "先填写预设名称，再保存为预设");
+    return;
+  }
+  const presets = [...(draft.value.folder_presets ?? [])];
+  const existing = presets.findIndex((preset) => preset.name === name);
+  if (existing >= 0) {
+    presets[existing] = { name, template: draft.value.folder_template };
+  } else {
+    presets.push({ name, template: draft.value.folder_template });
+  }
+  draft.value.folder_presets = presets;
+  folderPresetName.value = "";
+  emit("toast", `预设「${name}」已加入，点上方「保存」生效`);
 }
 
 /** 保存为预设：同名更新模板，随设置一起落盘 */
@@ -987,18 +1032,22 @@ async function open(path) {
           <div v-else-if="active === 'folder'" class="fields">
             <div class="field full">
               <label>层级预设</label>
-              <select
-                :value="FOLDER_PRESETS.some((p) => p.value === draft.folder_template) ? draft.folder_template : '__custom__'"
-                @change="draft.folder_template = $event.target.value === '__custom__' ? draft.folder_template : $event.target.value"
-              >
-                <option
-                  v-for="preset in FOLDER_PRESETS"
-                  :key="preset.label"
-                  :value="preset.value"
-                >
-                  {{ preset.label }}
-                </option>
-                <option value="__custom__">自定义模板</option>
+              <select :value="selectedFolderPreset" @change="selectFolderPreset($event.target.value)">
+                <option value="">自定义模板</option>
+                <optgroup label="内置">
+                  <option v-for="preset in FOLDER_PRESETS" :key="preset.name" :value="preset.name">
+                    {{ preset.name }}
+                  </option>
+                </optgroup>
+                <optgroup v-if="draft.folder_presets?.length" label="我的预设">
+                  <option
+                    v-for="preset in draft.folder_presets"
+                    :key="preset.name"
+                    :value="preset.name"
+                  >
+                    {{ preset.name }}
+                  </option>
+                </optgroup>
               </select>
             </div>
 
@@ -1053,6 +1102,35 @@ async function open(path) {
               </div>
               <p class="note">
                 文件夹预览：<b>{{ folderPreview || "（不建文件夹）" }}</b>
+              </p>
+            </div>
+
+            <div class="field full">
+              <label>预设名称</label>
+              <div class="row-flex">
+                <input
+                  v-model="folderPresetName"
+                  spellcheck="false"
+                  placeholder="例如：按来源分目录"
+                  @keydown.enter="saveFolderPreset"
+                />
+                <button class="ghost" @click="saveFolderPreset">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M6.4 5.4h9.2l3 3v10.2H6.4zM9.4 5.4v3.6h5.2"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.6"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  保存为预设
+                </button>
+              </div>
+              <p class="note">
+                同名预设会更新模板。预设随设置一起保存（点上方「保存」生效），下次可直接选用；
+                模板留空也能存——"不建文件夹"就是个正当的预设。
               </p>
             </div>
 

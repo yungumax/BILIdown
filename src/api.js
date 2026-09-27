@@ -234,6 +234,9 @@ const mock = (() => {
       naming_presets: [
         { name: "示例收藏命名", template: "{title}_{bvid}" },
       ],
+      folder_presets: [
+        { name: "示例：按来源分目录", template: "{owner_name}/{source_kind}" },
+      ],
       rename_conflict: "skip",
       container: "mp4",
       codec_pref: "auto",
