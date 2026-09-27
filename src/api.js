@@ -38,6 +38,13 @@ export async function probeMore(input, want) {
   return invoke("probe_more", { input, want });
 }
 
+// 按序号加载：从第 from 条开始重新取一批。超过单次上限的来源靠它分批拉完，
+// 两批互不重叠（1–300、301–600……），因此不会重复下载。
+export async function probeRange(input, from) {
+  if (!hasTauri) return mock.probeRange(input, from);
+  return invoke("probe_range", { input, from });
+}
+
 export async function startDownload(req) {
   if (!hasTauri) return mock.start(req);
   return invoke("start_download", { req });
@@ -458,11 +465,28 @@ const mock = (() => {
     };
   };
 
+  // 预览用：按序号加载从这一条切一段（真值由后端的 probe_range 决定）
+  const probeRange = async (input, from) => {
+    const base = await probe(input);
+    const all = base.items || [];
+    const start = Math.max(0, Math.min(from - 1, all.length));
+    const items = all.slice(start, start + 300);
+    moreState.set(input, start + items.length);
+    return {
+      ...base,
+      items,
+      loaded: items.length,
+      total: all.length,
+      from_index: start + 1,
+      exhausted: start + items.length >= all.length,
+      note: "",
+    };
+  };
+
   const onUpdate = async (handler) => {
     listeners.add(handler);
     return () => listeners.delete(handler);
   };
-
   // 仅浏览器预览用的兜底：真值在 Rust 的 naming::VARIABLES，
   // 桌面端一律走 naming_variables 命令，这份副本只影响脱离桌面壳的预览。
   const VARIABLES = [
@@ -564,5 +588,6 @@ const mock = (() => {
     namingVariables,
     previewNaming,
     probeMore,
+    probeRange,
   };
 })();

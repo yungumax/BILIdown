@@ -91,6 +91,17 @@ pub async fn probe_more(
     probe_more_one(&client, &state, &input, want).await
 }
 
+/// 按序号加载：从第 `from` 条开始重新取一批，用于超过单次上限的来源分批下载。
+#[tauri::command]
+pub async fn probe_range(
+    state: State<'_, AppState>,
+    input: String,
+    from: usize,
+) -> Result<ProbeSource, String> {
+    let client = state.client();
+    probe_range_one(&client, &state, &input, from).await
+}
+
 /// 设置页数据：可编辑项加运行环境信息。
 #[tauri::command]
 pub async fn app_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
@@ -270,12 +281,29 @@ fn source_page_size(target: BatchTarget) -> usize {
     }
 }
 
-fn source_cap(kind: &str) -> usize {
+/// 单次解析上限：设置里填了就用它，否则按来源类型给默认值。
+fn source_cap(kind: &str, override_cap: usize) -> usize {
+    if override_cap > 0 {
+        return override_cap;
+    }
     match kind {
         "fav" => FAV_MAX_ITEMS,
         "collection" => COLLECTION_MAX_ITEMS,
         _ => SPACE_MAX_ITEMS,
     }
+}
+
+/// 按序号加载：算出要拉的页码与页内偏移（序号从 1 起）。
+///
+/// 例：UP 空间每页 30 条，从第 301 条开始 → 第 11 页、页内偏移 0；
+/// 从第 305 条开始 → 第 11 页、偏移 4。
+fn range_slice(from: usize, page_size: usize) -> (u32, usize) {
+    let from = from.max(1);
+    let page_size = page_size.max(1);
+    (
+        ((from - 1) / page_size) as u32 + 1,
+        (from - 1) % page_size,
+    )
 }
 
 /// 批量来源的加载说明。
@@ -426,11 +454,14 @@ async fn fetch_batch_page(
 }
 
 /// 解析批量来源：拉第一页建缓存，顺带探一次可用清晰度/音轨。
+///
+/// `cap` 是这一批的单次上限快照，之后改设置不影响已经打开的清单。
 async fn start_batch(
     client: &BiliClient,
     target: BatchTarget,
     meta: BatchMeta,
     items: Vec<BatchVideo>,
+    cap: usize,
 ) -> Result<BatchCache, String> {
     if items.is_empty() {
         return Err(match meta.kind.as_str() {
@@ -462,6 +493,8 @@ async fn start_batch(
         owner: meta.owner,
         total: meta.total,
         items,
+        from_index: 1,
+        cap,
         next_page: 2,
         exhausted,
         qualities,
@@ -477,7 +510,7 @@ async fn extend_batch(
     cache: &mut BatchCache,
     want: usize,
 ) -> Result<(), String> {
-    let cap = source_cap(&cache.kind);
+    let cap = cache.cap;
     let before = cache.items.len();
     while cache.items.len() - before < want && !cache.exhausted {
         if cache.items.len() >= cap {
@@ -516,13 +549,7 @@ fn batch_to_source(cache: &BatchCache) -> ProbeSource {
         title: cache.title.clone(),
         owner: cache.owner.clone(),
         cover: String::new(),
-        note: load_note(
-            label,
-            cache.total,
-            loaded,
-            source_cap(&cache.kind),
-            cache.exhausted,
-        ),
+        note: load_note(label, cache.total, loaded, cache.cap, cache.exhausted),
         bvid: String::new(),
         cid: 0,
         aid: 0,
@@ -534,6 +561,7 @@ fn batch_to_source(cache: &BatchCache) -> ProbeSource {
         duration: 0,
         page_count: 1,
         total: cache.total,
+        from_index: cache.from_index,
         loaded,
         exhausted: cache.exhausted,
         qualities: cache.qualities.clone(),
@@ -677,7 +705,77 @@ async fn finish_batch(
     meta: BatchMeta,
     items: Vec<BatchVideo>,
 ) -> Result<ProbeSource, String> {
-    let cache = start_batch(client, target, meta, items).await?;
+    let cap = source_cap(&meta.kind, state.settings().parse_cap);
+    let cache = start_batch(client, target, meta, items, cap).await?;
+    let source = batch_to_source(&cache);
+    state.put_batch(key.to_string(), cache);
+    Ok(source)
+}
+
+/// 按序号加载：把这个来源的第 `from` 条起的一批（到单次上限为止）取出来。
+///
+/// 超过单次上限的来源用它可以分几次拉完，而且两批互不重叠：
+/// 1337 条投稿、上限 300 时，第一次 1–300、第二次 301–600……
+/// 配合默认的「重名跳过」策略，重复下载也不会产生副本。
+async fn probe_range_one(
+    client: &BiliClient,
+    state: &AppState,
+    input: &str,
+    from: usize,
+) -> Result<ProbeSource, String> {
+    let key = input.trim();
+    if key.is_empty() {
+        return Err("来源为空".to_string());
+    }
+
+    let resolved = if is_short_link(key) {
+        client.resolve_redirect(key).await.map_err(describe)?
+    } else {
+        key.to_string()
+    };
+    let target = parse_target(&resolved).map_err(describe)?;
+    // 只有分页类来源能按序号取；番剧/课程一次给全，用不着分批
+    let target = match target {
+        Target::FavList(fid) => BatchTarget::Fav(fid),
+        Target::Collection { mid, sid } => BatchTarget::Collection { mid, sid },
+        Target::Space(mid) => BatchTarget::Space(mid),
+        _ => return Err("这个来源一次就能全部拿到，不需要按序号分批解析".to_string()),
+    };
+
+    let from = from.max(1);
+    let (page, skip) = range_slice(from, source_page_size(target));
+
+    // 标题与总数只在第一页给：优先复用同一来源已经解析出来的那份
+    let cached_meta = state.peek_batch(key).map(|cache| BatchMeta {
+        kind: cache.kind,
+        title: cache.title,
+        owner: cache.owner,
+        total: cache.total,
+    });
+    let (mut items, meta) = fetch_batch_page(client, target, page).await?;
+    let meta = match meta.or(cached_meta) {
+        Some(meta) => meta,
+        None => {
+            let (_, meta) = fetch_batch_page(client, target, 1).await?;
+            meta.ok_or_else(|| "来源没有可访问的内容".to_string())?
+        }
+    };
+
+    if from > meta.total {
+        return Err(format!("这个来源只有 {} 条，第 {from} 条不存在", meta.total));
+    }
+    items.drain(..skip.min(items.len()));
+    if items.is_empty() {
+        return Err(format!("第 {from} 条之后没有可下载的内容了"));
+    }
+
+    let cap = source_cap(&meta.kind, state.settings().parse_cap);
+    let mut cache = start_batch(client, target, meta, items, cap).await?;
+    cache.from_index = from;
+    cache.next_page = page + 1;
+    // 一次就拉到这一批的上限：点一下能拿到"第 301–600 条"这样的整批。
+    // 中途失败不算错——已经拿到的条目照样可用，「继续解析」可以接着拉。
+    let _ = extend_batch(client, &mut cache, cap).await;
     let source = batch_to_source(&cache);
     state.put_batch(key.to_string(), cache);
     Ok(source)
@@ -822,6 +920,7 @@ async fn probe_video_bvid(client: &BiliClient, bvid: &str) -> Result<ProbeSource
         duration: info.duration,
         page_count: info.pages.len(),
         total: 1,
+        from_index: 1,
         loaded: 1,
         exhausted: true,
         qualities,
@@ -1847,6 +1946,31 @@ mod naming_tests {
         // 全部拿到：不提示
         assert!(load_note("收藏夹", 129, 129, 500, true).is_empty());
     }
+
+    #[test]
+    fn range_slice_maps_index_to_page_and_offset() {
+        // UP 空间每页 30 条
+        assert_eq!(range_slice(1, 30), (1, 0));
+        assert_eq!(range_slice(30, 30), (1, 29));
+        assert_eq!(range_slice(31, 30), (2, 0));
+        // 第二次分批：从第 301 条起正好是第 11 页开头
+        assert_eq!(range_slice(301, 30), (11, 0));
+        assert_eq!(range_slice(305, 30), (11, 4));
+        // 合集每页 100 条
+        assert_eq!(range_slice(501, 100), (6, 0));
+        // 越界与 0 都按第 1 条处理，不 panic
+        assert_eq!(range_slice(0, 30), (1, 0));
+    }
+
+    #[test]
+    fn source_cap_prefers_user_setting() {
+        // 没填（0）时按来源类型给默认值
+        assert_eq!(source_cap("space", 0), SPACE_MAX_ITEMS);
+        assert_eq!(source_cap("fav", 0), FAV_MAX_ITEMS);
+        // 填了就一律用它，不再区分来源类型
+        assert_eq!(source_cap("space", 1337), 1337);
+        assert_eq!(source_cap("fav", 1337), 1337);
+    }
 }
 
 #[cfg(test)]
@@ -1906,6 +2030,52 @@ mod live_tests {
         println!(
             "space: {} loaded={} 首条={:?}",
             probe.title, probe.loaded, probe.items[0].title
+        );
+    }
+
+    /// 实测按序号加载：拉满单次上限后，从第 301 条再取一批，两批不重叠。
+    ///
+    /// 这是"超过上限的来源怎么下完"的核心保证：能分两次拉，就不会重复下载。
+    #[tokio::test]
+    #[ignore = "需要网络"]
+    async fn live_probe_range_does_not_overlap_capped_batch() {
+        let client = client();
+        let state = app_state();
+        let url = "https://space.bilibili.com/927587/video";
+
+        probe_one(&client, &state, url, false).await.expect("首次解析");
+        let mut cache = state.take_batch(url).expect("首屏缓存");
+        extend_batch(&client, &mut cache, SPACE_MAX_ITEMS * 2)
+            .await
+            .expect("拉到上限");
+        let capped = cache.items.len();
+        state.put_batch(url.to_string(), cache);
+        let head: Vec<String> = state
+            .peek_batch(url)
+            .expect("缓存")
+            .items
+            .iter()
+            .map(|item| item.bvid.clone())
+            .collect();
+        assert!(state.peek_batch(url).expect("缓存").exhausted, "到上限后应标记已拉完");
+        assert_eq!(head.len(), capped);
+
+        let second = probe_range_one(&client, &state, url, capped + 1)
+            .await
+            .expect("按序号加载");
+        assert_eq!(second.from_index, capped + 1);
+        assert!(second.loaded > 0);
+        let tail: Vec<String> = second.items.iter().map(|item| item.bvid.clone()).collect();
+        assert!(
+            head.iter().all(|bvid| !tail.contains(bvid)),
+            "第二批不应与第一批重叠"
+        );
+        println!(
+            "第一批 {capped} 条（1-{capped}），第二批 {} 条（{}-{}），总数 {}",
+            second.loaded,
+            second.from_index,
+            second.from_index + second.loaded - 1,
+            second.total
         );
     }
 

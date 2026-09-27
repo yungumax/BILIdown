@@ -61,6 +61,11 @@ pub struct BatchCache {
     /// 来源声明的总条数
     pub total: usize,
     pub items: Vec<crate::types::BatchVideo>,
+    /// 这批第一条在来源里的序号（1 起）。按序号加载时不是 1，
+    /// 界面上的序号列与命名模板的 {index} 都按它换算成来源内的真实位置。
+    pub from_index: usize,
+    /// 这批的单次上限（创建时的设置快照，改设置不影响已经打开的清单）
+    pub cap: usize,
     /// 下次要拉的页码
     pub next_page: u32,
     /// 已经拉完（没有更多，或到了单次上限）
@@ -143,6 +148,9 @@ pub struct Settings {
     pub parse_rest_every: u32,
     /// 休息时长（毫秒）
     pub parse_rest_ms: u32,
+    /// 单次解析上限：0 表示按来源类型给默认值（合集/收藏夹 500、UP 空间 300）。
+    /// 超过上限的来源用「按序号加载」分几次拉完。
+    pub parse_cap: usize,
     /// 自定义 ffmpeg 路径，留空自动发现
     pub ffmpeg_path: String,
     /// 启动时静默检查更新
@@ -193,6 +201,7 @@ impl Default for Settings {
             parse_batch_wait_ms: 1000,
             parse_rest_every: 100,
             parse_rest_ms: 3000,
+            parse_cap: 0,
             ffmpeg_path: String::new(),
             update_check: false,
             log_level: "info".to_string(),
@@ -274,6 +283,7 @@ impl Settings {
         self.parse_batch_wait_ms = self.parse_batch_wait_ms.clamp(0, 10_000);
         self.parse_rest_every = self.parse_rest_every.clamp(10, 500);
         self.parse_rest_ms = self.parse_rest_ms.clamp(0, 30_000);
+        self.parse_cap = self.parse_cap.min(20_000);
         if self.naming_template.trim().is_empty() {
             self.naming_template = "{title}".to_string();
         }
@@ -455,6 +465,15 @@ impl AppState {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(key)
+    }
+
+    /// 读一份缓存副本（缓存本体留着不动），用于按序号加载时取来源标题与总数。
+    pub fn peek_batch(&self, key: &str) -> Option<BatchCache> {
+        self.batches
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(key)
+            .cloned()
     }
 
     pub fn put_batch(&self, key: String, cache: BatchCache) {

@@ -315,6 +315,30 @@ function toggleEntry(row) {
 }
 
 const loadedCount = computed(() => tableRows.value.length);
+
+/** 工具条计数：按序号加载时说明这批是来源里的哪一段，免得跟"已加载 1/581"混淆 */
+const loadedHint = computed(() => {
+  const probe = activeSource.value?.probe;
+  if (!probe) return "";
+  const total = probe.total || 0;
+  const from = probe.from_index || 1;
+  if (activeIsBatch.value && from > 1 && loadedCount.value > 0) {
+    return `第 ${from}–${from + loadedCount.value - 1} 条 / 共 ${total} 条`;
+  }
+  return `已加载 ${loadedCount.value} / ${total} 项`;
+});
+
+/** 这批之后还有没加载的（撞上限的来源靠「加载下一批」接着拉），下一个起点序号 */
+const nextRangeFrom = computed(() => {
+  const probe = activeSource.value?.probe;
+  if (!probe || !activeIsBatch.value) return 1;
+  return (probe.from_index || 1) + loadedCount.value;
+});
+
+/** 撞到单次上限、但来源后面还有内容：这时要把加载入口留着，否则剩下的永远拿不到 */
+const moreRemain = computed(
+  () => activeIsBatch.value && nextRangeFrom.value <= (activeSource.value?.probe.total || 0)
+);
 const selectedCount = computed(() => tableRows.value.filter((row) => isSelected(row)).length);
 const allLoadedSelected = computed(
   () => loadedCount.value > 0 && selectedCount.value === loadedCount.value
@@ -447,8 +471,9 @@ const useShared = computed(() => allSources.value.length > 1);
  * 所有来源都摊成同一张表：批量来源出它的每条内容，单视频出它自己这一行。
  * 合集与单视频混着贴也是同一张表，不再按来源切来切去。
  *
- * `seq` 是它在表里的序号（给人看），`index` 是它在**自己来源里**的序号（给命名模板的
- * {index} / {episode_index} 用）——单视频没有"第几条"的概念，固定 0（渲染成空）。
+ * `seq` 是它在表里的序号（给人看），`abs` 是它在来源里的真实序号（给序号列与命名模板的
+ * {index} 用）——按序号加载时这批从第 301 条开始，abs 就从 301 算起，文件名不会与上一批撞。
+ * 单视频没有"第几条"的概念，固定 1。
  */
 const tableRows = computed(() => {
   const rows = [];
@@ -458,6 +483,8 @@ const tableRows = computed(() => {
   const contentKey = (entry, source) =>
     entry ? `item:${entry.bvid || `ep-${entry.ep_id}`}` : `item:${source.probe.bvid}`;
   for (const source of allSources.value) {
+    // 按序号加载时这批的第一条不是来源里的第 1 条；abs 记来源内的真实位置
+    const fromIndex = source.probe.from_index || 1;
     if (source.probe.kind === "video") {
       const ck = contentKey(null, source);
       if (seenItems.has(ck)) continue;
@@ -466,6 +493,7 @@ const tableRows = computed(() => {
         key: source.input,
         seq: rows.length + 1,
         index: 0,
+        abs: fromIndex,
         title: source.probe.title,
         owner: source.probe.owner,
         duration: source.probe.duration,
@@ -481,6 +509,7 @@ const tableRows = computed(() => {
         key: entryKey(source.probe, entry),
         seq: rows.length + 1,
         index: position + 1,
+        abs: fromIndex + position,
         title: entry.title,
         owner: entry.owner,
         duration: entry.duration,
@@ -510,7 +539,7 @@ async function refreshNames() {
         bvid: row.entry ? row.entry.bvid : row.source.probe.bvid,
         cid: row.entry ? row.entry.cid : row.source.probe.cid,
         naming: row.entry
-          ? batchNaming(row.source.probe, row.entry, row.index)
+          ? batchNaming(row.source.probe, row.entry, row.abs)
           : singleNaming(row.source.probe),
       })),
       useShared.value ? multiQuality.value : activeSource.value?.quality ?? 0,
@@ -577,7 +606,7 @@ async function startRows(rows) {
           quality: row.source.quality,
           audio: row.source.audio,
           cover: "",
-          naming: batchNaming(row.source.probe, row.entry, row.index),
+          naming: batchNaming(row.source.probe, row.entry, row.abs),
         });
       }
       started += 1;
@@ -656,6 +685,46 @@ async function parseAllAndDownload() {
   pickingParse.value = false;
   await loadAll();
   await downloadAll();
+}
+
+// 「按序号加载」：超过单次上限的来源靠它分批拉完（第 1–300、301–600……互不重叠）
+const pickingRange = ref(false);
+const rangeFrom = ref(1);
+const rangeLoading = ref(false);
+
+/** 打开输入框时把序号预填成"接着已加载的往后" */
+function openRange() {
+  rangeFrom.value = nextRangeFrom.value;
+  pickingRange.value = true;
+}
+
+/** 「加载下一批」：直接接着这批往后取，不用手输序号 */
+async function loadNextRange() {
+  rangeFrom.value = nextRangeFrom.value;
+  await loadRange();
+}
+
+async function loadRange() {
+  const source = activeSource.value;
+  const from = Math.max(1, Math.floor(Number(rangeFrom.value) || 1));
+  if (!source || rangeLoading.value) return;
+  rangeLoading.value = true;
+  try {
+    source.probe = await api.probeRange(source.input, from);
+    // 换了一批：勾选与折叠状态跟着清掉，序号列也从新的起点算
+    selected.value = new Set();
+    collapsed.value = new Set();
+    pickingParse.value = false;
+    pickingRange.value = false;
+    emit(
+      "toast",
+      `已加载第 ${source.probe.from_index}–${source.probe.from_index + source.probe.loaded - 1} 条`
+    );
+  } catch (error) {
+    emit("toast", String(error));
+  } finally {
+    rangeLoading.value = false;
+  }
 }
 
 function chooseBatchSize(size) {
@@ -814,9 +883,7 @@ async function startSingle(item) {
           <span class="loaded-hint num">共 {{ loadedCount }} 条</span>
         </template>
         <template v-else-if="activeIsBatch">
-          <span class="loaded-hint num">
-            已加载 {{ loadedCount }} / {{ activeSource.probe.total }} 项
-          </span>
+          <span class="loaded-hint num">{{ loadedHint }}</span>
           <!-- 拉到底就不再给加载控件：只留计数与下载动作（照着「解析完全」的样子） -->
           <template v-if="!activeSource.probe.exhausted">
             <div ref="batchPanel" class="batch-picker">
@@ -904,6 +971,96 @@ async function startSingle(item) {
                     </svg>
                     后台解析全部并下载
                   </button>
+                  <!-- 超过单次上限的来源：从这里按序号取下一批，两批不重叠 -->
+                  <button
+                    v-if="!pickingRange"
+                    class="parse-item"
+                    @click="openRange"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M4.5 7.4h9M4.5 12h6M4.5 16.6h9M17 9.6V6m0 3.6L15.2 7.8M17 9.6l1.8-1.8M17 14.4v3.6m0-3.6 1.8 1.8M17 18l-1.8-1.8"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                    按序号加载…
+                  </button>
+                  <form v-else class="parse-range" @submit.prevent="loadRange">
+                    <span>从第</span>
+                    <input
+                      v-model.number="rangeFrom"
+                      type="number"
+                      min="1"
+                      :max="activeSource.probe.total"
+                      class="num"
+                    />
+                    <span>条开始</span>
+                    <button class="ghost small" type="submit" :disabled="rangeLoading">
+                      {{ rangeLoading ? "加载中…" : "加载" }}
+                    </button>
+                  </form>
+                </div>
+              </Transition>
+            </div>
+          </template>
+
+          <!-- 撞到单次上限、后面还有内容：留着入口按序号接着拿，否则剩下的永远拉不到 -->
+          <template v-else-if="moreRemain">
+            <div ref="parsePanel" class="parse-split" :class="{ on: pickingParse }">
+              <button class="seg main" :disabled="rangeLoading" @click="loadNextRange">
+                {{ rangeLoading ? "加载中…" : "加载下一批" }}
+              </button>
+              <button
+                class="seg arrow"
+                :disabled="rangeLoading"
+                aria-haspopup="menu"
+                title="按序号加载"
+                @click="pickingParse = !pickingParse"
+              >
+                <svg class="caret" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="m6 9.5 6 6 6-6"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <Transition name="picker">
+                <div v-if="pickingParse" class="parse-pop">
+                  <button v-if="!pickingRange" class="parse-item" @click="openRange">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M4.5 7.4h9M4.5 12h6M4.5 16.6h9M17 9.6V6m0 3.6L15.2 7.8M17 9.6l1.8-1.8M17 14.4v3.6m0-3.6 1.8 1.8M17 18l-1.8-1.8"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                    按序号加载…
+                  </button>
+                  <form v-else class="parse-range" @submit.prevent="loadRange">
+                    <span>从第</span>
+                    <input
+                      v-model.number="rangeFrom"
+                      type="number"
+                      min="1"
+                      :max="activeSource.probe.total"
+                      class="num"
+                    />
+                    <span>条开始</span>
+                    <button class="ghost small" type="submit" :disabled="rangeLoading">
+                      {{ rangeLoading ? "加载中…" : "加载" }}
+                    </button>
+                  </form>
                 </div>
               </Transition>
             </div>
@@ -1047,7 +1204,7 @@ async function startSingle(item) {
                 <td class="col-check">
                   <input type="checkbox" :checked="isSelected(row)" @change="toggleEntry(row)" />
                 </td>
-                <td class="col-idx num">{{ String(row.seq).padStart(2, "0") }}</td>
+                <td class="col-idx num">{{ String(row.abs).padStart(2, "0") }}</td>
                 <td class="col-title">{{ row.title }}</td>
                 <td class="col-owner" :title="row.owner">{{ row.owner || "—" }}</td>
                 <td class="col-dur num">{{ formatDuration(row.duration) }}</td>
@@ -2302,5 +2459,32 @@ option:disabled {
 
 .parse-item:hover svg {
   color: var(--text);
+}
+
+/* 「按序号加载」的小表单：菜单原地变成输入 */
+.parse-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px 7px;
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.parse-range input {
+  width: 76px;
+  padding: 4px 7px;
+  font-size: 12.5px;
+  color: var(--text);
+  text-align: right;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.select-bar .parse-range .ghost.small {
+  padding: 4px 10px;
+  font-size: 12px;
 }
 </style>

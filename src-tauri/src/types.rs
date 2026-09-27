@@ -87,6 +87,10 @@ pub struct ProbeSource {
     pub page_count: usize,
     /// 源内总条数（可能因分页上限被截断）
     pub total: usize,
+    /// 这批第一条在来源里的序号（1 起）。按序号加载时不是 1；
+    /// 单视频与整批加载都是 1。
+    #[serde(default)]
+    pub from_index: usize,
     /// 实际加载条数
     pub loaded: usize,
     /// 是否已经拉到底（「继续解析」没有更多了）

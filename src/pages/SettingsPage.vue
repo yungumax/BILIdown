@@ -246,10 +246,12 @@ const parsePaceNote = computed(() => {
   const wait = draft.value?.parse_batch_wait_ms ?? 1000;
   const every = draft.value?.parse_rest_every ?? 100;
   const rest = draft.value?.parse_rest_ms ?? 3000;
-  const total = 200;
+  const cap = draft.value?.parse_cap ?? 0;
+  const total = cap > 0 ? cap : 200;
   const batches = Math.ceil(total / batch);
   const extraMs = Math.max(batches - 1, 0) * wait + Math.floor(total / every) * rest;
-  return `解析约 ${total} 条，额外等待约 ${Math.round(extraMs / 1000)} 秒，不含网络耗时。`;
+  const capNote = cap > 0 ? `单次上限 ${cap} 条，` : "";
+  return `${capNote}解析约 ${total} 条，额外等待约 ${Math.round(extraMs / 1000)} 秒，不含网络耗时。`;
 });
 
 function set(key, value) {
@@ -599,6 +601,24 @@ async function open(path) {
                       <option :value="5000">5 秒</option>
                     </select>
                   </div>
+                </div>
+                <div class="field">
+                  <label>
+                    单次解析上限
+                    <span
+                      class="info"
+                      title="一次最多解析多少条。超过上限的来源（例如 1337 条投稿）用选择内容页「解析」里的「按序号加载」分几次拉完，两批互不重叠。0 表示按来源类型给默认值：合集/收藏夹 500、UP 空间 300"
+                      >?</span
+                    >
+                  </label>
+                  <select v-model.number="draft.parse_cap">
+                    <option :value="0">默认（合集/收藏夹 500、UP 空间 300）</option>
+                    <option :value="300">300 条</option>
+                    <option :value="500">500 条</option>
+                    <option :value="1000">1000 条</option>
+                    <option :value="2000">2000 条</option>
+                    <option :value="20000">不限制（最多 20000 条）</option>
+                  </select>
                 </div>
               </div>
               <p class="note">{{ parsePaceNote }}</p>
