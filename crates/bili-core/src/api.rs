@@ -16,6 +16,9 @@ const API_SEASONS_ARCHIVES: &str =
 const API_SERIES_ARCHIVES: &str = "https://api.bilibili.com/x/series/archives";
 const API_SERIES_META: &str = "https://api.bilibili.com/x/series/series";
 const API_SPACE_ARC: &str = "https://api.bilibili.com/x/space/wbi/arc/search";
+/// UP 主页的合集/系列列表（用来判断每条投稿属于哪个合集）
+const API_SEASONS_SERIES: &str =
+    "https://api.bilibili.com/x/polymer/web-space/home/seasons_series";
 /// 图文（opus）列表：按 offset 游标翻页（page 参数无效，实测会重复返回第一页）
 const API_OPUS_FEED: &str = "https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/feed/space";
 /// 音频投稿列表（必须带 order/platform，否则静默返回空列表）
@@ -432,6 +435,8 @@ pub struct SeasonArchivesPage {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct SeasonMeta {
+    #[serde(default)]
+    pub season_id: u64,
     #[serde(default, deserialize_with = "string_or_null")]
     pub name: String,
     #[serde(default)]
@@ -453,6 +458,25 @@ pub struct SeasonArchive {
     pub duration: u64,
     #[serde(default)]
     pub owner: Owner,
+}
+
+/// UP 主的合集/系列列表。
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SeasonsSeriesPage {
+    #[serde(default)]
+    pub items_lists: SeasonsSeriesItems,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SeasonsSeriesItems {
+    #[serde(default, rename = "seasons_list", deserialize_with = "vec_or_null")]
+    pub seasons: Vec<SeasonSummary>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SeasonSummary {
+    #[serde(default)]
+    pub meta: SeasonMeta,
 }
 
 /// 音频投稿分页。
@@ -779,6 +803,29 @@ impl BiliClient {
         );
         // 翻过末页会返回 data: null，按"这一页没有内容"处理
         Ok(self.fetch_json_opt(&url).await?.unwrap_or_default())
+    }
+
+    /// 这条视频属于哪个合集（不属于任何合集时返回 None）。
+    ///
+    /// 逐条查而不是先枚举 UP 的全部合集：合集列表接口连查十几个就 -352 风控，
+    /// 而视频详情本来就随下载逐条请求，节奏天然安全。
+    pub async fn collection_of(&self, bvid: &str) -> Option<String> {
+        let info = self.video_info(bvid).await.ok()?;
+        let season = info.ugc_season?;
+        let title = season.title.trim();
+        if season.id == 0 || title.is_empty() {
+            None
+        } else {
+            Some(title.to_string())
+        }
+    }
+
+    /// UP 主的合集列表（一页最多 20 个合集）。
+    pub async fn space_collections(&self, mid: u64, page: u32) -> Result<SeasonsSeriesPage> {
+        let url = format!(
+            "{API_SEASONS_SERIES}?mid={mid}&page_num={page}&page_size=20"
+        );
+        self.fetch_json(&url).await
     }
 
     /// UP 主系列内容（一页最多 30 条；条目里没有 cid，下载时按 bvid 补查）。

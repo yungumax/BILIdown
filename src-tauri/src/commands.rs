@@ -425,6 +425,7 @@ async fn fetch_batch_page(
                     ep_id: None,
                     opus_id: String::new(),
                     au_id: String::new(),
+                    collection: String::new(),
                     title: media.title.clone(),
                     owner: media.upper.name.clone(),
                     duration: media.duration,
@@ -461,6 +462,7 @@ async fn fetch_batch_page(
                     ep_id: None,
                     opus_id: String::new(),
                     au_id: String::new(),
+                    collection: String::new(),
                     title: archive.title.clone(),
                     owner: archive.owner.name.clone(),
                     duration: archive.duration,
@@ -503,6 +505,7 @@ async fn fetch_batch_page(
                             ep_id: None,
                             opus_id: String::new(),
                             au_id: String::new(),
+                            collection: String::new(),
                             title: video.title.clone(),
                             owner: video.author.clone(),
                             duration: parse_mmss(&video.length),
@@ -555,6 +558,7 @@ async fn fetch_batch_page(
                     ep_id: None,
                     opus_id: String::new(),
                     au_id: String::new(),
+                    collection: String::new(),
                     title: archive.title.clone(),
                     owner: owner.clone(),
                     duration: archive.duration,
@@ -579,6 +583,7 @@ async fn fetch_batch_page(
                     ep_id: None,
                     opus_id: item.opus_id.clone(),
                     au_id: String::new(),
+                    collection: String::new(),
                     title: summary_of(&item.content, &item.opus_id),
                     owner: owner.clone(),
                     duration: 0,
@@ -630,6 +635,7 @@ async fn fetch_batch_page(
                     ep_id: None,
                     opus_id: String::new(),
                     au_id: item.id.to_string(),
+                    collection: String::new(),
                     title: item.title.clone(),
                     owner: if item.uname.is_empty() {
                         item.author.clone()
@@ -972,6 +978,7 @@ async fn probe_post(
             ep_id: None,
             opus_id: id_text,
             au_id: String::new(),
+            collection: String::new(),
             title: post.title.clone(),
             owner: post.author,
             duration: 0,
@@ -1145,6 +1152,7 @@ async fn fetch_whole(
                     ep_id: (episode.id > 0).then_some(episode.id),
                     opus_id: String::new(),
                     au_id: String::new(),
+                    collection: String::new(),
                     title: if episode.long_title.is_empty() {
                         episode.title.clone()
                     } else {
@@ -1172,6 +1180,7 @@ async fn fetch_whole(
                     ep_id: (episode.id > 0).then_some(episode.id),
                     opus_id: String::new(),
                     au_id: String::new(),
+                    collection: String::new(),
                     title: episode.title.clone(),
                     owner: season.up_info.uname.clone(),
                     duration: episode.duration,
@@ -1908,7 +1917,17 @@ async fn run_download(
 
     // 目标文件：命名模板 + 封装格式 + 重名处理
     // 模板里的 `/` 会成为子目录，所以还要把中间目录建出来
-    let naming = naming_context(req, &video.codecs, quality_name(video.id));    tokio::fs::create_dir_all(&output_dir).await?;
+    let mut naming = naming_context(req, &video.codecs, quality_name(video.id));
+    // UP 投稿/收藏夹里的视频，按它**实际所属的合集**分层，而不是按来源名。
+    //
+    // 为什么逐条查、不先枚举 UP 的全部合集：合集列表接口连查十几个就被风控
+    // （实测 code=-352，且会持续一段时间），而视频详情本来就随下载逐条请求，
+    // 节奏天然安全。查不到（不属于任何合集）就保持前端给的默认层。
+    if matches!(req.source.as_str(), "space" | "fav") && !req.bvid.is_empty() {
+        if let Some(name) = client.collection_of(&req.bvid).await {
+            naming.collection_title = name;
+        }
+    }    tokio::fs::create_dir_all(&output_dir).await?;
     // 目录 = 文件夹层级（UP/合集…）+ 文件名模板；层级模板为空时前缀为空路径
     let out_file = output_dir
         .join(settings.output_folder_template(&naming))
@@ -2459,6 +2478,7 @@ mod naming_tests {
             audio: "normal".to_string(),
             cover: String::new(),
             naming: crate::types::NamingMeta {
+                source_kind: String::new(),
                 part_title: "P1 标题".to_string(),
                 part_index: 1,
                 aid: 12345,

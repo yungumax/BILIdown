@@ -852,14 +852,14 @@ function singleNaming(probe) {
 }
 
 /** 文件夹第二层叫什么都由来源类型决定（见 batchNaming 里的说明） */
-function folderLevel(batch) {
+function folderLevel(batch, entry) {
   if (batch.kind === "bangumi" || batch.kind === "cheese") return "";
-  if (batch.kind === "space") return "";
   if (batch.kind === "opus" && batch.items.length <= 1) return "";
   if (batch.kind === "article") return "";
-  return batch.kind === "opus" || batch.kind === "audio"
-    ? (KIND_LABELS[batch.kind] ?? "")
-    : batch.title;
+  if (batch.kind === "opus" || batch.kind === "audio") return KIND_LABELS[batch.kind] ?? "";
+  // UP 空间：逐条判断这条视频属于哪个合集；不在任何合集（或没查到）的归「单独投稿」
+  if (batch.kind === "space") return entry?.collection || "单独投稿";
+  return batch.title;
 }
 
 /** 批量条目的命名变量：番剧/课程用剧集信息，其余用合集信息 + 列表序号 */
@@ -878,7 +878,7 @@ function batchNaming(batch, entry, position) {
     // - UP 空间：本来就没有合集，留空（第一层已经是 UP 名，再放"…的投稿"是重复）
     // - 图文/音频：给类型层（图文 / 音频），既分开了内容类型又不重复 UP 名
     // - 单条图文/专栏：没有合集层，留空（否则标题在路径里出现两次）
-    collection_title: folderLevel(batch),
+    collection_title: folderLevel(batch, entry),
     source_kind: KIND_LABELS[batch.kind] ?? "视频",
     index: position,
     date: localDate(),

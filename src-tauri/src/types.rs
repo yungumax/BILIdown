@@ -53,6 +53,9 @@ pub struct BatchVideo {
     /// 音频（au）条目的 id；其余来源为空。音频下载的是音频流而不是视频。
     #[serde(default)]
     pub au_id: String,
+    /// 这条内容所属的合集名（UP 投稿来源里逐条判断；不在任何合集时为空）
+    #[serde(default)]
+    pub collection: String,
     pub title: String,
     /// 该条目的 UP 主 / 出品方；来源没给就是空
     #[serde(default)]
@@ -148,6 +151,9 @@ pub struct DownloadRequest {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct NamingMeta {
+    /// 来源类型中文名（文件夹模板里的 {source_kind}）
+    #[serde(default)]
+    pub source_kind: String,
     pub part_title: String,
     pub part_index: u32,
     pub aid: u64,
