@@ -22,6 +22,7 @@ const KIND_LABELS = {
   collection: "合集",
   series: "系列",
   opus: "图文",
+  audio: "音频",
   space: "UP 空间",
   bangumi: "番剧",
   cheese: "课程",
@@ -469,6 +470,7 @@ function entryIdentity(entry) {
   if (entry.bvid) return entry.bvid;
   if (entry.ep_id) return `ep-${entry.ep_id}`;
   if (entry.opus_id) return `opus-${entry.opus_id}`;
+  if (entry.au_id) return `au-${entry.au_id}`;
   return "unknown";
 }
 
@@ -614,6 +616,7 @@ async function startRows(rows) {
           cid: row.entry.cid,
           ep_id: row.entry.ep_id,
           opus_id: row.entry.opus_id ?? "",
+          au_id: row.entry.au_id ?? "",
           source: row.source.probe.kind,
           title: row.entry.title,
           owner: row.source.probe.owner,
@@ -1276,7 +1279,7 @@ async function startSingle(item) {
       />
 
       <p class="hint">
-        每行一个来源；合集、收藏夹、系列、UP 空间与图文都会按页加载。
+        每行一个来源；合集、收藏夹、系列、UP 空间、图文与音频都会按页加载。
       </p>
 
       <div class="actions">

@@ -18,6 +18,10 @@ const API_SERIES_META: &str = "https://api.bilibili.com/x/series/series";
 const API_SPACE_ARC: &str = "https://api.bilibili.com/x/space/wbi/arc/search";
 /// 图文（opus）列表：按 offset 游标翻页（page 参数无效，实测会重复返回第一页）
 const API_OPUS_FEED: &str = "https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/feed/space";
+/// 音频投稿列表（必须带 order/platform，否则静默返回空列表）
+const API_AUDIO_LIST: &str = "https://api.bilibili.com/audio/music-service-c/web/song/upper";
+/// 音频播放地址（一页最多 30 条的接口，这里是单曲）
+const API_AUDIO_URL: &str = "https://api.bilibili.com/audio/music-service-c/web/url";
 const API_PGC_SEASON: &str = "https://api.bilibili.com/pgc/view/web/season";
 const API_PGC_PLAYURL: &str = "https://api.bilibili.com/pgc/player/web/playurl";
 const API_PUGV_SEASON: &str = "https://api.bilibili.com/pugv/view/web/season";
@@ -451,6 +455,39 @@ pub struct SeasonArchive {
     pub owner: Owner,
 }
 
+/// 音频投稿分页。
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct AudioListPage {
+    #[serde(default, rename = "data", deserialize_with = "vec_or_null")]
+    pub items: Vec<AudioItem>,
+    #[serde(default, rename = "totalSize")]
+    pub total_size: u32,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct AudioItem {
+    #[serde(default)]
+    pub id: u64,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub title: String,
+    /// 秒
+    #[serde(default)]
+    pub duration: u64,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub uname: String,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub author: String,
+}
+
+/// 音频播放地址。
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct AudioStream {
+    #[serde(default, deserialize_with = "vec_or_null")]
+    pub cdns: Vec<String>,
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub title: String,
+}
+
 /// 系列内容分页（`x/series/archives`）：条目字段比合集少，没有 cid 与上传者。
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct SeriesArchivesPage {
@@ -768,6 +805,23 @@ impl BiliClient {
         if !offset.is_empty() {
             url.push_str(&format!("&offset={offset}"));
         }
+        self.fetch_json(&url).await
+    }
+
+    /// UP 主的音频投稿（一页最多 30 条）。
+    ///
+    /// 务必带上 `order` 与 `platform`：少了它们接口 code 仍是 0，
+    /// 却返回 `data: null`——看起来像"这个 UP 没有音频"。
+    pub async fn audio_list(&self, mid: u64, page: u32) -> Result<AudioListPage> {
+        let url = format!(
+            "{API_AUDIO_LIST}?uid={mid}&pn={page}&ps=30&order=1&platform=web"
+        );
+        self.fetch_json(&url).await
+    }
+
+    /// 音频播放地址：拿到可直接下载的 m4a（cdns 首个即推荐线路）。
+    pub async fn audio_stream(&self, sid: u64) -> Result<AudioStream> {
+        let url = format!("{API_AUDIO_URL}?sid={sid}&privilege=2&quality=2");
         self.fetch_json(&url).await
     }
 

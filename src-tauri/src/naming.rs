@@ -127,8 +127,29 @@ pub fn render(template: &str, ctx: &NamingContext, ext: &str) -> PathBuf {
         }
     }
 
+    // 音频/图文没有"分集"：模板里只由分集占位组成的段落会空掉（如 "P - .m4a"）。
+    // 这种空壳段落整段丢掉，扩展名并到上一段，别让文件名变成 "P - .m4a"。
+    if segments.len() > 1 {
+        let suffix = format!(".{ext}");
+        let mut merged: Vec<String> = Vec::with_capacity(segments.len());
+        for segment in segments {
+            let stem = segment.strip_suffix(&suffix).unwrap_or(&segment);
+            if has_content(stem) {
+                merged.push(segment);
+            } else if let Some(prev) = merged.last_mut() {
+                prev.push_str(&suffix);
+            }
+        }
+        // 全是空壳时兜底，别产出空路径
+        segments = if merged.is_empty() {
+            vec![format!("video.{ext}")]
+        } else {
+            merged
+        };
+    }
+
     let mut path = PathBuf::new();
-    for segment in segments {
+    for segment in &segments {
         path.push(segment);
     }
     path
@@ -317,6 +338,30 @@ mod tests {
     fn path_traversal_is_dropped() {
         assert_eq!(render_str("../{title}"), "标题.mp4");
         assert_eq!(render_str("{title}/../../etc"), "标题/etc.mp4");
+    }
+
+    #[test]
+    fn audio_naming_drops_part_placeholders() {
+        // 音频没有分集：模板里的分集段落会空掉，文件名不该变成 "P - .m4a"
+        let ctx = NamingContext {
+            title: "明朝那些事儿149".to_string(),
+            ..NamingContext::default()
+        };
+        assert_eq!(
+            render("{title}/P{part_index} - {part_title}.{ext}", &ctx, "m4a"),
+            PathBuf::from("明朝那些事儿149.m4a")
+        );
+        // 正常视频不受影响：分集段落有内容就留着
+        let video = NamingContext {
+            title: "标题".to_string(),
+            part_index: 2,
+            part_title: "第二集".to_string(),
+            ..NamingContext::default()
+        };
+        assert_eq!(
+            render("{title}/P{part_index} - {part_title}.{ext}", &video, "mp4"),
+            PathBuf::from("标题/P2 - 第二集.mp4")
+        );
     }
 
     #[test]

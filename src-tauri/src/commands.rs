@@ -281,6 +281,8 @@ fn source_page_size(target: BatchTarget) -> usize {
         BatchTarget::Series { .. } => 30,
         // 图文按 offset 游标翻页，这里只用于"首页取多少"的判定
         BatchTarget::Opus(_) => 20,
+        // 音频接口一页最多 30 条
+        BatchTarget::Audio(_) => 30,
         BatchTarget::Collection { .. } => 100,
     }
 }
@@ -295,6 +297,7 @@ fn source_cap(kind: &str, override_cap: usize) -> usize {
         "collection" | "series" => COLLECTION_MAX_ITEMS,
         // 图文条数按 UP 空间一档（20 条一页，接口不告诉总数）
         "opus" => SPACE_MAX_ITEMS,
+        "audio" => SPACE_MAX_ITEMS,
         _ => SPACE_MAX_ITEMS,
     }
 }
@@ -407,6 +410,7 @@ async fn fetch_batch_page(
                     cid: media.cid,
                     ep_id: None,
                     opus_id: String::new(),
+                    au_id: String::new(),
                     title: media.title.clone(),
                     owner: media.upper.name.clone(),
                     duration: media.duration,
@@ -442,6 +446,7 @@ async fn fetch_batch_page(
                     cid: archive.cid,
                     ep_id: None,
                     opus_id: String::new(),
+                    au_id: String::new(),
                     title: archive.title.clone(),
                     owner: archive.owner.name.clone(),
                     duration: archive.duration,
@@ -478,6 +483,7 @@ async fn fetch_batch_page(
                             cid: 0,
                             ep_id: None,
                             opus_id: String::new(),
+                            au_id: String::new(),
                             title: video.title.clone(),
                             owner: video.author.clone(),
                             duration: parse_mmss(&video.length),
@@ -529,6 +535,7 @@ async fn fetch_batch_page(
                     cid: 0,
                     ep_id: None,
                     opus_id: String::new(),
+                    au_id: String::new(),
                     title: archive.title.clone(),
                     owner: owner.clone(),
                     duration: archive.duration,
@@ -552,6 +559,7 @@ async fn fetch_batch_page(
                     cid: 0,
                     ep_id: None,
                     opus_id: item.opus_id.clone(),
+                    au_id: String::new(),
                     title: summary_of(&item.content, &item.opus_id),
                     owner: owner.clone(),
                     duration: 0,
@@ -574,6 +582,46 @@ async fn fetch_batch_page(
             });
             Ok((items, meta))
         }
+        // 音频：30 条一页，常规页码翻页
+        BatchTarget::Audio(mid) => {
+            let data = client.audio_list(mid, page).await.map_err(describe)?;
+            let owner = data
+                .items
+                .first()
+                .map(|item| item.uname.clone())
+                .unwrap_or_default();
+            let meta = first.then(|| BatchMeta {
+                kind: "audio".to_string(),
+                title: format!(
+                    "{} 的音频",
+                    if owner.is_empty() { "该 UP" } else { &owner }
+                ),
+                owner,
+                total: data.total_size as usize,
+                mid: 0,
+                has_more: true,
+                next_offset: String::new(),
+            });
+            let items = data
+                .items
+                .iter()
+                .map(|item| BatchVideo {
+                    bvid: String::new(),
+                    cid: 0,
+                    ep_id: None,
+                    opus_id: String::new(),
+                    au_id: item.id.to_string(),
+                    title: item.title.clone(),
+                    owner: if item.uname.is_empty() {
+                        item.author.clone()
+                    } else {
+                        item.uname.clone()
+                    },
+                    duration: item.duration,
+                })
+                .collect();
+            Ok((items, meta))
+        }
         // 番剧/课程一次给全，没有分页
         BatchTarget::Whole => Ok((Vec::new(), None)),
     }
@@ -594,6 +642,7 @@ async fn start_batch(
             "fav" => "收藏夹为空或不可访问".to_string(),
             "collection" => "合集为空或不可访问".to_string(),
             "series" => "系列为空或不可访问".to_string(),
+            "audio" => "这个 UP 没有音频投稿（B 站音频接口在缺 order/platform 参数时也会返回空）".to_string(),
             "space" => "该 UP 主没有可访问的投稿，或触发了风控".to_string(),
             _ => "来源没有可访问的内容".to_string(),
         });
@@ -683,6 +732,7 @@ fn batch_to_source(cache: &BatchCache) -> ProbeSource {
         "collection" => "合集",
         "series" => "系列",
         "opus" => "图文",
+        "audio" => "音频",
         "space" => "投稿",
         _ => "来源",
     };
@@ -734,6 +784,7 @@ fn target_key(target: &Target) -> String {
         Target::Collection { mid, sid } => format!("collection:{mid}:{sid}"),
         Target::Series { mid, sid } => format!("series:{mid}:{sid}"),
         Target::OpusList(mid) => format!("opus:{mid}"),
+        Target::AudioList(mid) => format!("audio:{mid}"),
         Target::Space(mid) => format!("space:{mid}"),
         Target::Bangumi { season_id, ep_id } => match (season_id, ep_id) {
             (Some(sid), _) => format!("bangumi:{sid}"),
@@ -789,6 +840,9 @@ async fn probe_one(
         }
         Target::OpusList(mid) => {
             probe_batch_first_page(client, state, trimmed, BatchTarget::Opus(mid)).await
+        }
+        Target::AudioList(mid) => {
+            probe_batch_first_page(client, state, trimmed, BatchTarget::Audio(mid)).await
         }
         Target::Space(mid) => {
             probe_batch_first_page(client, state, trimmed, BatchTarget::Space(mid)).await
@@ -1008,6 +1062,7 @@ async fn fetch_whole(
                     cid: episode.cid,
                     ep_id: (episode.id > 0).then_some(episode.id),
                     opus_id: String::new(),
+                    au_id: String::new(),
                     title: if episode.long_title.is_empty() {
                         episode.title.clone()
                     } else {
@@ -1034,6 +1089,7 @@ async fn fetch_whole(
                     cid: episode.cid,
                     ep_id: (episode.id > 0).then_some(episode.id),
                     opus_id: String::new(),
+                    au_id: String::new(),
                     title: episode.title.clone(),
                     owner: season.up_info.uname.clone(),
                     duration: episode.duration,
@@ -1484,6 +1540,94 @@ async fn run_opus_download(
     Ok(())
 }
 
+/// 音频下载：取播放地址，直接把 m4a 落盘（不需要合并，也没有视频流）。
+async fn run_audio_download(
+    app: AppHandle,
+    client: Arc<BiliClient>,
+    settings: crate::state::Settings,
+    output_dir: PathBuf,
+    req: &DownloadRequest,
+    shared: Arc<Mutex<TaskUpdate>>,
+) -> Result<(), BiliError> {
+    let sid: u64 = req
+        .au_id
+        .parse()
+        .map_err(|_| BiliError::InvalidInput("音频 id 非法".into()))?;
+    mutate(&shared, &app, |t| {
+        t.message = "获取音频地址".to_string();
+    });
+
+    let stream = client.audio_stream(sid).await?;
+    let url = stream
+        .cdns
+        .first()
+        .cloned()
+        .ok_or_else(|| BiliError::Unavailable("这条音频没有可下载的地址（可能是会员专享）".into()))?;
+
+    // 音频就是 m4a：用固定的扩展名渲染，不跟视频的封装设置走
+    let naming = naming_context(req, "", "音频");
+    let out_file = output_dir.join(settings.output_filename_with_ext(&naming, audio_ext(&url)));
+    if let Some(parent) = out_file.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let out_file = match settings.rename_conflict.as_str() {
+        "overwrite" => out_file,
+        "auto" => find_free_name(out_file).await,
+        _ => {
+            if out_file.exists() {
+                let path = out_file.to_string_lossy().to_string();
+                settings.log("info", &format!("文件已存在，跳过任务: {path}"));
+                mutate(&shared, &app, |t| {
+                    t.status = TaskStatus::Done;
+                    t.video_pct = 100.0;
+                    t.audio_pct = 100.0;
+                    t.output_path = path.clone();
+                    t.message = "文件已存在，跳过下载".to_string();
+                });
+                return Ok(());
+            }
+            out_file
+        }
+    };
+
+    let opts = DownloadOptions {
+        concurrency: settings.chunk_concurrency,
+        chunk_size: settings.chunk_mb * 1024 * 1024,
+        retries: settings.retry_count as usize,
+        speed_limit_bps: settings.speed_limit_mib as u64 * 1024 * 1024,
+    };
+    let throttle = Throttle::new(opts.speed_limit_bps);
+    let final_path = out_file.clone();
+    {
+        let shared = shared.clone();
+        let app = app.clone();
+        let on_progress: ProgressFn = Arc::new(move |p: Progress| {
+            mutate(&shared, &app, |t| {
+                t.status = TaskStatus::Downloading;
+                t.message = "下载音频".to_string();
+                t.video_pct = percent(p.downloaded, p.total);
+                t.video_bytes = p.downloaded;
+                t.video_total = p.total;
+                t.speed_bps = p.speed_bps;
+                t.recalc();
+            });
+        });
+        download_with_throttle(&client.http, &url, &[], &out_file, &opts, on_progress, throttle.as_ref())
+            .await?;
+    }
+
+    let path = final_path.to_string_lossy().to_string();
+    settings.log("info", &format!("音频下载完成: {} -> {path}", req.title));
+    mutate(&shared, &app, |t| {
+        t.status = TaskStatus::Done;
+        t.video_pct = 100.0;
+        t.audio_pct = 100.0;
+        t.output_path = path.clone();
+        t.message = "音频已保存".to_string();
+    });
+    Ok(())
+}
+
 /// 正文文件：标题、话题、发布信息、正文、图片清单。
 fn compose_opus_text(post: &bili_core::opus::OpusPost, opus_id: &str) -> String {
     let mut lines: Vec<String> = Vec::new();
@@ -1504,6 +1648,23 @@ fn compose_opus_text(post: &bili_core::opus::OpusPost, opus_id: &str) -> String 
         lines.push(format!("图片 {} 张（文件名为序号）", post.images.len()));
     }
     lines.join("\n") + "\n"
+}
+
+/// 音频扩展名：URL 结尾是 .m4a/.mp3 就用它，否则按常见的 m4a。
+fn audio_ext(url: &str) -> &'static str {
+    let path = url.split('?').next().unwrap_or(url).to_ascii_lowercase();
+    for ext in ["m4a", "mp3", "aac", "flac", "wav"] {
+        if path.ends_with(&format!(".{ext}")) {
+            return match ext {
+                "m4a" => "m4a",
+                "mp3" => "mp3",
+                "aac" => "aac",
+                "flac" => "flac",
+                _ => "wav",
+            };
+        }
+    }
+    "m4a"
 }
 
 /// 图片扩展名：优先信响应头，其次看 URL 后缀。
@@ -1548,6 +1709,10 @@ async fn run_download(
     // 图文没有音视频流：内容是图片与正文，走另一条路径
     if req.source == "opus" {
         return run_opus_download(app, client, settings, output_dir, req, shared).await;
+    }
+    // 音频下载的是音频流本身（m4a），不需要合并
+    if req.source == "audio" {
+        return run_audio_download(app, client, settings, output_dir, req, shared).await;
     }
 
     mutate(&shared, &app, |t| {
@@ -2173,6 +2338,7 @@ mod naming_tests {
             source: "video".to_string(),
             ep_id: None,
             opus_id: String::new(),
+            au_id: String::new(),
             owner: "UP主".to_string(),
             quality: 116,
             audio: "normal".to_string(),
@@ -2357,6 +2523,40 @@ mod live_tests {
         println!(
             "series: {} loaded={} total={} 首条={:?}",
             probe.title, probe.loaded, probe.total, probe.items[0].title
+        );
+    }
+
+    /// 实测音频列表与播放地址（拿一个确实有音频的 UP）。
+    ///
+    /// 这个接口少了 order/platform 会"看起来没有音频"，所以断言条数也要断言地址。
+    #[tokio::test]
+    #[ignore = "需要网络与登录态"]
+    async fn live_probe_audio_list_and_stream() {
+        let client = client();
+        let probe = probe_one(
+            &client,
+            &app_state(),
+            "https://space.bilibili.com/649910/upload/audio",
+            false,
+        )
+        .await
+        .expect("解析成功");
+        assert_eq!(probe.kind, "audio");
+        assert!(probe.loaded > 0, "应加载到音频");
+        assert!(probe.total > 200, "配音木成的音频应有两百多条，实际 {}", probe.total);
+        assert!(probe.items.iter().all(|item| !item.au_id.is_empty()));
+
+        let first = probe.items[0].clone();
+        let sid: u64 = first.au_id.parse().expect("音频 id");
+        let stream = client.audio_stream(sid).await.expect("播放地址");
+        assert!(!stream.cdns.is_empty(), "拿不到可下载地址");
+        assert!(stream.cdns[0].starts_with("http"));
+        println!(
+            "audio: {} 条；首条 {:?}（{} 秒）地址 {:?}",
+            probe.total,
+            first.title,
+            first.duration,
+            &stream.cdns[0][..stream.cdns[0].len().min(80)]
         );
     }
 

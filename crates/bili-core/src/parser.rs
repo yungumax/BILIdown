@@ -6,6 +6,7 @@
 //! - 合集：`space.bilibili.com/{mid}/lists/{sid}` 或 `.../channel/collectiondetail?sid={sid}`
 //! - 系列：`space.bilibili.com/{mid}/lists/{sid}?type=series` 或 `.../channel/seriesdetail?sid={sid}`
 //! - 图文：`space.bilibili.com/{mid}/upload/opus`（一个 UP 的图文列表）
+//! - 音频：`space.bilibili.com/{mid}/upload/audio`（一个 UP 的音频投稿）
 //! - UP 空间：`space.bilibili.com/{mid}`
 //! - 番剧：`bilibili.com/bangumi/play/ss{nid}` / `.../ep{ep_id}`
 //! - 课程：`bilibili.com/cheese/play/ss{nid}`（单集链接需先转成课程页）
@@ -38,6 +39,8 @@ pub enum Target {
     Space(u64),
     /// 图文（opus）列表：mid
     OpusList(u64),
+    /// 音频列表：mid
+    AudioList(u64),
     /// 番剧：season_id 与 ep_id 至少一个存在
     Bangumi {
         season_id: Option<u64>,
@@ -56,6 +59,7 @@ fn patterns() -> &'static [Regex] {
             Regex::new(r"(?:^|[^0-9A-Za-z])av(\d{1,12})").expect("合法"),
             Regex::new(r"bilibili\.com/(\d+)/favlist").expect("合法"),
             Regex::new(r"space\.bilibili\.com/(\d+)/upload/opus").expect("合法"),
+            Regex::new(r"space\.bilibili\.com/(\d+)/upload/audio").expect("合法"),
             Regex::new(r"space\.bilibili\.com/(\d+)/lists/(\d+)").expect("合法"),
             Regex::new(r"space\.bilibili\.com/(\d+)/[a-z/]*collectiondetail[^ ]*?[?&]sid=(\d+)")
                 .expect("合法"),
@@ -124,8 +128,15 @@ pub fn parse_target(input: &str) -> Result<Target> {
         }
     }
 
-    // 合集 / 系列：新版 /lists/{sid}，两者同形，看 ?type=
+    // 音频列表：/upload/audio
     if let Some(caps) = patterns[4].captures(s) {
+        if let Some(mid) = caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()) {
+            return Ok(Target::AudioList(mid));
+        }
+    }
+
+    // 合集 / 系列：新版 /lists/{sid}，两者同形，看 ?type=
+    if let Some(caps) = patterns[5].captures(s) {
         if let (Some(mid), Some(sid)) = (
             caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()),
             caps.get(2).and_then(|m| m.as_str().parse::<u64>().ok()),
@@ -139,7 +150,7 @@ pub fn parse_target(input: &str) -> Result<Target> {
     }
 
     // 合集：旧版 collectiondetail?sid=
-    if let Some(caps) = patterns[5].captures(s) {
+    if let Some(caps) = patterns[6].captures(s) {
         if let (Some(mid), Some(sid)) = (
             caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()),
             caps.get(2).and_then(|m| m.as_str().parse::<u64>().ok()),
@@ -149,7 +160,7 @@ pub fn parse_target(input: &str) -> Result<Target> {
     }
 
     // 系列：旧版 seriesdetail?sid=
-    if let Some(caps) = patterns[6].captures(s) {
+    if let Some(caps) = patterns[7].captures(s) {
         if let (Some(mid), Some(sid)) = (
             caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()),
             caps.get(2).and_then(|m| m.as_str().parse::<u64>().ok()),
@@ -159,7 +170,7 @@ pub fn parse_target(input: &str) -> Result<Target> {
     }
 
     // 番剧
-    if let Some(caps) = patterns[7].captures(s) {
+    if let Some(caps) = patterns[8].captures(s) {
         let id = caps.get(2).and_then(|m| m.as_str().parse::<u64>().ok());
         match (caps.get(1).map(|m| m.as_str()), id) {
             (Some("ss"), Some(season_id)) => {
@@ -179,7 +190,7 @@ pub fn parse_target(input: &str) -> Result<Target> {
     }
 
     // 课程
-    if let Some(caps) = patterns[8].captures(s) {
+    if let Some(caps) = patterns[9].captures(s) {
         let id = caps.get(2).and_then(|m| m.as_str().parse::<u64>().ok());
         if let (Some("ss"), Some(season_id)) = (caps.get(1).map(|m| m.as_str()), id) {
             return Ok(Target::Cheese(season_id));
@@ -190,7 +201,7 @@ pub fn parse_target(input: &str) -> Result<Target> {
     }
 
     // UP 空间（裸 mid）
-    if let Some(caps) = patterns[9].captures(s) {
+    if let Some(caps) = patterns[10].captures(s) {
         if let Some(mid) = caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()) {
             return Ok(Target::Space(mid));
         }
@@ -258,6 +269,18 @@ mod tests {
         assert_eq!(
             parse_target("space.bilibili.com/486287787/upload/opus?tid=0&page=1").unwrap(),
             Target::OpusList(486287787)
+        );
+    }
+
+    #[test]
+    fn parses_audio_list_url() {
+        assert_eq!(
+            parse_target("https://space.bilibili.com/649910/upload/audio").unwrap(),
+            Target::AudioList(649910)
+        );
+        assert_eq!(
+            parse_target("space.bilibili.com/649910/upload/audio?tid=0").unwrap(),
+            Target::AudioList(649910)
         );
     }
 

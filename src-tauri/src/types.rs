@@ -50,6 +50,9 @@ pub struct BatchVideo {
     /// 图文（opus）条目的 id；视频条目为空。图文的"内容"是图片与正文，没有视频流。
     #[serde(default)]
     pub opus_id: String,
+    /// 音频（au）条目的 id；其余来源为空。音频下载的是音频流而不是视频。
+    #[serde(default)]
+    pub au_id: String,
     pub title: String,
     /// 该条目的 UP 主 / 出品方；来源没给就是空
     #[serde(default)]
@@ -120,6 +123,9 @@ pub struct DownloadRequest {
     /// 图文（opus）id；source=opus 时用它取内容
     #[serde(default)]
     pub opus_id: String,
+    /// 音频（au）id；source=audio 时用它取播放地址
+    #[serde(default)]
+    pub au_id: String,
     /// UP 主名
     #[serde(default)]
     pub owner: String,

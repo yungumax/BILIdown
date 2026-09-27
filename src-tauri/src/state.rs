@@ -47,6 +47,8 @@ pub enum BatchTarget {
     Series { mid: u64, sid: u64 },
     /// 图文列表：mid（游标翻页，见 next_offset）
     Opus(u64),
+    /// 音频投稿列表：mid
+    Audio(u64),
     Space(u64),
     /// 番剧/课程一次给全，没有分页
     Whole,
@@ -377,6 +379,15 @@ impl Settings {
     /// 变量清单与渲染规则都在 [`crate::naming`]，界面面板由同一份清单生成。
     pub fn output_filename(&self, ctx: &crate::naming::NamingContext) -> PathBuf {
         crate::naming::render(&self.naming_template, ctx, self.container_ext())
+    }
+
+    /// 同 [`output_filename`]，但用指定的扩展名（音频固定 m4a，不走封装设置）。
+    pub fn output_filename_with_ext(
+        &self,
+        ctx: &crate::naming::NamingContext,
+        ext: &str,
+    ) -> PathBuf {
+        crate::naming::render(&self.naming_template, ctx, ext)
     }
 
     /// 按命名模板渲染输出目录（图文这类"一条目一文件夹"用它）。
