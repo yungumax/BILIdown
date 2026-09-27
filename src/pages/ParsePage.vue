@@ -515,6 +515,12 @@ const tableRows = computed(() => {
   for (const source of allSources.value) {
     // 按序号加载时这批的第一条不是来源里的第 1 条；abs 记来源内的真实位置
     const fromIndex = source.probe.from_index || 1;
+    // 列表接口都是"最新在前"，而编号要"由旧到新"（最旧的是 1），所以整批倒过来。
+    // 番剧/课程按集数顺序给，不倒。
+    const reversed = CHRONO_KINDS.includes(source.probe.kind);
+    const count = source.probe.items.length;
+    const absOf = (position) =>
+      reversed ? Math.max(count - position, 1) : fromIndex + position;
     if (source.probe.kind === "video") {
       const ck = contentKey(null, source);
       if (seenItems.has(ck)) continue;
@@ -539,7 +545,7 @@ const tableRows = computed(() => {
         key: entryKey(source.probe, entry),
         seq: rows.length + 1,
         index: position + 1,
-        abs: fromIndex + position,
+        abs: absOf(position),
         title: entry.title,
         owner: entry.owner,
         duration: entry.duration,
@@ -851,6 +857,15 @@ function singleNaming(probe) {
   };
 }
 
+/** 序号列的补零宽度与文件名一致：100 条补 3 位，避免表里 "01" 而磁盘上是 "001" */
+function paddedSeq(row) {
+  const width = String(Math.max(row.source.probe.items.length, 1)).length;
+  return String(row.abs).padStart(Math.max(width, 2), "0");
+}
+
+/** 这些来源的列表接口是"最新在前"，编号要倒成"由旧到新"；番剧/课程按集数顺序不倒 */
+const CHRONO_KINDS = ["opus", "space", "fav", "collection", "series", "audio"];
+
 /** 文件夹第二层叫什么都由来源类型决定（见 batchNaming 里的说明） */
 function folderLevel(batch, entry) {
   if (batch.kind === "bangumi" || batch.kind === "cheese") return "";
@@ -883,15 +898,9 @@ function batchNaming(batch, entry, position) {
     // {index} 的补零宽度按本批条数算：20 条补到 2 位、几千条补到 4 位，
     // 这样目录按名称排序才是 01、02 … 10，而不是 1、10、2
     index_pad: String(Math.max(batch.items.length, 1)).length,
-    // 图文列表的顺序是"新 → 旧"，编号要按发布顺序"由远及近"，
-    // 所以倒过来：本批里最旧的那条是 1，最新的最大。
-    // 单条图文/专栏没有批次上下文，不给编号（编号会让人以为它是系列里的一条）
-    index:
-      batch.kind === "opus" && batch.items.length > 1
-        ? batch.items.length - position + 1
-        : batch.kind === "opus" || batch.kind === "article"
-          ? 0
-          : position,
+    // 序号由表格按"由旧到新"算好后传进来（row.abs），这里不再倒第二次。
+    // 单条图文/专栏没有批次上下文，不给编号。
+    index: (batch.kind === "opus" || batch.kind === "article") && batch.items.length <= 1 ? 0 : position,
     date: localDate(),
     publish_date: "",
   };
@@ -1268,7 +1277,7 @@ async function startSingle(item) {
                 <td class="col-check">
                   <input type="checkbox" :checked="isSelected(row)" @change="toggleEntry(row)" />
                 </td>
-                <td class="col-idx num">{{ String(row.abs).padStart(2, "0") }}</td>
+                <td class="col-idx num">{{ paddedSeq(row) }}</td>
                 <td class="col-title">{{ row.title }}</td>
                 <td class="col-owner" :title="row.owner">{{ row.owner || "—" }}</td>
                 <td class="col-dur num">
