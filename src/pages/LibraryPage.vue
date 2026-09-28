@@ -312,7 +312,7 @@ onMounted(() => {
           </div>
           <span class="grow"></span>
           <button class="ghost" :disabled="loading" title="刷新" @click="load">
-            <Icon name="refresh" class="btn-icon" />
+            <Icon name="refresh" class="btn-icon" :class="{ spin: loading }" />
           </button>
         </header>
 
@@ -330,7 +330,7 @@ onMounted(() => {
           <button class="ghost" @click="load">重试</button>
         </div>
 
-        <div v-else-if="folders.length" class="cards">
+        <div v-else-if="folders.length" class="cards page-in">
           <article
             v-for="item in folders"
             :key="keyOf(item)"
@@ -433,7 +433,7 @@ onMounted(() => {
         </header>
 
         <p v-if="opened.loading" class="hint pad">读取中…</p>
-        <div v-else-if="opened.items.length" class="videos">
+        <div v-else-if="opened.items.length" class="videos page-in">
           <article
             v-for="(item, index) in opened.items"
             :key="item.bvid || item.opus_id || index"
@@ -601,6 +601,15 @@ h2 {
   border-radius: var(--radius);
 }
 
+.search input {
+  width: 100%;
+  padding: 9px 12px 9px 34px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+
 .search input:focus-visible {
   outline: none;
   border-color: var(--accent-line);
@@ -625,6 +634,11 @@ h2 {
   gap: 13px;
   padding: 12px;
   background: var(--card);
+  /* 悬停反馈：边框变色 + 1px 上浮，平面语言里的一点"可点" */
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   cursor: pointer;
@@ -632,6 +646,7 @@ h2 {
 
 .collection:hover {
   border-color: var(--accent-line);
+  transform: translateY(-1px);
 }
 
 .collection.on {
@@ -749,6 +764,9 @@ h2 {
   border: 1px solid transparent;
   border-radius: var(--radius);
   cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
 }
 
 .video:hover {

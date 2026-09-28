@@ -601,7 +601,7 @@ async function open(path) {
           </div>
 
           <!-- 下载 -->
-          <div v-if="active === 'download'" class="fields">
+          <div v-if="active === 'download'" class="fields page-in">
             <div class="field full">
               <label>保存目录</label>
               <div class="row-flex">
@@ -740,7 +740,7 @@ async function open(path) {
           </div>
 
           <!-- 媒体 -->
-          <div v-else-if="active === 'media'" class="fields">
+          <div v-else-if="active === 'media'" class="fields page-in">
             <div class="grid2">
               <div class="field">
                 <label>视频清晰度</label>
@@ -951,7 +951,7 @@ async function open(path) {
           </div>
 
           <!-- 文件命名 -->
-          <div v-else-if="active === 'naming'" class="fields">
+          <div v-else-if="active === 'naming'" class="fields page-in">
             <div class="field full">
               <label>命名预设</label>
               <select :value="selectedPreset" @change="selectPreset($event.target.value)">
@@ -1064,7 +1064,7 @@ async function open(path) {
           </div>
 
           <!-- 文件夹层级 -->
-          <div v-else-if="active === 'folder'" class="fields">
+          <div v-else-if="active === 'folder'" class="fields page-in">
             <div class="field full">
               <label>层级预设</label>
               <select :value="selectedFolderPreset" @change="selectFolderPreset($event.target.value)">
@@ -1165,7 +1165,7 @@ async function open(path) {
           </div>
 
           <!-- 编码与处理 -->
-          <div v-else-if="active === 'encode'" class="fields">
+          <div v-else-if="active === 'encode'" class="fields page-in">
             <div class="field full">
               <label>单任务分段数</label>
               <select v-model.number="draft.chunk_concurrency">
@@ -1193,7 +1193,7 @@ async function open(path) {
           </div>
 
           <!-- 应用更新 -->
-          <div v-else-if="active === 'update'" class="fields">
+          <div v-else-if="active === 'update'" class="fields page-in">
             <div class="field full">
               <label>自动检测</label>
               <p class="note top">
@@ -1226,7 +1226,7 @@ async function open(path) {
           </div>
 
           <!-- 网络与维护 -->
-          <div v-else class="fields">
+          <div v-else class="fields page-in">
             <div class="field full">
               <label>代理地址</label>
               <input

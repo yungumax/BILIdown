@@ -260,8 +260,10 @@ input[type="checkbox"]:disabled {
 
 @media (prefers-reduced-motion: reduce) {
   * {
-    transition: none !important;
     animation: none !important;
+    /* 位移/缩放一律不做，但保留颜色与透明度过渡——
+       状态反馈（悬停、选中）在减少动态下仍要看得见 */
+    transition-property: background-color, border-color, color, opacity, fill, stroke !important;
   }
 }
 
@@ -313,12 +315,20 @@ input[type="checkbox"]:disabled {
   animation: page-in var(--motion) var(--ease-out) both;
 }
 
-/* 列表行：逐行淡入；延迟最多累计 10 行，长清单不会等出几秒 */
-
-
 /* 弹层/对话框出现 */
 .pop-in {
   animation: pop-in var(--motion-fast) var(--ease-out) both;
+}
+
+/* 图标旋转：进行中的状态反馈（刷新读取中）。匀速无限转，不占时长 token */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
 }
 
 /* 按钮：悬停/按下的过渡统一，按下给一点位移反馈 */
