@@ -204,10 +204,15 @@ check("「下载范围」切到保留原始频道后选中态跟着变",
     return field.querySelector('select').selectedOptions[0].textContent.includes('保留原始');
   })()`)) === true);
 
-// 收尾：撤销，别留脏草稿
-await js(`[...document.querySelectorAll('button')].find(b => b.textContent.includes('撤销'))?.click()`);
-await wait(700);
-const stillDirty = await js(`(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.includes('撤销')); return b ? !b.disabled : null; })()`);
+// 收尾：循环点「撤销」直到草稿干净（≤3 次）——前序仪器若直写过 IPC，
+// 第一击的重载会暴露脱同步，第二击才吸收（同 test-presets 的收尾）
+let stillDirty = null;
+for (let i = 0; i < 3; i += 1) {
+  stillDirty = await js(`(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.includes('撤销')); return b ? !b.disabled : null; })()`);
+  if (stillDirty === false || stillDirty === null) break;
+  await js(`[...document.querySelectorAll('button')].find(b => b.textContent.includes('撤销')).click()`);
+  await wait(700);
+}
 check("收尾后草稿回到已保存状态", stillDirty === false, stillDirty === null ? "找不到撤销按钮" : stillDirty ? "草稿仍脏" : "");
 
 const shot = await send("Page.captureScreenshot", { format: "png" });

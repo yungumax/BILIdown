@@ -17,6 +17,9 @@ const rows = () => js(`JSON.stringify([...document.querySelectorAll('.sub-card')
 const audioRows = () => js(`JSON.stringify([...[...document.querySelectorAll('.sub-card')][1].querySelectorAll('.pref-row')].map(r => r.querySelector('select').selectedOptions[0].textContent.trim()))`);
 
 console.log("A) 保存前界面: " + await rows());
+// 先快照后端设置——收尾按快照还原（而不是盲目写默认值，那会覆盖用户自定义，
+// 还会让运行中的应用拿着旧内存与后端脱同步，拖挂后面断言"草稿干净"的仪器）
+const snapshot = await js(`(async () => JSON.stringify((await window.__TAURI_INTERNALS__.invoke('app_settings')).settings))()`);
 // 点保存
 await js(`[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '保存').click()`);
 await new Promise(r => setTimeout(r, 900));
@@ -28,14 +31,19 @@ console.log("B) 保存后后端: " + backend);
 console.log("C) 音频界面: " + await audioRows());
 console.log("D) 控制台错误: " + (errors.length ? errors.join(" | ") : "无"));
 
-// 还原成默认，别把测试值留在你的配置里
+// 还原到本测试开始前的快照，然后 reload 让应用与后端重新对齐
+// （直写 IPC 应用是感知不到的，只有整页重载能消除内存里的旧设置）
 await js(`(async () => {
   const I = window.__TAURI_INTERNALS__;
-  const cur = await I.invoke('app_settings');
-  const next = { ...cur.settings, quality_prefs: [{ qn: 127, codec: 'auto' }], audio_prefs: ['auto'] };
-  await I.invoke('update_settings', { settings: next });
+  await I.invoke('update_settings', { settings: ${snapshot} });
   return 'done';
 })()`);
 const after = await js(`(async () => JSON.stringify((await window.__TAURI_INTERNALS__.invoke('app_settings')).settings.quality_prefs))()`);
-console.log("E) 已还原为: " + after);
+console.log("E) 已还原为快照: " + after);
+await js(`location.reload()`);
+for (let i = 0; i < 20; i += 1) {
+  await new Promise(r => setTimeout(r, 500));
+  if (await js(`!!document.querySelector('.sidebar')`)) break;
+}
+console.log("F) 应用已重载（与后端对齐）: " + (await js(`!!document.querySelector('.sidebar')`)));
 ws.close(); process.exit(0);

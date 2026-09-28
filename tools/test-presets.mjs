@@ -163,10 +163,16 @@ check("文件夹页也拒绝与内置重名", !folderClash.options.some((o) => o
 check("文件夹页的拒绝也给了提示", (await js(`document.querySelector('.toast')?.textContent?.trim() || ''`)).includes("重名"),
   await js(`document.querySelector('.toast')?.textContent?.trim() || ''`));
 
-// 收尾：丢弃草稿，用户真实的设置一个字节都没动
-await js(`[...document.querySelectorAll('button')].find(b => b.textContent.includes('撤销'))?.click()`);
-await wait(600);
-const stillDirty = await js(`(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.includes('撤销')); return b ? !b.disabled : null; })()`);
+// 收尾：循环点「撤销」直到草稿干净（≤3 次）。只点一次不够——若前序仪器
+// 直写过 IPC，应用内存与后端脱同步，第一击的重载会把差异暴露成"脏"，
+// 第二击才吸收。断言依然是严格的：必须以撤销钮禁用（草稿==已保存）收场。
+let stillDirty = null;
+for (let i = 0; i < 3; i += 1) {
+  stillDirty = await js(`(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.includes('撤销')); return b ? !b.disabled : null; })()`);
+  if (stillDirty === false || stillDirty === null) break;
+  await js(`[...document.querySelectorAll('button')].find(b => b.textContent.includes('撤销')).click()`);
+  await wait(700);
+}
 check("收尾后草稿回到已保存状态（测试没留下脏草稿，也不会写进 settings.json）", stillDirty === false,
   stillDirty === null ? "找不到撤销按钮" : stillDirty ? "草稿仍然是脏的" : "");
 const shot = await send("Page.captureScreenshot", { format: "png" });
