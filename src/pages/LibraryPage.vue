@@ -833,12 +833,15 @@ h2 {
   margin-top: 14px;
 }
 
-/* 页码栏：钉在这一屏的最下方，滚视频卡片时它不走开（用户点名要固定） */
+/* 页码栏：钉在窗口最底，滚视频卡片时它不走开（用户点名要固定、且要封住底边）。
+   sticky 以 .content 的内容盒为基准，而它还有 22px 底 padding（App.vue），
+   bottom:0 会悬在窗口底上方 22px，那条缝里封面会从页码栏底下滚出来 ——
+   所以补 -22px 让整个盒子封到窗口底边。 */
 .pager {
   position: sticky;
-  bottom: 0;
+  bottom: -22px;
   z-index: 2;
-  padding: 12px 0 8px;
+  padding: 12px 0 10px;
   background: var(--card);
   border-top: 1px solid var(--line-soft);
   /* 卡片是从下面滚上来的，圆角与两侧用同色描边圈盖住 */
