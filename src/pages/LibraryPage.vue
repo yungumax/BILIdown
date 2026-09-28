@@ -833,10 +833,16 @@ h2 {
   margin-top: 14px;
 }
 
-/* 页码栏：普通页脚，压一条分隔线收尾（跟工具条的分隔线呼应） */
+/* 页码栏：钉在这一屏的最下方，滚视频卡片时它不走开（用户点名要固定） */
 .pager {
-  padding-top: 12px;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding: 12px 0 8px;
+  background: var(--card);
   border-top: 1px solid var(--line-soft);
+  /* 卡片是从下面滚上来的，圆角与两侧用同色描边圈盖住 */
+  box-shadow: 0 0 0 12px var(--card);
 }
 
 .count {
