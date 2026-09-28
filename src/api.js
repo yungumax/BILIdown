@@ -219,7 +219,7 @@ export async function startWindowDrag() {
 }
 
 function emptyLogin() {
-  return { logged_in: false, uname: "", mid: 0, vip: false, vip_label: "" };
+  return { logged_in: false, uname: "", face: "", mid: 0, vip: false, vip_label: "" };
 }
 
 // 仅浏览器预览用的假数据
@@ -229,7 +229,14 @@ const mock = (() => {
 
   const status = () => ({
     version: "0.1.0",
-    login: { logged_in: true, uname: "术缕", mid: 1858731, vip: true, vip_label: "年度大会员" },
+    login: {
+      logged_in: true,
+      uname: "术缕",
+      face: "https://i0.hdslb.com/bfs/face/member/noface.jpg",
+      mid: 1858731,
+      vip: true,
+      vip_label: "年度大会员",
+    },
     output_dir: "D:\\Zcode\\_data\\bilidown\\downloads",
     cookies_path: "D:\\Zcode\\_data\\bilidown\\cookies.json",
   });

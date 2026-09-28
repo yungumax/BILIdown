@@ -14,7 +14,7 @@ import LibraryPage from "./pages/LibraryPage.vue";
 const RUNNING = ["queued", "downloading", "merging"];
 
 const page = ref("parse");
-const login = ref({ logged_in: false, uname: "", mid: 0, vip: false, vip_label: "" });
+const login = ref({ logged_in: false, uname: "", face: "", mid: 0, vip: false, vip_label: "" });
 const version = ref("");
 const outputDir = ref("");
 const tasks = ref([]);

@@ -100,6 +100,9 @@ pub struct NavData {
     pub is_login: bool,
     #[serde(default, deserialize_with = "string_or_null")]
     pub uname: String,
+    /// 用户头像 URL（i*.hdslb.com，https；未登录时可能为空）。
+    #[serde(default, deserialize_with = "string_or_null")]
+    pub face: String,
     #[serde(default)]
     pub mid: u64,
     /// 0=非大会员，1=大会员

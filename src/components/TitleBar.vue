@@ -154,7 +154,14 @@ function onDrag(event) {
     </div>
 
     <button class="login-chip" :class="{ on: login.logged_in }" @click="emit('login')">
-      <Icon name="login" class="glyph" />
+      <img
+        v-if="login.logged_in && login.face"
+        class="avatar"
+        :src="login.face"
+        referrerpolicy="no-referrer"
+        alt=""
+      />
+      <Icon v-else name="login" class="glyph" />
       <span class="label">{{ login.logged_in ? login.uname : "未登录" }}</span>
       <Icon name="chevronDown" class="caret" />
     </button>
@@ -335,6 +342,17 @@ function onDrag(event) {
 .login-chip .glyph {
   width: 18px;
   height: 18px;
+}
+
+/* 登录后头像替换登录图标：圆形小图，B 站 CDN 必须带 no-referrer */
+.login-chip .avatar {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  object-fit: cover;
+  background: var(--thumb);
+  border: 1px solid var(--line);
+  border-radius: 50%;
 }
 
 .login-chip.on .glyph {

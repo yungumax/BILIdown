@@ -50,6 +50,8 @@ async fn current_login(client: &BiliClient) -> LoginInfo {
         Ok(nav) if nav.is_login => LoginInfo {
             logged_in: true,
             uname: nav.uname.clone(),
+            // nav 返回的头像可能是 http://，webview 的图片一律走 https 才稳
+            face: nav.face.replacen("http://", "https://", 1),
             mid: nav.mid,
             vip: nav.vip_status > 0,
             vip_label: nav.vip_label_text().to_string(),

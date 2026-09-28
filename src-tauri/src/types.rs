@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 pub struct LoginInfo {
     pub logged_in: bool,
     pub uname: String,
+    /// 用户头像 URL（未登录为空串）。
+    pub face: String,
     pub mid: u64,
     pub vip: bool,
     pub vip_label: String,
