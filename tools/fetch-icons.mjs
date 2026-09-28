@@ -10,16 +10,16 @@ const API = `https://www.iconfont.cn/api/collection/detail.json?id=${CID}`;
 const PICK = [
   ["download", "download"], ["folder", "folder"], ["fileText", "file-text"], ["books", "books"],
   ["bookmark", "bookmark2"], ["link", "link"], ["slidersH", "adjust-horizontal"], ["slidersV", "adjust"],
-  ["funnel", "filtering"], ["listDetails", "list-details"], ["listLine", "list-line"], ["checklist", "checklist"],
+  ["funnel", "filtering"], ["listDetails", "list-details"], ["listLine", "list-line"], 
   ["sortAscending", "sort-ascending"],
-  ["refresh", "refresh"], ["reload", "reload"], ["history", "history"], ["undo", "back"],
+  ["refresh", "refresh"], ["reload", "reload"], ["undo", "back"],
   ["transfer", "arrows-right-left"], ["chevronDown", "chevron-down"], ["chevronLeft", "chevron-left"],
   ["chevronRight", "chevron-right"], ["play", "play-filled"], ["photo", "photo"], ["album", "album"],
   ["broadcast", "broadcast"], ["server", "server"], ["cloudDownload", "cloud-download"],
-  ["info", "info"], ["bell", "bell"], ["star", "star"], ["bulb", "bulb"], ["login", "login"],
-  ["check", "check"], ["clipboard", "clipboard-text"], ["edit", "edit"], ["plus", "plus"],
+  ["info", "info"], ["star", "star"], ["login", "login"],
+  ["check", "check"], ["clipboard", "clipboard-text"], ["plus", "plus"],
   ["minus", "minus"], ["close", "close"], ["maximize", "maximize"], ["microphone", "microphone"],
-  ["user", "user-check"], ["clock", "clock"], ["ruler", "ruler"], ["scan", "scan"],
+  ["user", "user-check"], 
   ["search", "search"], ["lock", "lock"], ["terminal", "terminal"],
 ];
 

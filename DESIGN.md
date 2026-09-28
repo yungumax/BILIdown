@@ -192,7 +192,7 @@ dist —— Tauri 的 `custom-protocol` 在**编译时**把 `dist/` 编进去，
 **全部图标来自 iconfont 公共库 `cid=54475`**（线面同构的一套，1024 视野、填充绘制），
 不再一个个手画 path：
 
-- 图标数据在 `src/icons.js`：`语义名 -> [{ d, rule }]`，全项目共 47 个。
+- 图标数据在 `src/icons.js`：`语义名 -> [{ d, rule }]`，全项目共 39 个（精简掉 8 个无引用的）。
 - 渲染统一走 `src/components/Icon.vue`：`<Icon name="download" />`，
   **尺寸由所在位置的 CSS 决定**（父级 `.icon` / `.ghost svg` 这类规则照样命中它的根 svg，
   作用域样式会作用到子组件根节点上），颜色跟随 `currentColor`（激活态变主色是自动的）。

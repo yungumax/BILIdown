@@ -74,8 +74,6 @@ export function batchNaming(batch, entry, position) {
     // 补零宽度按来源总数（拿不到总数时用本批条数）：表格与文件名同宽，
     // 而且来源以后继续拉长，已编号的位数也不会变
     index_pad: String(Math.max(batch.total || batch.items.length, 1)).length,
-    // 分钟，东为正（JS 的 getTimezoneOffset 符号相反）
-    tz_offset_min: -new Date().getTimezoneOffset(),
     // 序号由表格按"由旧到新"算好后传进来（row.abs），这里不再倒第二次。
     // 单条图文/专栏没有批次上下文，不给编号。
     // 图文/专栏：编号 = 在来源里的固定位置（从最新那头数，1 起）。

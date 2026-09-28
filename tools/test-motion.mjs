@@ -24,28 +24,25 @@ await wait(1200);
 const probe = `(() => {
   const cs = getComputedStyle(document.documentElement);
   const anim = (sel) => { const el = document.querySelector(sel); if (!el) return null; const c = getComputedStyle(el); return { name: c.animationName, dur: c.animationDuration, delay: c.animationDelay, transition: c.transitionDuration }; };
-  const row = document.querySelector(".batch-table tbody tr.row-in");
   const btn = document.querySelector("button");
   return JSON.stringify({
     节奏: { fast: cs.getPropertyValue("--motion-fast").trim(), base: cs.getPropertyValue("--motion").trim(), ease: cs.getPropertyValue("--ease-out").trim() },
     ready: document.documentElement.classList.contains("ready"),
     栏目淡入: anim(".parse-page, .page-in"),
-    表格行: anim(".batch-table tbody tr.row-in"),
-    行延迟: row ? getComputedStyle(row).animationDelay : null,
-    行序号变量: row ? getComputedStyle(row).getPropertyValue("--row-i").trim() : null,
+    结果卡入场: anim(".results"),
     按钮过渡: btn ? getComputedStyle(btn).transitionDuration : null,
     勾选框动画: (() => { const c = document.querySelector('input[type="checkbox"]'); if (!c) return null; c.checked = true; return getComputedStyle(c).animationName; })()
   }, null, 1);
 })()`;
 console.log("常规偏好: " + (await js(probe)));
 
-// 换成"减少动态效果"，动画与过渡都应关闭
+// 换成"减少动态效果"：动画关、颜色类过渡保留（位移类被 transition-property 白名单剥离）
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
 await wait(400);
 console.log("reduced-motion: " + (await js(`(() => {
-  const row = document.querySelector(".batch-table tbody tr.row-in");
+  const card = document.querySelector(".results");
   const btn = document.querySelector("button");
-  return JSON.stringify({ 表格行动画: row ? getComputedStyle(row).animationName : null, 行时长: row ? getComputedStyle(row).animationDuration : null, 按钮过渡时长: btn ? getComputedStyle(btn).transitionDuration : null });
+  return JSON.stringify({ 结果卡动画: card ? getComputedStyle(card).animationName : null, 按钮过渡属性: btn ? getComputedStyle(btn).transitionProperty : null, 按钮过渡时长: btn ? getComputedStyle(btn).transitionDuration : null });
 })()`)));
 await send("Emulation.setEmulatedMedia", { features: [] });
 console.log("控制台错误: " + (errors.length ? errors.join(" | ") : "无"));

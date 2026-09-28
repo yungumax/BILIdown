@@ -636,10 +636,6 @@ impl AppState {
         Ok(client)
     }
 
-    fn default_cookies_path() -> PathBuf {
-        bili_core::login::default_cookie_path()
-    }
-
     /// 首次调用时访问一次首页，把 buvid3 之类的风控 Cookie 放进会话（只做一次）。
     pub async fn warmup_once(&self) {
         use std::sync::atomic::Ordering;

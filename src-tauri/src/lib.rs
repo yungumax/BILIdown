@@ -52,8 +52,8 @@ pub fn run() {
   }}
 }})();"##
             );
-            // 窗口先隐藏，前端渲染完成后由前端调 show_window 显示，
-            // 彻底避免「先见白底/旧底色、再见内容」的启动闪烁。
+            // 窗口先隐藏，前端渲染完成后由 main.js 调 JS API 的 show() 显示
+            //（彻底避免「先见白底/旧底色、再见内容」的启动闪烁）。
             let window = WebviewWindowBuilder::new(app.handle(), "main", WebviewUrl::default())
                 .title("BILIdown")
                 .inner_size(1100.0, 740.0)
@@ -95,7 +95,6 @@ pub fn run() {
             commands::login_poll,
             commands::logout,
             commands::choose_output_dir,
-            commands::set_output_dir,
             commands::open_path,
             commands::pick_ffmpeg,
             commands::ffmpeg_status,
@@ -109,7 +108,6 @@ pub fn run() {
             commands::cleanup_cache,
             commands::export_diagnostics,
             commands::check_updates,
-            commands::show_window,
         ])
         .run(tauri::generate_context!())
         .expect("BILIdown 启动失败");

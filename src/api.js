@@ -81,11 +81,6 @@ export async function chooseOutputDir() {
   return invoke("choose_output_dir");
 }
 
-export async function setOutputDir(dir) {
-  if (!hasTauri) return dir;
-  return invoke("set_output_dir", { dir });
-}
-
 export async function pickFfmpeg() {
   if (!hasTauri) return "";
   return invoke("pick_ffmpeg");
@@ -190,17 +185,6 @@ export async function toggleMaximizeWindow() {
 export async function closeWindow() {
   const win = await windowApi();
   await win?.close();
-}
-
-
-export async function showWindow() {
-  if (!hasTauri) return;
-  try {
-    const { getCurrentWindow } = await import("@tauri-apps/api/window");
-    await getCurrentWindow().show();
-  } catch {
-    // 忽略：仅影响窗口显示时机
-  }
 }
 
 export async function setWindowBackground(color) {
