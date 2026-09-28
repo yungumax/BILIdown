@@ -314,6 +314,14 @@ function human(bytes) {
 
 .stages li.active .pip {
   background: var(--accent);
+  /* 正在跑的阶段：小圆点呼吸，一眼看出哪段在工作 */
+  animation: pip-pulse 1.6s var(--ease-out) infinite;
+}
+
+@keyframes pip-pulse {
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .stages li.done .pip {

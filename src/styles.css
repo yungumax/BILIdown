@@ -331,6 +331,33 @@ input[type="checkbox"]:disabled {
   animation: spin 900ms linear infinite;
 }
 
+/* 主按钮悬停光泽：一道浅高光扫过（装饰性，只在悬停那一刻发生一次）。
+   各页面的 .primary 是 scoped 定义，这里用 body 前缀做加法覆盖，
+   只加 position/overflow 与 ::after，不碰它们的配色。 */
+body button.primary {
+  position: relative;
+  overflow: hidden;
+}
+
+body button.primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.18) 50%,
+    transparent 60%
+  );
+  transform: translateX(-130%);
+  transition: transform 0.6s var(--ease-out);
+  pointer-events: none;
+}
+
+body button.primary:hover:not(:disabled)::after {
+  transform: translateX(130%);
+}
+
 /* 按钮：悬停/按下的过渡统一，按下给一点位移反馈 */
 button {
   transition:

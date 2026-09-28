@@ -790,6 +790,13 @@ h2 {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* 悬停时封面轻微放大（装饰性微交互，容器已裁圆角） */
+  transition: transform var(--motion) var(--ease-out);
+}
+
+.video:hover .cover img,
+.video.on .cover img {
+  transform: scale(1.04);
 }
 
 .seq,
@@ -1043,6 +1050,14 @@ h2 {
   background: var(--accent-soft);
   border: 1px solid var(--accent-line);
   border-radius: 50%;
+  /* 空状态的图标轻轻浮着——页面没内容时也有一点生命感 */
+  animation: float-y 3.2s ease-in-out infinite;
+}
+
+@keyframes float-y {
+  50% {
+    transform: translateY(-4px);
+  }
 }
 
 .empty-text {

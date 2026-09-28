@@ -290,6 +290,11 @@ dist —— Tauri 的 `custom-protocol` 在**编译时**把 `dist/` 编进去，
   可点卡片（收藏夹卡片）悬停可再加 1px 上浮（`transform`，不是布局属性）。
 - **进行中状态用图标说话**：刷新读取中给图标挂 `.spin`（900ms 匀速无限转，
   全局工具类，别在各组件里重复定义）。
+- **适当装饰（每屏同时在场的环境动画 ≤2 个）**：
+  封面在格子悬停/选中时放大到 1.04（`transform`，容器已裁圆角）；
+  空状态图标 `float-y` 轻浮动；传输行活动阶段 `pip-pulse` 呼吸圆点；
+  主按钮（`body button.primary::after`，全局加法覆盖，scoped 定义不动）
+  悬停时一道高光扫过——**禁用态不扫**（`:not(:disabled)`）。
 - **不做**：逐行入场（每块套同一套入场）、回弹/弹性缓动（用 `--ease-out-expo`）。
 - **不动画布局属性**：`width`/`height`/`padding`/`margin` 一律不用，
   进度条用 `transform: scaleX()`（检测器会把 `transition: width` 判为布局抖动）。
