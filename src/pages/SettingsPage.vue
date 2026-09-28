@@ -1847,12 +1847,18 @@ input::placeholder {
   cursor: not-allowed;
 }
 
-/* 运行环境块 */
+/* 运行环境块：钉在这一屏的最下方，滚设置项时它不走开
+   （它是字段列表的最后一块，sticky 的包含块就是卡片内容区） */
 .env {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   padding: 13px 14px;
   background: var(--raised);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
+  /* 字段从下面滚上来时，圆角与两侧会露出一点：用同色描边圈盖住 */
+  box-shadow: 0 0 0 12px var(--card);
 }
 
 .env-head {

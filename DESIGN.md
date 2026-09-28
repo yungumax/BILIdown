@@ -201,7 +201,8 @@ dist —— Tauri 的 `custom-protocol` 在**编译时**把 `dist/` 编进去，
 - 换图标/换图标库：改 `tools/fetch-icons.mjs` 里的 `PICK` 表（语义名 → 库里的图标名），
   然后 `node tools/fetch-icons.mjs` 重新生成 `src/icons.js`。
 - 导航图标仍要成套：侧栏五项与设置页七个分类都是 22px，库里的同一套线宽天然一致。
-  设置页「运行环境 FFmpeg」那一行前面也有一个 22px 的 `terminal` 图标（`.env-icon`，卡片底 + 细边框）。
+  设置页「运行环境 FFmpeg」那一行前面也有一个 22px 的 `terminal` 图标（`.env-icon`，卡片底 + 细边框），
+  整块还钉在设置页最下方（sticky，见内容库那一节）。
 - 唯一没换的是**主题按钮**：它是"当前模式"的指示（太阳 / 月亮 / 半圆），库里没有日/月
   （`brightness` 那个画的是齿轮），保留自绘。要做成库里的 `bulb` 也可以，改一句话。
 
@@ -240,6 +241,9 @@ dist —— Tauri 的 `custom-protocol` 在**编译时**把 `dist/` 编进去，
   只看当前标签那一列会让另一个标签里勾的项悄悄丢掉；勾选键是 `kind:id`
   （收藏夹与合集的 id 是两套命名空间，可能撞号）。
 - 翻页时序号仍按整个来源算（`151 - (页-1)*每批 - 页内位置`），只有显示是按页切的。
+- **底部这两条都钉住**（`position: sticky; bottom: 0`，背景不透明 + 同色描边圈盖住圆角/两侧）：
+  内容库详情的页码栏、设置页「运行环境 FFmpeg」方块。滚内容时它们不走开，
+  滚到底才回到自然位置（sticky 的正常表现）。父级滚动容器是 `App.vue` 的 `.content`。
 - **封面怎么加载**：B 站图片地址在 webview 里要 `https`（http 被拦）、要带缩放后缀
   （`@320w_200h_1c.webp`，不然 130 张原图就是几十 MB）、还要 `referrerpolicy="no-referrer"`
   （不然 CDN 按热链 403）。三条缺一条就是一片空白框。
