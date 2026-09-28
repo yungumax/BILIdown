@@ -719,17 +719,19 @@ async function open(path) {
 
             <div class="env full">
               <div class="env-head">
-                <span class="env-title">运行环境 <b>FFmpeg</b></span>
+                <span class="env-title">运行环境 <i>FFmpeg</i></span>
                 <span class="spacer"></span>
                 <span class="badge" :class="env?.ffmpeg_ok ? 'ok' : 'bad'">
                   {{ env?.ffmpeg_ok ? "就绪" : "未找到" }}
                 </span>
-                <button class="ghost" @click="emit('reload')">重新检查</button>
+                <button class="env-recheck" title="重新检测 FFmpeg" @click="emit('reload')">重新检查</button>
               </div>
-              <div class="env-row">
+              <div class="env-row" :class="{ bad: !env?.ffmpeg_ok }">
                 <Icon name="terminal" class="env-icon" />
-                <span class="env-name">FFmpeg</span>
-                <span class="env-info" :title="env?.ffmpeg_info">{{ env?.ffmpeg_info || "未检测" }}</span>
+                <div class="env-text">
+                  <span class="env-name">FFmpeg</span>
+                  <span class="env-info" :title="env?.ffmpeg_info">{{ env?.ffmpeg_info || "未检测" }}</span>
+                </div>
                 <span class="badge small" :class="env?.ffmpeg_ok ? 'ok' : 'bad'">
                   {{ env?.ffmpeg_ok ? "可用" : "不可用" }}
                 </span>
@@ -1847,18 +1849,13 @@ input::placeholder {
   cursor: not-allowed;
 }
 
-/* 运行环境块：钉在这一屏的最下方，滚设置项时它不走开
-   （它是字段列表的最后一块，sticky 的包含块就是卡片内容区） */
+/* 运行环境：标题行（就绪 + 重新检查文字链）+ 内嵌小卡
+   （粉色线框图标 + 名称/版本两行 + 可用徽标） */
 .env {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
   padding: 13px 14px;
   background: var(--raised);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
-  /* 字段从下面滚上来时，圆角与两侧会露出一点：用同色描边圈盖住 */
-  box-shadow: 0 0 0 12px var(--card);
 }
 
 .env-head {
@@ -1873,38 +1870,66 @@ input::placeholder {
   font-weight: 700;
 }
 
-.env-title b {
-  color: var(--accent-dark);
+.env-title i {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--faint);
 }
 
-.env-icon {
+.env-recheck {
   flex: none;
-  width: 22px;
-  height: 22px;
-  padding: 4px;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--faint);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.env-recheck:hover {
   color: var(--accent-ink);
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
 }
 
 .env-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 12px;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--field);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+}
+
+.env-row.bad {
+  border-color: color-mix(in srgb, var(--err) 35%, var(--line-soft));
+}
+
+.env-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--accent-ink);
+}
+
+.env-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .env-name {
+  font-size: 12.5px;
   font-weight: 600;
 }
 
 .env-info {
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 11.5px;
   color: var(--faint);
 }
 

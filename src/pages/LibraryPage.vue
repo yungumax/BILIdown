@@ -738,7 +738,8 @@ h2 {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
-  margin-top: 14px;
+  /* 封面紧跟工具条的分隔线，中间不留空隙 */
+  margin-top: 0;
 }
 
 .video {
@@ -832,16 +833,10 @@ h2 {
   margin-top: 14px;
 }
 
-/* 页码栏：钉在这一屏的最下方，滚视频卡片时它不走开 */
+/* 页码栏：普通页脚，压一条分隔线收尾（跟工具条的分隔线呼应） */
 .pager {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  padding: 12px 0 8px;
-  background: var(--card);
+  padding-top: 12px;
   border-top: 1px solid var(--line-soft);
-  /* 卡片是从下面滚上来的，圆角与两侧用同色描边圈盖住 */
-  box-shadow: 0 0 0 12px var(--card);
 }
 
 .count {
