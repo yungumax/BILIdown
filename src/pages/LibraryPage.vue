@@ -310,6 +310,7 @@ onMounted(() => {
               {{ (tab === TAB.fav ? account?.created.length : account?.subscribed.length) ?? 0 }} 个内容集合
             </p>
           </div>
+          <span class="grow"></span>
           <button class="ghost" :disabled="loading" title="刷新" @click="load">
             <Icon name="refresh" class="btn-icon" />
           </button>
