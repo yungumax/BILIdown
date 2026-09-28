@@ -614,7 +614,8 @@ h2 {
 .cards {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  /* 卡片之间的间隔略微放大，透气一点（用户点名） */
+  gap: 18px;
   margin-top: 16px;
 }
 
