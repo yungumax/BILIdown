@@ -41,6 +41,8 @@ const queue = computed(() => {
 onMounted(async () => {
   // 首帧之后再开颜色过渡：启动时要的是"立刻正确"，不是"渐变色"
   requestAnimationFrame(() => document.documentElement.classList.add("ready"));
+  applyUiScale();
+  window.addEventListener("resize", applyUiScale);
   try {
     const status = await api.appStatus();
     login.value = status.login;
@@ -88,6 +90,15 @@ function applyTheme(mode) {
   if (mode !== "system") {
     api.setWindowBackground(mode === "dark" ? "#0f1011" : "#f5f3f4");
   }
+}
+
+/** 整体 UI 随窗口等比缩放：以默认窗口 1100×740 为 1.0，取宽高比较小的一边
+ *  （避免只拉一边时另一边溢出），夹在 0.85–1.3，并按 0.05 量化——
+ *  拖拽调节大小时不会逐帧跳变。默认尺寸下恰好 1.0，仪器断言不受影响。 */
+function applyUiScale() {
+  const raw = Math.min(window.innerWidth / 1100, window.innerHeight / 740);
+  const zoom = Math.round(Math.min(1.3, Math.max(0.85, raw)) * 20) / 20;
+  document.documentElement.style.zoom = String(zoom);
 }
 
 /** ffmpeg 状态单独取：探测要起子进程（约 0.8 秒），不能拖慢设置读取与主题生效 */

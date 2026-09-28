@@ -314,6 +314,19 @@ node tools/ui-geometry.mjs geometry-after.json    # 改之后（逐项对比，�
 
 想加分隔线就用 `box-shadow`，不要用 `padding` —— 后者会把下面整体推移。
 
+### 侧栏图标模式与整体缩放（几何不变的例外与基准）
+
+- **侧栏两态**：宽栏 196px（图标+两行文字）/ 图标栏 64px（只留图标，方形钮
+  约 44px、`--radius-lg` 圆角、选中态同宽栏语言；文字提示走原生 `title`）。
+  底部一枚 `chevronLeft/Right` 切换钮；偏好存 localStorage
+  （`bilidown.sidebar-mini`），纯 UI 偏好不进 settings.json。
+- **整体 UI 随窗口等比缩放**：`document.documentElement.style.zoom`，
+  基准是默认窗口 **1100×740 → 1.0**，取 `min(宽比, 高比)` 夹在 **0.85–1.3**，
+  按 0.05 量化（拖拽不逐帧跳）。默认窗口下恰为 1.0，所以 ui-geometry 等
+  绝对断言不受影响；改窗口相关的仪器要注意 `getBoundingClientRect`
+  含 zoom 而 `clientWidth` 不含（test-responsive 已做单位归一）。
+  不要用 `transform: scale()` 做这件事——那只缩像素不重排，换行/滚动全错。
+
 ## 七、覆盖 scoped 样式的正确姿势
 
 页面组件的 `<style scoped>` 带 `[data-v-*]` 属性选择器，特异性比同名全局规则高。

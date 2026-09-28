@@ -25,16 +25,20 @@ const check = async (label, w, h) => {
   await new Promise((r) => setTimeout(r, 900));
   const state = await js(`(() => {
     const content = document.querySelector(".content");
-    const root = document.querySelector(".content > *");
+    const root = [...document.querySelector(".content").children].find((c) => getComputedStyle(c).display !== "none") || document.querySelector(".content > *");
+    // rect 系带 zoom、clientWidth 不带——先归一到同一单位再比较
+    const z = parseFloat(document.documentElement.style.zoom || "1");
     const box = root.getBoundingClientRect();
+    const area = content.getBoundingClientRect();
     var padding = 22;
     var inner = content.clientWidth;
-    var centered = Math.abs((box.left - content.getBoundingClientRect().left) - (inner - box.width) / 2) < 6;
+    var centered = Math.abs((box.left - area.left) - (area.width - box.width) / 2) < 6 * z;
     return JSON.stringify({
-      内容宽: Math.round(box.width),
+      内容宽: Math.round(box.width / z),
       内容区宽: inner,
       横向溢出: content.scrollWidth > inner + 1,
-      居中: centered
+      居中: centered,
+      缩放: z
     });
   })()`);
   console.log(label + ` (${w}x${h}) → ` + state);

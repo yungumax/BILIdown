@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import Icon from "./Icon.vue";
 
 const props = defineProps({
@@ -8,6 +8,13 @@ const props = defineProps({
   queue: { type: Object, default: () => ({ active: 0, speed: 0 }) },
 });
 const emit = defineEmits(["navigate"]);
+
+/** 图标模式（窄栏）：纯 UI 偏好，记在 localStorage，不动 settings.json */
+const mini = ref(localStorage.getItem("bilidown.sidebar-mini") === "1");
+function toggleMini() {
+  mini.value = !mini.value;
+  localStorage.setItem("bilidown.sidebar-mini", mini.value ? "1" : "0");
+}
 
 const items = [
   {
@@ -64,32 +71,40 @@ const speedText = computed(() => {
 </script>
 
 <template>
-  <aside class="sidebar">
+  <aside class="sidebar" :class="{ mini }">
     <nav>
       <button
         v-for="item in items"
         :key="item.key"
         class="nav-item"
         :class="{ active: current === item.key }"
+        :title="mini ? `${item.label} · ${item.hint}` : undefined"
         @click="emit('navigate', item.key)"
       >
         <Icon :name="item.icon" class="icon" />
-        <span class="text">
+        <span v-if="!mini" class="text">
           <span class="label">{{ item.label }}</span>
           <span class="hint">{{ item.hint }}</span>
         </span>
       </button>
     </nav>
 
-    <div class="status">
-      <p class="line">
-        <span class="dot" :class="{ busy: queue.active > 0 }"></span>
-        {{ statusText }}
-      </p>
-      <p class="line sub num">
-        {{ speedText }} · {{ login.logged_in ? "已登录" : "未登录" }}
-      </p>
+    <div class="status" :title="mini ? `${statusText} · ${speedText}` : undefined">
+      <template v-if="!mini">
+        <p class="line">
+          <span class="dot" :class="{ busy: queue.active > 0 }"></span>
+          {{ statusText }}
+        </p>
+        <p class="line sub num">
+          {{ speedText }} · {{ login.logged_in ? "已登录" : "未登录" }}
+        </p>
+      </template>
+      <span v-else class="dot big" :class="{ busy: queue.active > 0 }"></span>
     </div>
+
+    <button class="mini-toggle" :title="mini ? '展开侧栏' : '收成图标栏'" @click="toggleMini">
+      <Icon :name="mini ? 'chevronRight' : 'chevronLeft'" />
+    </button>
   </aside>
 </template>
 
@@ -196,5 +211,55 @@ nav {
 
 .dot.busy {
   background: var(--accent);
+}
+
+/* ── 图标模式（窄栏）：只留图标，悬停靠 title 提示 ── */
+.sidebar.mini {
+  width: 64px;
+  padding: 14px 10px 12px;
+}
+
+.sidebar.mini .nav-item {
+  justify-content: center;
+  gap: 0;
+  padding: 10px 0;
+  border-radius: var(--radius-lg);
+}
+
+.sidebar.mini .status {
+  display: flex;
+  justify-content: center;
+  padding: 11px 0 8px;
+}
+
+.dot.big {
+  width: 10px;
+  height: 10px;
+}
+
+.mini-toggle {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin: 8px auto 0;
+  padding: 0;
+  color: var(--faint);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.mini-toggle:hover {
+  color: var(--text);
+  background: var(--hover);
+}
+
+.mini-toggle svg {
+  width: 16px;
+  height: 16px;
 }
 </style>
