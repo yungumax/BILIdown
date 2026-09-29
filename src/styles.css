@@ -59,7 +59,10 @@
   --radius: 10px;
   --radius-sm: 8px;
 
-  --font: "DingTalk JinBuTi", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+  /* 2026-09-29 用户定稿：整站回微软雅黑——钉钉进步体的新旧字形混排
+     （"渊""频"等字保留旧印刷写法）观感突兀。@font-face 保留（随时可切回：
+     把 "Microsoft YaHei UI" 挪回第一位即可），字体文件也还在 public/fonts。 */
+  --font: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
     "Noto Sans SC", -apple-system, "Segoe UI", system-ui, sans-serif;
 }
 
