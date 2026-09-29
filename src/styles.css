@@ -339,40 +339,10 @@ input[type="checkbox"]:disabled {
   }
 }
 
-/* 弹层条目级联：菜单内容逐项浮起（容器仍走 pop-in） */
-.batch-pop > *,
-.parse-pop > *,
-.dl-pop > *,
-.theme-menu > button {
-  animation: menu-rise 240ms var(--ease-out) both;
-}
-
-.batch-pop > *:nth-child(2),
-.parse-pop > *:nth-child(2),
-.dl-pop > *:nth-child(2),
-.theme-menu > button:nth-child(2) {
-  animation-delay: 35ms;
-}
-
-.batch-pop > *:nth-child(3),
-.parse-pop > *:nth-child(3),
-.dl-pop > *:nth-child(3),
-.theme-menu > button:nth-child(3) {
-  animation-delay: 70ms;
-}
-
-@keyframes menu-rise {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* 登录对话框内容编排：复用 empty-rise（QR→说明→按钮依次浮起） */
+/* 弹层条目级联：由 anime.js 驱动（ParsePage/TitleBar 在挂载时逐项 animate）。
+   不用 CSS animation：v-if 重挂载 + 快速开关会让 CSS 动画中断后冻结在
+   半透明（实测 items 停在 0.92/0.82/0.66 不归位）——JS 引擎单管时钟没有这个问题。
+   登录对话框内容编排：复用 empty-rise（QR→说明→按钮依次浮起） */
 .dialog > * {
   animation: empty-rise 380ms var(--ease-out) both;
 }

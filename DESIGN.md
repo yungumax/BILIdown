@@ -305,8 +305,11 @@ dist —— Tauri 的 `custom-protocol` 在**编译时**把 `dist/` 编进去，
   v-if 挂载即演）；步骤条激活步标题上浮（active 类换到哪步哪步演）；
   侧栏图标悬停右挪 1.5px；内容库"已选 N"计数补间；任务完成/失败时
   整行底色闪一次回落（backgroundColor 一次性补间，非循环）。
-- **动效第四层（同日，微交互）**：下拉菜单条目逐项浮起
-  （batch-pop/parse-pop/dl-pop/theme-menu 通用 nth-child 级联）；
+- **动效第四层（同日，微交互）**：下拉菜单条目逐项浮起——**必须由
+  anime.js 驱动**（App.vue 的 pointerdown 捕获 + 双 rAF 扫新弹层），
+  **不能用 CSS animation**：v-if 重挂载 + 快速开关会让 CSS 动画中断后
+  **冻结在半透明**（实测条目停在 0.92/0.82/0.66 不归位，用户报"下拉栏有
+  BUG"的根因）；
   登录对话框内容依次浮起；下拉箭头菜单打开时转 180°
   （`.on .caret` rotate，过渡与旋转同一属性）；页码激活钮弹一下
   （`.page-btn.on` 一次性 keyframes——scoped 下 keyframes 名会被
