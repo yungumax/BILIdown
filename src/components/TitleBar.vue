@@ -205,7 +205,7 @@ function onDrag(event) {
 }
 
 .name {
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.2px;
 }

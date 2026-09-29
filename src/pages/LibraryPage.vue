@@ -1159,7 +1159,7 @@ h2 {
 
 .empty-text .title {
   margin: 0;
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 600;
 }
 

@@ -2156,9 +2156,32 @@ h2 {
 }
 
 .note {
-  margin: 5px 0 0;
-  font-size: 11.5px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 10px 0 2px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.55;
   color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 26%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.note::before {
+  content: "!";
+  flex: none;
+  width: 15px;
+  height: 15px;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  border-radius: 50%;
 }
 
 .error {
