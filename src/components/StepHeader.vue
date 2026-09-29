@@ -123,3 +123,25 @@ li.done .dot {
   color: var(--faint);
 }
 </style>
+
+<style scoped>
+/* 第七轮追加：步骤点动效恢复（dot-done 完成弹跳 + dot-breathe 当前步呼吸）——
+   以追加块形式挂回；排版规则（两行堆叠等）不受影响 */
+li.done .dot {
+  animation: dot-done 300ms var(--ease-out-expo);
+}
+
+@keyframes dot-done {
+  0% { transform: scale(0.7); }
+  60% { transform: scale(1.12); }
+  100% { transform: none; }
+}
+
+li.active .dot {
+  animation: dot-breathe 1.8s var(--ease-out) infinite;
+}
+
+@keyframes dot-breathe {
+  50% { opacity: 0.55; }
+}
+</style>

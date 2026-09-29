@@ -1184,3 +1184,14 @@ h2 {
   100% { transform: none; opacity: 1; }
 }
 </style>
+
+<style scoped>
+/* 第七轮追加：空状态图标轻浮动 */
+.empty-icon {
+  animation: lib-float 3.2s ease-in-out infinite;
+}
+
+@keyframes lib-float {
+  50% { transform: translateY(-4px); }
+}
+</style>

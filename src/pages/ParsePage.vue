@@ -1262,7 +1262,7 @@ async function startSingle(item) {
         <span class="spacer"></span>
         <span class="kbd">Ctrl + Enter</span>
         <span class="magnet" ref="magnetWrap" @pointermove="magnetMove" @pointerleave="magnetLeave">
-          <button class="primary" :disabled="parsing || !text.trim()" @click="parse">
+          <button class="primary" :data-parsing="parsing ? '' : undefined" :disabled="parsing || !text.trim()" @click="parse">
             {{ parsing ? `解析中 ${done}/${total}` : "开始解析" }}
           </button>
         </span>
@@ -2544,5 +2544,38 @@ option:disabled {
 
 .tabs button:not(.active):hover {
   transform: translateY(-1px);
+}
+</style>
+
+<style scoped>
+/* 第七轮追加：表格行悬停左缘指示线（box-shadow 画线，零布局位移） */
+.batch-table tbody tr {
+  box-shadow: inset 2px 0 0 transparent;
+  transition: box-shadow var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
+}
+
+.batch-table tbody tr:hover {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+</style>
+
+<style scoped>
+/* 第七轮追加：解析进行中主按钮扫光（reduced-motion 全局关） */
+.primary[data-parsing] {
+  position: relative;
+  overflow: hidden;
+}
+
+.primary[data-parsing]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 42%, rgba(255, 255, 255, 0.22) 50%, transparent 58%);
+  animation: parse-shimmer 1.2s linear infinite;
+}
+
+@keyframes parse-shimmer {
+  from { transform: translateX(-130%); }
+  to { transform: translateX(130%); }
 }
 </style>
