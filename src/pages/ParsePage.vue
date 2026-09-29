@@ -2324,10 +2324,17 @@ option:disabled {
   gap: 4px;
 }
 
+/* 下拉箭头：菜单打开时转 180°（过渡与旋转复合在同一属性上） */
 .caret {
   flex: none;
   width: 17px;
   height: 17px;
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.ghost.compact.on .caret,
+.parse-split.on .caret {
+  transform: rotate(180deg);
 }
 
 /* 边框画在容器上、两个按钮透明无边框：箭头因此看起来是在按钮里面 */

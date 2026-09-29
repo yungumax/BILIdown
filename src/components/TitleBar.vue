@@ -346,6 +346,14 @@ function onDrag(event) {
 
 /* 登录后头像替换登录图标：圆形小图，B 站 CDN 必须带 no-referrer */
 .login-chip .avatar {
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.login-chip:hover .avatar {
+  transform: scale(1.08);
+}
+
+.login-chip .avatar {
   flex: none;
   width: 20px;
   height: 20px;

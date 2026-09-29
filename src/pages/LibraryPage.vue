@@ -1055,6 +1055,23 @@ h2 {
   color: var(--muted);
 }
 
+.page-btn.on {
+  /* 换页时当前页码弹一下（active 类换到哪个钮哪个钮演） */
+  animation: page-on-pop 260ms var(--ease-out-expo);
+}
+
+@keyframes page-on-pop {
+  0% {
+    transform: scale(0.86);
+  }
+  60% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: none;
+  }
+}
+
 .page-btn {
   min-width: 30px;
   text-align: center;
