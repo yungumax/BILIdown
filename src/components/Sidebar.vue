@@ -1,5 +1,6 @@
 <script setup>
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
+import { animate } from "animejs";
 import Icon from "./Icon.vue";
 
 const props = defineProps({
@@ -56,8 +57,30 @@ const statusText = computed(() => {
   return "队列空闲";
 });
 
+/** 速度数字滚动：speed 变化时用 anime 把显示值补间过去（不是跳变） */
+const shownSpeed = ref(props.queue.speed || 0);
+watch(
+  () => props.queue.speed,
+  (to) => {
+    const target = to || 0;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches || target === shownSpeed.value) {
+      shownSpeed.value = target;
+      return;
+    }
+    const obj = { v: shownSpeed.value };
+    animate(obj, {
+      v: target,
+      duration: 620,
+      ease: "out(3)",
+      onUpdate: () => {
+        shownSpeed.value = obj.v;
+      },
+    });
+  },
+);
+
 const speedText = computed(() => {
-  const speed = props.queue.speed;
+  const speed = shownSpeed.value;
   if (!speed) return "0 B/s";
   const units = ["B", "KB", "MB", "GB"];
   let value = speed;

@@ -25,6 +25,20 @@ const emit = defineEmits(["toast", "goto"]);
 const mode = ref("batch");
 const text = ref("");
 const parsing = ref(false);
+
+/** 主按钮磁吸：轻微朝鼠标偏移（±4px），移开弹回。只动 transform。 */
+const magnetWrap = ref(null);
+function magnetMove(event) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const el = magnetWrap.value;
+  const r = el.getBoundingClientRect();
+  const dx = ((event.clientX - r.left) / r.width - 0.5) * 8;
+  const dy = ((event.clientY - r.top) / r.height - 0.5) * 6;
+  el.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+}
+function magnetLeave() {
+  if (magnetWrap.value) magnetWrap.value.style.transform = "";
+}
 const done = ref(0);
 const total = ref(0);
 const items = ref([]);
@@ -1221,9 +1235,11 @@ async function startSingle(item) {
         </button>
         <span class="spacer"></span>
         <span class="kbd">Ctrl + Enter</span>
-        <button class="primary" :disabled="parsing || !text.trim()" @click="parse">
-          {{ parsing ? `解析中 ${done}/${total}` : "开始解析" }}
-        </button>
+        <span class="magnet" ref="magnetWrap" @pointermove="magnetMove" @pointerleave="magnetLeave">
+          <button class="primary" :disabled="parsing || !text.trim()" @click="parse">
+            {{ parsing ? `解析中 ${done}/${total}` : "开始解析" }}
+          </button>
+        </span>
       </div>
 
       <div v-if="mode === 'batch'" class="sources">
@@ -1378,6 +1394,11 @@ input:focus {
   margin: 9px 0 0;
   font-size: 12px;
   color: var(--faint);
+}
+
+.magnet {
+  display: inline-flex;
+  transition: transform var(--motion) var(--ease-out);
 }
 
 .actions {

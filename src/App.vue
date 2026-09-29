@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { animate, stagger } from "animejs";
 
 import * as api from "./api";
 import TitleBar from "./components/TitleBar.vue";
@@ -14,6 +15,27 @@ import LibraryPage from "./pages/LibraryPage.vue";
 const RUNNING = ["queued", "downloading", "merging"];
 
 const page = ref("parse");
+
+/** 切页编排：新页可见卡的直接子元素（标题/工具条/列表）依次浮起。
+    根元素仍走 .page-in 淡入，两者不冲突（不同元素）。
+    只动 transform/opacity，零视觉变化；减少动态下不演。 */
+watch(page, async () => {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  await nextTick();
+  requestAnimationFrame(() => {
+    const card = [...document.querySelectorAll(".content .card")].find((c) => c.offsetParent !== null);
+    if (!card) return;
+    const kids = [...card.children].filter((el) => getComputedStyle(el).position !== "fixed").slice(0, 10);
+    if (!kids.length) return;
+    animate(kids, {
+      opacity: [0, 1],
+      translateY: [10, 0],
+      duration: 460,
+      delay: stagger(45),
+      ease: "outExpo",
+    });
+  });
+});
 const login = ref({ logged_in: false, uname: "", face: "", mid: 0, vip: false, vip_label: "" });
 const version = ref("");
 const outputDir = ref("");

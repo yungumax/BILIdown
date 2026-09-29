@@ -1,5 +1,6 @@
 <script setup>
-import { computed } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
+import { animate } from "animejs";
 import TaskRow from "../components/TaskRow.vue";
 
 const props = defineProps({
@@ -15,6 +16,23 @@ const finishedCount = computed(
 
 const runningCount = computed(
   () => props.tasks.filter((task) => RUNNING.includes(task.status)).length
+);
+
+// 新任务入队：那一行从上滑进来（只动新行，不重演整张列表；减少动态不演）
+const seenIds = new Set();
+watch(
+  () => props.tasks.map((t) => t.id).join(","),
+  async (ids, prev) => {
+    for (const id of ids.split(",")) seenIds.add(id);
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches || !prev) return;
+    const fresh = [...seenIds].filter((id) => !prev.split(",").includes(id));
+    if (!fresh.length) return;
+    await nextTick();
+    for (const id of fresh) {
+      const row = document.querySelector(`[data-id="${id}"]`);
+      if (row) animate(row, { opacity: [0, 1], translateY: [-14, 0], duration: 420, ease: "outExpo" });
+    }
+  },
 );
 </script>
 
@@ -45,6 +63,7 @@ const runningCount = computed(
         <TaskRow
           v-for="task in tasks"
           :key="task.id"
+          :data-id="task.id"
           :task="task"
           @cancel="emit('cancel', task.id)"
           @open="emit('open', $event)"

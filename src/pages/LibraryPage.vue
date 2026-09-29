@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { animate, stagger } from "animejs";
 import Icon from "../components/Icon.vue";
 import * as api from "../api";
 import { enqueueBatch, pickDefaultAudio, pickDefaultQuality } from "../download-request.js";
@@ -272,6 +273,26 @@ watch(
 onMounted(() => {
   if (loggedIn.value) load();
 });
+
+// 入场：集合卡首次渲染出来后逐张浮起（列表以列表的方式出现；
+// 一次性编排，减少动态下不演）
+let roseIn = false;
+watch(
+  () => folders.value.length,
+  async (n) => {
+    if (!n || roseIn) return;
+    roseIn = true;
+    await nextTick();
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    animate(".card .collection", {
+      opacity: [0, 1],
+      translateY: [16, 0],
+      duration: 520,
+      delay: stagger(60),
+      ease: "outExpo",
+    });
+  },
+);
 </script>
 
 <template>
