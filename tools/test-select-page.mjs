@@ -14,7 +14,7 @@ await new Promise(r => ws.addEventListener("open", r));
 await send("Runtime.enable"); await send("Page.enable");
 const js = async (e) => (await send("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true })).result?.value;
 
-await js(`[...document.querySelectorAll(".sidebar button")].find(b => b.textContent.includes("解析添加")).click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[0].click()`);
 await new Promise(r => setTimeout(r, 600));
 await js(`(() => { const ta = document.querySelector("textarea"); const s = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set; s.call(ta, "https://space.bilibili.com/1858731/favlist?fid=52568231"); ta.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
 await new Promise(r => setTimeout(r, 300));

@@ -18,7 +18,7 @@ await send("Page.enable");
 const js = async (e) => (await send("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true })).result?.value;
 const steps = () => js(`JSON.stringify([...document.querySelectorAll(".steps li")].map(li => ({ 标题: li.querySelector(".title").textContent, 状态: li.className, 有横线: getComputedStyle(li).borderBottomColor !== "rgba(0, 0, 0, 0)" && getComputedStyle(li).borderBottomWidth !== "0px" })))`);
 
-await js(`[...document.querySelectorAll(".sidebar button")].find(b => b.textContent.includes("解析添加")).click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[0].click()`);
 await new Promise((r) => setTimeout(r, 600));
 console.log("A) 输入页步骤: " + (await steps()));
 await js(`[...document.querySelectorAll(".tabs button")].find(b => b.textContent.includes("批量解析"))?.click()`);

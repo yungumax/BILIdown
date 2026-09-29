@@ -83,7 +83,7 @@ const toggle = async (label, want) => {
   await wait(300);
 };
 const goSettings = async () => {
-  await js(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('设置')).click()`);
+  await js(`document.querySelectorAll(".sidebar nav button")[3].click()`);
   await wait(900);
   await js(`[...document.querySelectorAll('.cats button')].find(b => b.querySelector('.label')?.textContent.trim() === '媒体')?.click()`);
   await wait(600);

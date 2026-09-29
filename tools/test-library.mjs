@@ -39,7 +39,7 @@ const enqueued = () => {
   }
 };
 
-await js(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('内容库'))?.click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[1]?.click()`);
 await wait(2200);
 
 console.log("\n== 集合列表 ==");

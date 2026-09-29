@@ -15,7 +15,7 @@ await send("Runtime.enable");
 await send("Page.enable");
 const js = async (e) => (await send("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true })).result?.value;
 
-await js(`[...document.querySelectorAll(".sidebar button")].find(b => b.textContent.includes("设置")).click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[3].click()`);
 await new Promise((r) => setTimeout(r, 700));
 await js(`[...document.querySelectorAll(".cat, .layout button")].find(b => b.textContent.includes("文件命名"))?.click()`);
 await new Promise((r) => setTimeout(r, 500));

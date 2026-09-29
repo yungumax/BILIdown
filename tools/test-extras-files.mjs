@@ -69,7 +69,7 @@ for (let i = 0; i < 60; i += 1) {
 rmSync(`${SANDBOX}/downloads`, { recursive: true, force: true });
 
 // ── 1. 设置：勾上封面 + 弹幕；确认「下载字幕」已经不在界面上 ──
-await js(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('设置')).click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[3].click()`);
 await wait(900);
 await js(`[...document.querySelectorAll('.cats button')].find(b => b.querySelector('.label')?.textContent.trim() === '媒体')?.click()`);
 await wait(600);

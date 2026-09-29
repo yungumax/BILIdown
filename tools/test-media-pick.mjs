@@ -31,7 +31,7 @@ const check = (name, ok, detail = "") => {
 };
 
 // ── 1. 媒体页：视频清晰度 → 480P，保存（写的是沙箱的 settings.json） ──
-await js(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('设置')).click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[3].click()`);
 await wait(900);
 await js(`[...document.querySelectorAll('.cats button')].find(b => b.querySelector('.label')?.textContent.trim() === '媒体')?.click()`);
 await wait(600);
@@ -78,7 +78,7 @@ await wait(400);
 await js(`[...document.querySelectorAll('.select-bar button')].find(b => b.textContent.includes('下载所选'))?.click()`);
 
 // ── 4. 看任务上的画质标签 ──
-await js(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('传输'))?.click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[2]?.click()`);
 let label = "";
 for (let i = 0; i < 20; i += 1) {
   await wait(1200);

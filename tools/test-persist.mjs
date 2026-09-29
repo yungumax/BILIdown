@@ -17,7 +17,7 @@ await send("Runtime.enable");
 await send("Page.enable");
 const js = async (e) => (await send("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true })).result?.value;
 
-await js(`[...document.querySelectorAll(".sidebar button")].find(b => b.textContent.includes("解析添加")).click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[0].click()`);
 await new Promise((r) => setTimeout(r, 600));
 await js(`(() => { const ta = document.querySelector("textarea"); const st = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set; st.call(ta, "https://www.bilibili.com/bangumi/play/ss39468"); ta.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
 await new Promise((r) => setTimeout(r, 300));
@@ -29,10 +29,10 @@ console.log("3) 勾两行后计数: " + await js(`(() => { const boxes = documen
 await new Promise((r) => setTimeout(r, 400));
 console.log("   底部: " + await js(`document.querySelector(".select-foot")?.textContent.replace(/\s+/g," ").trim()`));
 // 切到设置再切回
-await js(`[...document.querySelectorAll(".sidebar button")].find(b => b.textContent.includes("设置")).click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[3].click()`);
 await new Promise((r) => setTimeout(r, 800));
 console.log("4) 在设置页时解析页是否隐藏: " + await js(`getComputedStyle(document.querySelector(".select-page")?.closest("div")).display`));
-await js(`[...document.querySelectorAll(".sidebar button")].find(b => b.textContent.includes("解析添加")).click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[0].click()`);
 await new Promise((r) => setTimeout(r, 800));
 console.log("5) 切回后: " + await js(`JSON.stringify({ 还在选择页: !!document.querySelector(".select-page"), 行数: document.querySelectorAll(".batch-table tbody tr").length, 底部: document.querySelector(".select-foot")?.textContent.replace(/\s+/g," ").trim() })`));
 console.log("6) 控制台错误: " + (errors.length ? errors.join(" | ") : "无"));

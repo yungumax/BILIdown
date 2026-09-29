@@ -11,7 +11,7 @@ await send("Runtime.enable"); await send("Page.enable");
 const js = async (e) => (await send("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true })).result?.value;
 
 // 1) 解析页：批量 / 单个视频 两种模式下 sources 行是否出现
-await js(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('解析')).click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[0].click()`);
 await new Promise(r => setTimeout(r, 500));
 console.log("1) 批量模式 sources 行: " + await js(`!!document.querySelector('.sources')`));
 await js(`[...document.querySelectorAll('.tabs button')].find(b => b.textContent.includes('单个视频')).click()`);
@@ -23,7 +23,7 @@ await new Promise(r => setTimeout(r, 300));
 console.log("   切回批量 sources 行: " + await js(`!!document.querySelector('.sources')`));
 
 // 2) 设置页：勾选框与提示图标
-await js(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('设置')).click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[3].click()`);
 await new Promise(r => setTimeout(r, 600));
 await js(`[...document.querySelectorAll('.cat, .layout button')].find(b => b.textContent.includes('下载'))?.click()`);
 await new Promise(r => setTimeout(r, 500));

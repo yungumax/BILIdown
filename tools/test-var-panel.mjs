@@ -76,7 +76,7 @@ const report = (title, tree) => {
 };
 
 // 进设置 → 文件命名
-await js(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('设置')).click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[3].click()`);
 await wait(800);
 await js(`[...document.querySelectorAll('.cats button')].find(b => b.textContent.includes('文件命名'))?.click()`);
 await wait(500);

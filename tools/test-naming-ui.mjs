@@ -17,7 +17,7 @@ await send("Runtime.enable"); await send("Log.enable"); await send("Page.enable"
 const evalJs = async (expr) => (await send("Runtime.evaluate", { expression: expr, awaitPromise: true, returnByValue: true })).result?.value;
 
 // 进设置页 → 文件命名
-await evalJs(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('设置')).click()`);
+await evalJs(`document.querySelectorAll(".sidebar nav button")[3].click()`);
 await new Promise(r => setTimeout(r, 800));
 await evalJs(`[...document.querySelectorAll('.cat, .cat-item, nav button, .cats button')].find(b => b.textContent.includes('文件命名'))?.click()`);
 await new Promise(r => setTimeout(r, 500));

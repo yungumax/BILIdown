@@ -50,7 +50,7 @@ for (let i = 0; i < 60; i += 1) {
 rmSync(`${SANDBOX}/downloads`, { recursive: true, force: true });
 
 // ── 1. 媒体页：勾上「下载弹幕」+ 480P，保存 ──
-await js(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('设置')).click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[3].click()`);
 await wait(900);
 await js(`[...document.querySelectorAll('.cats button')].find(b => b.querySelector('.label')?.textContent.trim() === '媒体')?.click()`);
 await wait(600);

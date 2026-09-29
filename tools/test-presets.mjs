@@ -53,7 +53,7 @@ const note = async (keyword) => js(`([...document.querySelectorAll('.note')].map
 const inputWith = async (needle) => js(`[...document.querySelectorAll('input')].map(i => i.value).find(v => v.includes(${JSON.stringify(needle)})) ?? ''`);
 
 const go = async (text) => {
-  await js(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('设置')).click()`);
+  await js(`document.querySelectorAll(".sidebar nav button")[3].click()`);
   await wait(800);
   await js(`[...document.querySelectorAll('.cats button')].find(b => b.textContent.includes(${JSON.stringify(text)}))?.click()`);
   await wait(600);

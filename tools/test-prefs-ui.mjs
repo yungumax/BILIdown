@@ -14,7 +14,7 @@ await new Promise(r => ws.addEventListener("open", r));
 await send("Runtime.enable"); await send("Page.enable");
 const js = async (e) => (await send("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true })).result?.value;
 
-await js(`[...document.querySelectorAll('.sidebar button')].find(b => b.textContent.includes('设置')).click()`);
+await js(`document.querySelectorAll(".sidebar nav button")[3].click()`);
 await new Promise(r => setTimeout(r, 700));
 
 // 下载页：两个下拉是否并排（同一行的 y 相同）

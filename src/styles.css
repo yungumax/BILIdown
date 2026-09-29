@@ -23,10 +23,12 @@
   --line: #e9e4e7;
   --line-soft: #f1edef;
 
-  /* 四档文字都按正文级对比度取（浅色底 ≥4.5:1） */
+  /* 四档文字都按正文级对比度取（浅色底 ≥4.5:1）。
+     faint 按**最亮真实底** raised #faf8f9 校准（4.98:1）——
+     按 #74747f 的话在 app-bg/side-bg/raised 上只有 4.18-4.37，全线破线 */
   --text: #24242a;
   --muted: #5f5f6a;
-  --faint: #74747f;
+  --faint: #6b6b76;
 
   --accent: #fb7299;
   --accent-dark: #f25c86;

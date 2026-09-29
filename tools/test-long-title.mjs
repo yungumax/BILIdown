@@ -97,7 +97,7 @@ const pillShot = async (name) => {
 async function parseOne(url, mode) {
   // 先站到解析页：它平时是 v-show 藏着的，藏在别的页面时量到的一切都是 0
   if (!(await js(`(() => { const c = [...document.querySelectorAll('.card')].find(c => c.querySelector('.select-bar')); return !!c && c.offsetParent !== null; })()`))) {
-    await js(`[...document.querySelectorAll(".sidebar button")].find(b => b.textContent.includes("解析"))?.click()`);
+    await js(`document.querySelectorAll(".sidebar nav button")[0]?.click()`);
     await wait(1400);
   }
   await js(`[...document.querySelectorAll(".steps li")].find(li => li.textContent.includes("解析来源"))?.click()`);
