@@ -2522,3 +2522,27 @@ option:disabled {
   font-size: 12px;
 }
 </style>
+
+<style scoped>
+/* 第六轮追加：来源类型徽标出现时轻弹 */
+.kind-tag {
+  animation: tag-pop 280ms var(--ease-out-expo);
+}
+
+@keyframes tag-pop {
+  0% { transform: scale(0.85); opacity: 0; }
+  60% { transform: scale(1.06); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+</style>
+
+<style scoped>
+/* 第六轮追加：模式 tab 悬停文字微升 */
+.tabs button {
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
+}
+
+.tabs button:not(.active):hover {
+  transform: translateY(-1px);
+}
+</style>

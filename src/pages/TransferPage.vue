@@ -176,3 +176,10 @@ h1 {
   gap: 9px;
 }
 </style>
+
+<style scoped>
+/* 第六轮追加：统计数字等宽化——滚动时不左右晃 */
+.counter.num {
+  font-variant-numeric: tabular-nums;
+}
+</style>

@@ -1171,3 +1171,16 @@ h2 {
   line-height: 1.7;
 }
 </style>
+
+<style scoped>
+/* 第六轮追加：勾选角标（+ → ✓）切换时轻弹 */
+.collection.on .pick {
+  animation: pick-pop 260ms var(--ease-out-expo);
+}
+
+@keyframes pick-pop {
+  0% { transform: scale(0.8) rotate(-6deg); opacity: 0.4; }
+  60% { transform: scale(1.08) rotate(2deg); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+</style>

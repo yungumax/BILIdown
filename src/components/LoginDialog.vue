@@ -256,3 +256,16 @@ h2 {
   background: var(--fail-bg);
 }
 </style>
+
+<style scoped>
+/* 第六轮追加：登录成功提示强调弹出 */
+.hint.ok {
+  animation: hint-ok 320ms var(--ease-out-expo);
+}
+
+@keyframes hint-ok {
+  0% { transform: translateY(4px); opacity: 0.3; }
+  60% { transform: none; opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+</style>
