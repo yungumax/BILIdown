@@ -75,6 +75,7 @@ li.done {
   border: 1px solid var(--line);
   background: var(--field);
   color: var(--faint);
+  transition: transform var(--motion-fast) var(--ease-out), background var(--motion-fast) var(--ease-out);
 }
 
 .dot svg {
@@ -90,36 +91,26 @@ li.clickable:hover {
   color: var(--text);
 }
 
-li.clickable:hover .dot {
-  border-color: var(--accent-line);
-  color: var(--accent);
-}
-
 li.active .dot {
   color: #fff;
   background: var(--accent);
   border-color: var(--accent);
+  /* 当前步的圆点轻轻呼吸（进行中的生命感） */
+  animation: dot-breathe 1.8s var(--ease-out) infinite;
 }
 
+@keyframes dot-breathe {
+  50% { opacity: 0.55; }
+}
+
+/* 步骤完成瞬间：对勾弹一下（state 换到 done 时演一次） */
 li.done .dot {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: var(--accent-line);
+  animation: dot-done 300ms var(--ease-out-expo);
 }
 
-.text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.25;
-}
-
-.title {
-  font-size: 13.5px;
-  font-weight: 600;
-}
-
-.hint {
-  font-size: 11px;
-  color: var(--faint);
+@keyframes dot-done {
+  0% { transform: scale(0.7); }
+  60% { transform: scale(1.12); }
+  100% { transform: none; }
 }
 </style>

@@ -2116,11 +2116,42 @@ h2 {
   background: var(--thumb);
 }
 
+/* 勾选状态变化：整行底色过渡已有；序号与标题列给一次轻弹（key 变化驱动 class） */
+.batch-table tbody tr.on td:first-child {
+  animation: cell-pop 240ms var(--ease-out);
+}
+
+@keyframes cell-pop {
+  0% { transform: scale(0.96); }
+  60% { transform: scale(1.03); }
+  100% { transform: none; }
+}
+
+.thumb img {
+  transition: transform var(--motion) var(--ease-out);
+}
+
+tr:hover /* 勾选状态变化：整行底色过渡已有；序号与标题列给一次轻弹（key 变化驱动 class） */
+.batch-table tbody tr.on td:first-child {
+  animation: cell-pop 240ms var(--ease-out);
+}
+
+@keyframes cell-pop {
+  0% { transform: scale(0.96); }
+  60% { transform: scale(1.03); }
+  100% { transform: none; }
+}
+
 .thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform var(--motion) var(--ease-out);
+}
+
+tr:hover .thumb img {
+  transform: scale(1.06);
 }
 
 .thumb-placeholder {

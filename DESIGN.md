@@ -305,6 +305,13 @@ dist —— Tauri 的 `custom-protocol` 在**编译时**把 `dist/` 编进去，
   v-if 挂载即演）；步骤条激活步标题上浮（active 类换到哪步哪步演）；
   侧栏图标悬停右挪 1.5px；内容库"已选 N"计数补间；任务完成/失败时
   整行底色闪一次回落（backgroundColor 一次性补间，非循环）。
+- **动效第五层（同日）**：步骤条圆点——完成瞬间弹一下（dot-done）、
+  当前步呼吸（dot-breathe）；表格封面 hover 1.06x；勾选行序号列轻弹
+  （cell-pop）；侧栏忙碌点出现时脉冲（dot-busy-pop）；头像入场缩放
+  （avatar-in）；**侧栏宽栏↔图标栏宽度平滑变形**——这条有特异度坑：
+  主题过渡规则（html.ready .sidebar，0,2,1）会盖掉 scoped 的
+  transition 简写（0,2,0），必须用 `body .sidebar.sidebar`（0,3,0）
+  提级声明 transition-property: width, background-color。
 - **动效第四层（同日，微交互）**：下拉菜单条目逐项浮起——**必须由
   anime.js 驱动**（App.vue 的 pointerdown 捕获 + 双 rAF 扫新弹层），
   **不能用 CSS animation**：v-if 重挂载 + 快速开关会让 CSS 动画中断后

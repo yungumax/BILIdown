@@ -140,6 +140,10 @@ const speedText = computed(() => {
   padding: 14px 12px 12px;
   background: var(--side-bg);
   border-right: 1px solid var(--line);
+  /* 宽栏↔图标栏切换：宽度平滑变形（内容用 overflow 裁掉换行瞬间）。
+     width 过渡在全局样式里用 body .sidebar.sidebar 提级声明——
+     主题过渡规则（html.ready .sidebar）特异度更高，会盖掉这里的简写。 */
+  overflow: hidden;
 }
 
 nav {
@@ -240,6 +244,13 @@ nav {
 
 .dot.busy {
   background: var(--accent);
+  animation: dot-busy-pop 420ms var(--ease-out-expo);
+}
+
+@keyframes dot-busy-pop {
+  0% { transform: scale(0.6); }
+  60% { transform: scale(1.25); }
+  100% { transform: none; }
 }
 
 /* ── 图标模式（窄栏）：只留图标，悬停靠 title 提示 ── */
