@@ -177,6 +177,12 @@ nav {
   flex: none;
   width: 22px;
   height: 22px;
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+/* 悬停时图标朝右轻挪一点：跟文字在一起时的"指向"感 */
+.nav-item:hover .icon {
+  transform: translateX(1.5px);
 }
 
 .nav-item.active .icon {

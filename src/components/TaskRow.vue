@@ -1,5 +1,6 @@
 <script setup>
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
+import { animate } from "animejs";
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -7,6 +8,24 @@ const props = defineProps({
 const emit = defineEmits(["cancel", "open"]);
 
 const RUNNING = ["queued", "downloading", "merging"];
+
+// 任务完成/失败：整行底色闪一次（既有 done/fail 色系的浅染，回落为透明）
+const rowEl = ref(null);
+watch(
+  () => props.task.status,
+  (now, was) => {
+    if (!rowEl.value || now === was || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (now !== "done" && now !== "failed") return;
+    animate(rowEl.value, {
+      backgroundColor: [
+        now === "done" ? "rgba(70, 192, 140, 0.16)" : "rgba(236, 106, 98, 0.16)",
+        "rgba(0, 0, 0, 0)",
+      ],
+      duration: 900,
+      ease: "out(2)",
+    });
+  }
+);
 const STATUS_TEXT = {
   queued: "排队中",
   downloading: "下载中",
@@ -87,7 +106,7 @@ function human(bytes) {
 </script>
 
 <template>
-  <li class="row" :class="task.status">
+  <li ref="rowEl" class="row" :class="task.status">
     <div class="head">
       <h4 class="title" :title="task.title">{{ task.title }}</h4>
       <span v-if="task.quality_label" class="quality">{{ task.quality_label }}</span>

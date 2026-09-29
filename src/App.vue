@@ -440,14 +440,21 @@ async function doLogout() {
   z-index: 30;
 }
 
-.toast-enter-active,
-.toast-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+.toast-enter-active {
+  transition: opacity 0.26s var(--ease-out-expo), transform 0.26s var(--ease-out-expo);
 }
 
-.toast-enter-from,
+.toast-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.toast-enter-from {
+  opacity: 0;
+  transform: translate(-50%, 14px) scale(0.96);
+}
+
 .toast-leave-to {
   opacity: 0;
-  transform: translate(-50%, 8px);
+  transform: translate(-50%, 6px) scale(0.98);
 }
 </style>

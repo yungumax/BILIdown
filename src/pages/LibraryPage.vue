@@ -282,9 +282,32 @@ onMounted(() => {
   if (loggedIn.value) load();
 });
 
+/** 详情页"已选 N"计数滚动：勾选变化时补间而不是跳变 */
+const shownPicked = ref(0);
+watch(
+  () => opened.value?.picked.size ?? 0,
+  (to) => {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches || to === shownPicked.value) {
+      shownPicked.value = to;
+      return;
+    }
+    const obj = { v: shownPicked.value };
+    animate(obj, {
+      v: to,
+      duration: 360,
+      ease: "out(3)",
+      onUpdate: () => {
+        shownPicked.value = Math.round(obj.v);
+      },
+    });
+  },
+  { immediate: true }
+);
+
 /** 集合卡 3D 微倾斜（±2.4°）：指针在哪边卡片就朝哪边轻轻转，移开复位。
     倾斜写在卡片自己的 transform 上（含悬停那 1px 上浮），纯动效零视觉。 */
 let tiltedCard = null;
+
 function onTilt(event) {
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const card = event.target instanceof Element ? event.target.closest(".collection") : null;
@@ -507,7 +530,7 @@ watch(
         <p v-else class="hint pad">这个集合里没有可解析的内容。</p>
 
         <footer v-if="opened.items.length" class="pager">
-          <span class="count">已选 {{ opened.picked.size }} / {{ opened.total }}</span>
+          <span class="count">已选 {{ shownPicked }} / {{ opened.total }}</span>
           <div class="pages">
             <button class="ghost" :disabled="opened.page <= 1" @click="loadPage(1)">«</button>
             <button class="ghost" :disabled="opened.page <= 1" @click="loadPage(opened.page - 1)">‹</button>
