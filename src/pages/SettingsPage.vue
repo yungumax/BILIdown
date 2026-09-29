@@ -1,6 +1,7 @@
 <script setup>
 import Icon from "../components/Icon.vue";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { animate, stagger } from "animejs";
 import * as api from "../api";
 
 const props = defineProps({
@@ -33,6 +34,18 @@ const categories = [
 ];
 
 const active = ref("download");
+
+// 分类切换编排：右侧字段行依次浮起（v-if 内切换不走 App 的切页 watch）
+watch(active, async () => {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  await nextTick();
+  requestAnimationFrame(() => {
+    const fields = document.querySelector(".card .fields");
+    if (!fields) return;
+    const kids = [...fields.children].slice(0, 14);
+    if (kids.length) animate(kids, { opacity: [0, 1], translateY: [8, 0], duration: 380, delay: stagger(32), ease: "outExpo" });
+  });
+});
 const activeCategory = computed(() =>
   categories.find((category) => category.key === active.value)
 );

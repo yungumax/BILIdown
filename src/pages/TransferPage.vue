@@ -10,12 +10,33 @@ const emit = defineEmits(["cancel", "open", "clear"]);
 
 const RUNNING = ["queued", "downloading", "merging"];
 
-const finishedCount = computed(
-  () => props.tasks.filter((task) => !RUNNING.includes(task.status)).length
-);
-
-const runningCount = computed(
-  () => props.tasks.filter((task) => RUNNING.includes(task.status)).length
+/** 统计数字滚动：进行中/已结束随任务变化补间，而不是跳变 */
+const runningCount = ref(0);
+const finishedCount = ref(0);
+watch(
+  () => props.tasks.map((t) => t.status).join(","),
+  (statuses) => {
+    const list = statuses ? statuses.split(",") : [];
+    const running = list.filter((st) => RUNNING.includes(st)).length;
+    const finished = list.length - running;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      runningCount.value = running;
+      finishedCount.value = finished;
+      return;
+    }
+    const obj = { r: runningCount.value, f: finishedCount.value };
+    animate(obj, {
+      r: running,
+      f: finished,
+      duration: 540,
+      ease: "out(3)",
+      onUpdate: () => {
+        runningCount.value = Math.round(obj.r);
+        finishedCount.value = Math.round(obj.f);
+      },
+    });
+  },
+  { immediate: true }
 );
 
 // 新任务入队：那一行从上滑进来（只动新行，不重演整张列表；减少动态不演）

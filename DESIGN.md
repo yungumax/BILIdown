@@ -292,6 +292,13 @@ dist —— Tauri 的 `custom-protocol` 在**编译时**把 `dist/` 编进去，
   侧栏速度数字用 anime 补间滚动而不是跳变；解析主按钮磁吸
   （`.magnet` wrapper 承担位移，按钮自身的按压 transform 不受影响——
   同一元素只有一个 transform，磁吸必须加在外层）。全部 reduce 下不演。
+- **动效第二层（同日）**：设置分类切换时右侧字段行依次浮起（v-if 内切换
+  不走 App 的切页 watch，SettingsPage 自己 watch active）；解析结果条目
+  逐个亮起、选择页工具条+表格行级联；内容库翻页封面级联（loadPage 内
+  nextTick 后 stagger）；集合卡 3D 微倾斜 ±2.4°（`perspective: 640px`
+  加在 .cards 上，倾斜与悬停上浮合成在卡片的同一条 transform 里；
+  **pointerleave 绑在容器上时 target 是容器不是卡，复位必须记 tiltedCard**）；
+  传输页进行中/已结束计数用 anime 补间滚动。仍然只动 transform/opacity。
 - **一个编排好的时刻**：解析结果出现时上浮一次（`.page-in`）。
   其余场合的 `.page-in` 只用于**栏目/内容切换的连续性**（主导航切页、
   设置分类切换、内容库一级网格 ↔ 二级封面网格），不是每块都套入场。

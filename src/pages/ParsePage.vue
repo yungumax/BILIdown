@@ -1,6 +1,7 @@
 <script setup>
 import Icon from "../components/Icon.vue";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { animate, stagger } from "animejs";
 import * as api from "../api";
 import {
   KIND_LABELS,
@@ -265,6 +266,31 @@ function selectNone() {
 // 解析结果不再塞在输入页里，而是独立一页：表格 + 分批加载。
 // 首次解析只给第一页，「继续解析」用后端缓存接着往后拉。
 const view = ref("input"); // input | select
+
+// 选择页入场：工具条 + 表格行级联（列表以列表的方式出现）
+watch(view, async (v) => {
+  if (v !== "select" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  await nextTick();
+  requestAnimationFrame(() => {
+    const bar = document.querySelector(".select-bar");
+    const rows = [...document.querySelectorAll(".batch-table tbody tr")].slice(0, 12);
+    const targets = bar ? [bar, ...rows] : rows;
+    if (targets.length) animate(targets, { opacity: [0, 1], translateY: [8, 0], duration: 420, delay: stagger(28), ease: "outExpo" });
+  });
+});
+
+// 解析结果入口：结果条目逐个亮起（只在从无到有时演一次）
+watch(
+  () => items.value.length > 0,
+  async (has) => {
+    if (!has || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    await nextTick();
+    requestAnimationFrame(() => {
+      const cells = [...document.querySelectorAll(".parsed-bar > *")];
+      if (cells.length) animate(cells, { opacity: [0, 1], translateY: [6, 0], duration: 340, delay: stagger(40), ease: "outExpo" });
+    });
+  }
+);
 const batchInput = ref(""); // 当前查看的批量来源（继续解析的键）
 const batchSize = ref(50); // 一次往后拉多少条
 const loadingMore = ref(false);

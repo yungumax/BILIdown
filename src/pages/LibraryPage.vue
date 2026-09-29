@@ -127,6 +127,14 @@ async function loadPage(page) {
     view.total = probe.total || view.items.length;
     view.page = page;
     view.picked = new Set();
+    // 翻页：新一页的封面格子级联亮起
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      await nextTick();
+      requestAnimationFrame(() => {
+        const cells = [...document.querySelectorAll(".videos .video")].slice(0, 24);
+        if (cells.length) animate(cells, { opacity: [0, 1], translateY: [8, 0], duration: 300, delay: stagger(22), ease: "outExpo" });
+      });
+    }
   } catch (error) {
     emit("toast", String(error));
   } finally {
@@ -274,6 +282,28 @@ onMounted(() => {
   if (loggedIn.value) load();
 });
 
+/** 集合卡 3D 微倾斜（±2.4°）：指针在哪边卡片就朝哪边轻轻转，移开复位。
+    倾斜写在卡片自己的 transform 上（含悬停那 1px 上浮），纯动效零视觉。 */
+let tiltedCard = null;
+function onTilt(event) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const card = event.target instanceof Element ? event.target.closest(".collection") : null;
+  if (!card) return;
+  if (tiltedCard && tiltedCard !== card) tiltedCard.style.transform = "";
+  tiltedCard = card;
+  const r = card.getBoundingClientRect();
+  const px = (event.clientX - r.left) / r.width - 0.5;
+  const py = (event.clientY - r.top) / r.height - 0.5;
+  card.style.transform = `translateY(-1px) rotateX(${(-py * 2.4).toFixed(2)}deg) rotateY(${(px * 2.4).toFixed(2)}deg)`;
+}
+function offTilt() {
+  // pointerleave 绑在容器上，target 是容器不是卡——按记录复位
+  if (tiltedCard) {
+    tiltedCard.style.transform = "";
+    tiltedCard = null;
+  }
+}
+
 // 入场：集合卡首次渲染出来后逐张浮起（列表以列表的方式出现；
 // 一次性编排，减少动态下不演）
 let roseIn = false;
@@ -351,7 +381,7 @@ watch(
           <button class="ghost" @click="load">重试</button>
         </div>
 
-        <div v-else-if="folders.length" class="cards page-in">
+        <div v-else-if="folders.length" class="cards page-in" @pointermove="onTilt" @pointerleave="offTilt">
           <article
             v-for="item in folders"
             :key="keyOf(item)"
@@ -642,6 +672,7 @@ h2 {
 }
 
 .cards {
+  perspective: 640px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   /* 卡片之间的间隔略微放大，透气一点（用户点名） */
