@@ -1,6 +1,6 @@
 <script setup>
 import Icon from "../components/Icon.vue";
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
 import { animate, stagger } from "animejs";
 import * as api from "../api";
 
@@ -529,7 +529,9 @@ function reset() {
 
 /** 检测：优先走 updater 插件（带签名校验，能拿到可安装的 Update 对象）；
     插件不可用（未配 pubkey/离线）时回退到原来的 Releases API 只读检测 */
-const pendingUpdate = ref(null);
+// Update 实例带 # 私有字段：必须 shallowRef，深度代理会让 downloadAndInstall 报
+// "Cannot read private member"（踩过）
+const pendingUpdate = shallowRef(null);
 const downloading = ref(false);
 const downloadPct = ref(0);
 
