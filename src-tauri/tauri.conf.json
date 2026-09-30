@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "BILIdown",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "identifier": "com.yungumax.bilidown",
   "build": {
     "frontendDist": "../dist",
@@ -26,7 +26,12 @@
       "icons/128x128@2x.png",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "nsis": {
+        "installDirectory": "E:\\02GJ\\BILIdown"
+      }
+    }
   },
   "plugins": {
     "updater": {
