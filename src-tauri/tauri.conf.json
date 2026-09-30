@@ -33,7 +33,7 @@
       "endpoints": [
         "https://github.com/yungumax/BILIdown/releases/latest/download/latest.json"
       ],
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYyRjkwOTc3QzgzNjg2OUUKUldTZWhqYklkd241OHAxZWIvZTJLRk43YjJOYWY4cEtyaVlSejdGMG9Pcld0ejFHV0FGMER3QmYK",
       "windows": {
         "installMode": "passive"
       }
