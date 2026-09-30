@@ -1,166 +1,115 @@
 # BILIdown
 
-B 站视频下载器。技术栈：Tauri 2 + Rust + Vue 3 + SQLite，ffmpeg 以 sidecar 方式随程序打包，具备 Git 发布链路与自动更新能力。
+B 站视频下载器。技术栈 Tauri 2 + Rust + Vue 3，NSIS 安装包分发，带签名自动更新。
 
-完整实施方案见 [BDL分析与BILIdown实施方案.md](./BDL分析与BILIdown实施方案.md)。
+> 完整视觉与设计规范见 [DESIGN.md](./DESIGN.md)；逆向分析原始记录见
+> [BDL分析与BILIdown实施方案.md](./BDL分析与BILIdown实施方案.md)。
 
-## 当前进度
+## 功能
 
-| 阶段 | 状态 | 内容 |
-|---|---|---|
-| M0 工程起步 | ✅ 完成 | 仓库、.gitignore、CI 检查流水线 |
-| M1 CLI 原型 | ✅ 完成 | wbi 签名、API 客户端、DASH 分片并发下载、ffmpeg 合成，端到端跑通 |
-| M2 桌面界面 | ✅ 完成 | Tauri 2 + Vue 3，界面按 BDL 的视觉语言重做（浅色、左侧导航、步骤条、卡片） |
-| M3 批量下载 | ✅ 大部分完成 | 收藏夹/合集/UP 空间/番剧/课程批量、命名模板、重名处理、限速、任务日志 |
-| M3 余项 | ⬜ 待开始 | 断点续传与启动恢复、弹幕字幕下载、多 P 视频 |
+| 模块 | 能力 |
+|---|---|
+| **解析** | 批量粘贴或单个输入；视频/合集/收藏夹/系列/番剧/课程/图文/音频全支持；单视频自动展开所在合集 |
+| **选择** | 表格逐条勾选，画质（8K~360P）与音轨按优先顺序自动匹配；分组折叠、翻页、已选计数 |
+| **下载** | DASH 分片并发、三段式进度（视频流/音频流/合成）、限速、断点续传、启动恢复排队任务 |
+| **命名** | 模板变量 19 个（标题/UP/日期/BV 号/序号等）、我的预设、重名自动编号、文件名预览与落盘一致 |
+| **内容库** | 登录后浏览收藏夹与订阅合集，与解析页同一套选择/下载流 |
+| **传输** | 任务队列与实时状态、速度/进度、取消、清除已结束、打开文件/定位 |
+| **设置** | 下载/媒体/命名/文件夹/编码/更新/网络七分类；FFmpeg 自动发现或手动指定；自动更新 |
+| **登录** | 扫码登录（凭据仅存本机 `cookies.json`），支持大会员清晰度 |
+| **旁挂文件** | 封面 / 弹幕 XML / 字幕，与视频同名独立保存，均可在设置开关 |
+| **主题** | 浅色 / 深色 / 跟随系统，原生窗口底色与 CSS 首帧同步 |
+| **缩放** | 窗口拉大缩小 UI 等比缩放（`html.zoom`，默认 1100×740 = 1.0） |
+| **侧栏** | 宽栏（文字）↔ 图标栏（64px）可切换；速度数字补间滚动 |
 
-界面结构：解析（批量/单个解析 → 逐条选择清晰度与音轨 → 全部加入下载）、
-传输（任务队列与三段式进度：视频流 / 音频流 / 合成）、内容库（M3 占位）、
-设置（保存位置、账号、登录凭据、ffmpeg 状态）、关于。
+## 界面动效（八层）
 
-已实测可用：扫码登录后同一视频从 480P 提升到 1080P60，另成功下载杜比视界（HEVC
-Main10 + hvc1）内容；35 个单元测试全绿，clippy 零警告。
+| 层 | 覆盖 |
+|---|---|
+| 一 | 切页编排（新页卡片子元素依次浮起）、集合卡逐张浮起、传输新行滑入、速度数字滚动、主按钮磁吸 |
+| 二 | 设置分类切换字段行级联、解析结果条目逐个亮起、选择页表格行级联、翻页封面级联、集合卡 3D 微倾斜、计数补间 |
+| 三 | Toast 微过冲曲线、勾选弹簧（6% 过冲）、空状态编排、步骤条激活上浮、图标微移、已选计数补间、完成脉冲 |
+| 四 | 菜单条目级联（anime.js 驱动）、登录框编排、下拉箭头旋转、页码激活脉冲、头像入场 |
+| 五 | 步骤点完成弹跳 + 当前步呼吸、封面 hover 缩放、勾选行序号轻弹、忙碌点脉冲、侧栏宽度平滑变形 |
+| 六 | 来源徽标弹跳、登录成功提示弹出、勾选角标角度戏、tab 悬停微升、数字等宽 |
+| 七 | 步骤点动效恢复、表格行左缘指示线、解析扫光、空态浮动 |
+| 八 | 启动编排（顶栏 + 侧栏导航）、分组展开级联、主题钮旋转、保存脉冲、阶段闪光、传输行指示线 |
+
+全部遵守三条底线：只动 transform/opacity/color、`prefers-reduced-motion` 下全部关闭（颜色反馈保留）、追加式不碰排版。
+
+## 安装与更新
+
+- **新用户**：从 [Releases](https://github.com/yungumax/BILIdown/releases/latest) 下载 `BILIdown_x.y.z_x64-setup.exe`，被动模式安装（不需要管理员权限）。
+- **老用户**：应用内「设置 → 应用更新 → 检测更新」一键在线升级（下载签名安装包 → 安装 → 重启）。
+- **卸载**：Windows 设置 → 应用 → BILIdown，或运行 `%LOCALAPPDATA%\BILIdown\uninstall.exe`。卸载只删程序本体（`%LOCALAPPDATA%\BILIdown\`），**用户数据与下载文件不在安装目录、不会被删**。
+- **数据位置**：登录凭据 `cookies.json` 在启动时指定的数据目录（默认 `D:\Zcode\_data\bilidown\`）；下载文件在设置里指定的输出目录。
+
+## 构建
+
+```bash
+# 前置：Node.js 22+ / Rust stable / VS Build Tools C++ 工作负载
+npm install
+npm run build                                     # 前端 → dist/
+cargo build --release -p bilidown                 # Rust exe（嵌入 dist/）
+
+# 本地开发
+npm run dev                                       # Vite dev server
+cargo tauri dev                                   # 或直接跑 src-tauri
+```
+
+> MSVC 链接器的 `LIB`/`INCLUDE` 路径如遇异常，参见项目内 `DESIGN.md` 或 CI 工作流的标准配置。
+
+## 测试
+
+```bash
+cargo test --workspace          # 93 项单元测试
+cargo clippy --workspace --all-targets -- -D warnings   # 零警告
+cargo fmt --all --check
+
+# UI 仪器（需要带调试端口启动 exe）
+WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222" ./target/release/bilidown.exe
+node tools/test-library.mjs     # 45 台仪器见 tools/README.md
+```
 
 ## 目录结构
 
 ```
-src/                    桌面端前端（Vue 3）
-├── App.vue             外壳：标题栏 + 侧栏 + 页面切换 + 全局状态
-├── api.js              与后端通信；浏览器中打开时自动切换为假数据
-├── pages/              解析 / 传输 / 设置 / 关于 / 内容库
-└── components/         标题栏（含窗口控制）、侧栏、步骤条、任务行、登录弹窗
-
-src-tauri/              桌面端后端（Tauri 2）
-└── src/
-    ├── commands.rs     暴露给前端的命令
-    ├── state.rs        登录会话、任务表、输出目录
-    └── types.rs        IPC 数据结构
-
-crates/
-├── bili-core/          核心库（CLI 与桌面端共用）
-│   ├── wbi.rs          wbi 签名（含官方示例向量回归测试）
-│   ├── client.rs       HTTP 会话、请求头伪装、Cookie、wbi 密钥缓存
-│   ├── api.rs          接口与数据结构、清晰度/音轨选择
-│   ├── download.rs     DASH 分片并发下载、断点区间写入、进度回调
-│   ├── ffmpeg.rs       sidecar 查找与无损合成
-│   ├── login.rs        扫码登录
-│   ├── parser.rs       输入解析（BV/av/链接/短链）
-│   └── util.rs         文件名清洗等
-└── bili-cli/           命令行
+src/                        前端（Vue 3）
+├── App.vue                 外壳：标题栏 + 侧栏 + 页面切换 + Toast + 启动编排
+├── api.js                  与后端通信；浏览器中自动切换为假数据（含魔法变量副本）
+├── download-request.js     下载请求与命名变量计算（解析页与内容库共用）
+├── styles.css              令牌 + 主题 + 动效层 + 弹层玻璃规则
+├── pages/
+│   ├── ParsePage.vue       解析 / 选择内容（表格 + 分组 + 工具条 + 下载设置弹层）
+│   ├── TransferPage.vue    传输（任务列表 + 统计）
+│   ├── LibraryPage.vue     内容库（收藏夹/订阅合集 + 详情封面网格 + 页码）
+│   ├── SettingsPage.vue    设置（七分类 + FFmpeg 块 + 应用更新）
+│   └── AboutPage.vue       关于
+├── components/
+│   ├── TitleBar.vue        自定义标题栏（主题菜单 + 登录账号 chip）
+│   ├── Sidebar.vue         侧栏（宽/图标两态 + 队列状态）
+│   ├── LoginDialog.vue     扫码登录
+│   ├── StepHeader.vue      三步指示条
+│   ├── TaskRow.vue         传输任务行（三段进度 + 阶段点 + 完成脉冲）
+│   └── Icon.vue            iconfont 渲染器
+src-tauri/                  后端（Rust / Tauri 2）
+├── src/
+│   ├── commands.rs         全部 Tauri 命令（解析/下载/设置/更新/维护）
+│   ├── state.rs            AppState + Settings + 任务队列
+│   ├── naming.rs           命名模板渲染（VARIABLES 真值）
+│   └── types.rs            IPC 数据结构
+├── tauri.conf.json         应用配置（版本/打包/更新器公钥与端点）
+├── capabilities/           权限声明
+└── Cargo.toml
+crates/bili-core/           独立核心库（API 客户端/解析器/下载器/wbi 签名/登录）
+tools/                      45 台 UI 仪器 + 主题/图标生成脚本
+.github/workflows/          CI（fmt/clippy/test）+ Release（tauri-action 签名打包）
 ```
 
-## 快捷脚本
+## 已实测
 
-| 脚本 | 用途 |
-|---|---|
-| `dev.bat` | 开发模式（热更新）；`dev.bat build` 打包安装程序 |
-| `login.bat` | 命令行扫码登录（终端显示二维码） |
-
-## 开发环境
-
-- Rust 1.98+（Windows 需 MSVC 生成工具）
-- Node.js 20+（前端构建）
-- ffmpeg（正式版将内置 sidecar，开发期用系统 PATH 即可）
-
-## 运行桌面端
-
-**Windows 下推荐双击 `dev.bat`**（会自动带上 Node 路径）：
-
-- 直接双击 = 开发模式：起前端热更新服务并打开窗口
-- `dev.bat build` = 打包出安装程序
-
-等效命令（需要 Node 在 PATH 里）：
-
-```bash
-npm install            # 首次
-npm run tauri dev      # 开发模式
-npm run tauri build    # 打包安装程序（M4 会加上 ffmpeg 与自动更新）
-```
-
-> **注意**：`cargo run -p bilidown` 出来的 debug 版本会去连开发服务器
-> （http://localhost:5173）。开发服务器没起时窗口里会显示「localhost 拒绝连接」——
-> 这是 Tauri 的预期行为，不是程序坏了。
->
-> 要一个不依赖开发服务器的可执行文件，**必须启用 `custom-protocol` feature**
-> （Tauri 靠它区分开发/生产：没开就按开发模式连 devUrl）：
->
-> ```bash
-> cargo build --release -p bilidown --features custom-protocol
-> ```
->
-> 用 `npm run tauri build`（或 `dev.bat build`）打包时会自动启用，无需手动指定。
-
-只调界面时可以直接 `npm run dev` 打开 http://localhost:5173 —— 检测不到 Tauri
-运行时会自动使用假数据，改样式不必反复编译 Rust。
-
-## 命令行使用
-
-```bash
-# 下载视频（默认请求 1080P，未登录会自动降级）
-cargo run -p bili-cli -- BV1Vkag6TExf -o ./downloads
-
-# 指定清晰度与并发
-cargo run -p bili-cli -- BV1Vkag6TExf -q 80 --concurrency 8
-
-# 查看帮助
-cargo run -p bili-cli -- --help
-```
-
-### 扫码登录（解锁 1080P 及以上）
-
-**Windows 下最省事的方式**：双击项目根目录的 **`login.bat`**，会弹出终端窗口并显示二维码，
-用 B 站手机客户端「我的 → 扫一扫」扫描，手机上确认后窗口会显示登录结果，按任意键关闭即可。
-
-命令行方式（等效）：
-
-```bash
-# 扫码登录
-cargo run -p bili-cli -- --login
-
-# 退出登录（删除已保存的登录态）
-cargo run -p bili-cli -- --logout
-
-# 登录后直接下载即可自动使用登录态
-cargo run -p bili-cli -- BV1Vkag6TExf -q 120      # 120 = 4K
-```
-
-登录态默认保存在 `D:\Zcode\_data\bilidown\cookies.json`（可用 `--cookie-file` 或环境变量
-`BILIDOWN_COOKIE_FILE` 改路径）。该文件等同于账号凭据，请勿分享或提交到仓库。
-
-也可以退化为手动模式：`--sessdata "你的SESSDATA"`（优先级高于登录态文件）。
-
-### 清晰度
-
-| 清晰度 | qn | 要求 |
-|---|---|---|
-| 360P / 480P | 16 / 32 | 无需登录 |
-| 720P | 64 | 登录 |
-| 1080P / 1080P60 / 1080P+ | 80 / 116 / 112 | 登录 |
-| 4K / HDR / 杜比视界 | 120 / 125 / 126 | 大会员 |
-| Hi-Res 无损音轨 | `--audio flac` | 大会员 |
-
-请求的清晰度不可得时会自动降级到该视频可用的最高档，并说明是「视频本身没有」还是
-「账号权限不足」。HEVC 内容会打上 `hvc1` 标签，保证播放器兼容性。
-
-## 开发命令
-
-```bash
-cargo test --workspace                          # 单元测试
-cargo clippy --workspace --all-targets -- -D warnings   # 静态检查
-cargo fmt --all                                 # 格式化
-
-# 需要联网的手动测试（默认为跳过）
-cargo test -p bili-core -- --ignored --nocapture
-```
-
-## 已知限制
-
-- 多 P 视频仅下载 P1
-- 尚未支持断点续传（已按区间写入，续传只需补记已下载区间）
-- 弹幕与字幕下载待后续版本（嵌入字幕选项已预留）
-- 系列（`/lists/{id}?type=series`）与合集链接同形、id 空间重叠，走的是两套接口；不带 `?type=` 的裸链接会按接口返回的 mid 自动判断
-- 文件夹层级：设置里新增「文件夹」分区，默认按 **UP → 合集 → 条目** 分层（`{owner_name}/{collection_title}`，没有合集那一层自动消失）。图文、音频同理按 UP 分层；同一 UP 想区分内容类型可用 `{owner_name}/{source_kind}`。**最终路径 = 文件夹层级 + 文件名**，所以两套模板要分工：文件夹管层级（UP / 合集 / 来源），文件名管条目本身（标题）。直链（单个视频、单条图文/专栏）也会进 UP 目录（`{owner_name}` 始终有值）；想要全部平铺就把文件夹模板留空。图文/专栏的条目文件夹固定用帖子标题，不受文件名模板影响。第二层文件夹按来源给：合集/收藏夹/系列用来源标题（即合集名），图文与音频给「图文」「音频」类型层，UP 空间留空（第一层已是 UP 名）。
-- 单条图文/专栏：`bilibili.com/opus/{id}` 与旧链接 `bilibili.com/read/cv{id}` 都能直接解析（专栏已并入 opus，旧链接 301 到 opus 页），下载同样是一个文件夹 + 原图 + `正文.txt`
-- 图文（`space.bilibili.com/{mid}/upload/opus`）按 UP 列出：一个条目一个文件夹，里面是原图（按序号）与 `正文.txt`（标题/话题/发布时间/链接/正文）。列表接口不给总数，计数显示为「已加载 N 项」；正文完全相同的两条图文会撞文件夹名，默认「跳过」下第二条会被跳过（可改成自动重命名）
-- 音频（`space.bilibili.com/{mid}/upload/audio`）按 UP 列出并下载音频流本身（直存 m4a，不合并视频）；列表接口必须带 `order=1&platform=web`，少了这两个参数 B 站会静默返回空列表（看起来就像「这个 UP 没有音频」）
-- 收藏夹/合集默认拉取上限 500 条、UP 空间 300 条；超过上限的来源在选择内容页用「解析 → 加载下一批 / 按序号加载…」分批拉完（两批互不重叠，配合默认的「重名跳过」不会重复下载）。上限可在设置里改，0 表示用默认值，最大 20000 条。
+- 扫码登录后 480P → 1080P60 / 杜比视界（HEVC Main10 + hvc1）
+- 100+ 条合集批量解析 → 全选 → 逐条下载 → 命名模板含序号补零
+- 自动更新端到端：0.1.99 → 0.2.0 → 0.2.1（检测 → 下载进度 → 安装 → 重启）
+- NSIS 卸载器：静默卸载后安装目录与注册表项完全清除；重装后版本正确
+- 93 项单元测试 / clippy 零警告 / 45 台 UI 仪器全绿

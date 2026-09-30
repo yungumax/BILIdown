@@ -408,7 +408,7 @@ exe 的 shim（技能启动器只认 exe），用户级环境变量 `IMPECCABLE_
 | `ui-v2` | 大圆角 + 柔和投影 + 主色渐变（已放弃） |
 | `ui-v3` | 弹幕轨迹背景 + 粉/蓝双色分工（已否决） |
 | `ui-v4` | 在 v2 基础上的精修（已放弃） |
-| `ui-v5` | 当前版：回到 v1 平面化并优化（对比度达标、发丝行线、平色状态、浏览器界面主题化） |
+| `ui-v5` | 当前版：v1 平面化 + 对比度达标 + 发丝行线 + 浏览器界面主题化 + 微软雅黑 + 八层动效 + 自动更新（v0.2.1 发布） |
 
 回退：`git checkout ui-v1 -- src/styles.css`（只回样式，不影响后续功能）
 
@@ -418,11 +418,19 @@ exe 的 shim（技能启动器只认 exe），用户级环境变量 `IMPECCABLE_
   GitHub Releases 签名更新包（endpoints 指向
   `releases/latest/download/latest.json`，Windows 被动安装模式）。
 - **接线**：设置「应用更新」页——插件检测优先（拿到的 Update 对象存
-  `pendingUpdate`），失败回退原 Releases API 只读检测；发现新版本出
-  「下载并安装」（字节流进度百分比），装完出「立即重启」（process 插件
-  relaunch）。设置里开了「自动检测」则启动时静默查一次，只 toast 提示。
-- **发布前提（还没做，发布时需要）**：`tauri signer generate` 生成密钥对，
-  公钥填 tauri.conf.json 的 `plugins.updater.pubkey`（当前为空——
-  插件检测会失败，自动回退只读检测，不影响使用）；
-  CI 打包时 `createUpdaterArtifacts: true` 已开，会上传签名产物与
-  latest.json；私钥放 GitHub Secrets（TAURI_SIGNING_PRIVATE_KEY）。
+  `pendingUpdate`，**必须 shallowRef**——Update 带 `#` 私有字段，深度代理
+  会让 downloadAndInstall 报 Cannot read private member），失败回退原
+  Releases API 只读检测；发现新版本出「下载并安装」（字节流进度百分比），
+  装完出「立即重启」（process 插件 relaunch）。设置里开了「自动检测」
+  则启动时静默查一次，只 toast 提示。
+- **签名与发布（2026-09-30 已打通）**：minisign 密钥对在
+  `D:\Zcode\_data\tauri-keys\`（无密码，私钥永不入库），公钥已填
+  `plugins.updater.pubkey`；私钥在 GitHub Secrets 的
+  `TAURI_SIGNING_PRIVATE_KEY`。发版 = 三处版本号同升 + `git tag vX.Y.Z`
+  + push，`release.yml`（tauri-action）自动构建签名 NSIS 包并上传
+  latest.json（约 9-18 分钟）。端到端已实测：0.1.99→0.2.0→0.2.1。
+- **分发与卸载（2026-09-30 实测）**：NSIS 每用户安装（无需管理员）到
+  `%LOCALAPPDATA%\BILIdown\`，注册表 `HKCU:...\Uninstall\BILIdown` 提供
+  Windows 卸载入口。静默卸载（`uninstall.exe /S`）后安装目录与注册表
+  完全清除；重装后版本正确。用户数据（cookies.json、下载文件）在安装
+  目录之外，卸载不受影响。
