@@ -2,8 +2,7 @@
 
 B 站视频下载器。技术栈 Tauri 2 + Rust + Vue 3，NSIS 安装包分发，带签名自动更新。
 
-> 完整视觉与设计规范见 [DESIGN.md](./DESIGN.md)；逆向分析原始记录见
-> [BDL分析与BILIdown实施方案.md](./BDL分析与BILIdown实施方案.md)。
+> 视觉与设计规范见 [DESIGN.md](./DESIGN.md)。
 
 ## 功能
 
