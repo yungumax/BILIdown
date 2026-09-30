@@ -65,6 +65,16 @@ onMounted(async () => {
   requestAnimationFrame(() => document.documentElement.classList.add("ready"));
   applyUiScale();
   window.addEventListener("resize", applyUiScale);
+  // 启动编排（收官动效）：顶栏轻落、侧栏导航逐项浮进——与应用页的 page-in
+  // 组成完整的"开机画面"；reduce 下不演
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        animate(".titlebar", { opacity: [0, 1], translateY: [-6, 0], duration: 380, ease: "outExpo" });
+        animate(".sidebar nav .nav-item", { opacity: [0, 1], translateX: [-10, 0], duration: 440, delay: stagger(55), ease: "outExpo" });
+      }),
+    );
+  }
   try {
     const status = await api.appStatus();
     login.value = status.login;

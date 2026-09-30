@@ -479,6 +479,15 @@ function toggleGroup(input) {
   if (next.has(input)) next.delete(input);
   else next.add(input);
   collapsed.value = next;
+  // 展开时该组行级联亮起（收官动效；折叠瞬时收起）
+  if (!collapsed.value.has(input) && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    nextTick(() =>
+      requestAnimationFrame(() => {
+        const rows = [...document.querySelectorAll(`tr[data-group="${CSS.escape(input)}"]`)].slice(0, 14);
+        if (rows.length) animate(rows, { opacity: [0, 1], translateY: [6, 0], duration: 300, delay: stagger(22), ease: "outQuad" });
+      }),
+    );
+  }
 }
 
 /** 只有一个来源时不必分组（表头已经写了它是谁） */
@@ -1181,6 +1190,7 @@ async function startSingle(item) {
                 v-for="row in group.rows"
                 v-show="!isCollapsed(group.source.input)"
                 :key="row.key"
+                :data-group="group.source.input"
                 :class="{ on: isSelected(row) }"
                 :title="fileNameOf(row)"
               >

@@ -375,3 +375,20 @@ function human(bytes) {
   white-space: nowrap;
 }
 </style>
+
+<style scoped>
+/* 收官动效：传输行悬停左缘指示线（与选择页表格同一语言；无 td 覆盖问题，直接挂行上） */
+.row:hover {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* 收官动效：进度阶段达标瞬间闪一下亮度（done 类落上时播） */
+.seg.done .fill {
+  animation: stage-flash 500ms var(--ease-out);
+}
+
+@keyframes stage-flash {
+  0% { filter: brightness(1.9); }
+  100% { filter: brightness(1); }
+}
+</style>

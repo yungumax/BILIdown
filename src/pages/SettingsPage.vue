@@ -509,9 +509,20 @@ function commitProxy() {
   proxyDraft.value = "";
 }
 
+const savedFlash = ref(false);
+let savedTimer = 0;
 function save() {
   if (!dirty.value) return;
   emit("save", { ...draft.value });
+  // 收官动效：保存按钮成功脉冲（toast 之外按钮本体的确认反馈）
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    savedFlash.value = false;
+    requestAnimationFrame(() => {
+      savedFlash.value = true;
+      clearTimeout(savedTimer);
+      savedTimer = setTimeout(() => (savedFlash.value = false), 450);
+    });
+  }
 }
 
 function undo() {
@@ -627,7 +638,7 @@ async function open(path) {
           <Icon name="undo" />
           撤销
         </button>
-        <button class="primary" :disabled="!dirty" @click="save">
+        <button class="primary" :class="{ 'saved-flash': savedFlash }" :disabled="!dirty" @click="save">
           <Icon name="check" />
           保存
         </button>
@@ -2080,5 +2091,18 @@ input::placeholder {
   margin: 22px 0 0;
   font-size: 12.5px;
   color: var(--faint);
+}
+</style>
+
+<style scoped>
+/* 收官动效：保存成功脉冲 */
+.primary.saved-flash {
+  animation: save-pulse 420ms var(--ease-out-expo);
+}
+
+@keyframes save-pulse {
+  0% { transform: scale(0.95); }
+  55% { transform: scale(1.04); }
+  100% { transform: none; }
 }
 </style>

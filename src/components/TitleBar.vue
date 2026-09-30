@@ -407,3 +407,14 @@ function onDrag(event) {
   color: #fff;
 }
 </style>
+
+<style scoped>
+/* 收官动效：主题按钮图标随菜单开合旋转（与下拉箭头同一语言） */
+.icon-btn.on svg {
+  transform: rotate(180deg);
+}
+
+.icon-btn svg {
+  transition: transform var(--motion) var(--ease-out);
+}
+</style>
