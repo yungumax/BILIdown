@@ -429,8 +429,16 @@ exe 的 shim（技能启动器只认 exe），用户级环境变量 `IMPECCABLE_
   `TAURI_SIGNING_PRIVATE_KEY`。发版 = 三处版本号同升 + `git tag vX.Y.Z`
   + push，`release.yml`（tauri-action）自动构建签名 NSIS 包并上传
   latest.json（约 9-18 分钟）。端到端已实测：0.1.99→0.2.0→0.2.1。
-- **分发与卸载（2026-09-30 实测）**：NSIS 每用户安装（无需管理员）到
-  `%LOCALAPPDATA%\BILIdown\`，注册表 `HKCU:...\Uninstall\BILIdown` 提供
-  Windows 卸载入口。静默卸载（`uninstall.exe /S`）后安装目录与注册表
-  完全清除；重装后版本正确。用户数据（cookies.json、下载文件）在安装
-  目录之外，卸载不受影响。
+- **分发与卸载（2026-09-30 实测）**：NSIS 每用户安装（无需管理员），
+  **安装目录固定为 `E:\02GJ\BILIdown`**（用户指定不走 C 盘，用
+  `installerHooks` 的 POSTINSTALL 迁移方案：默认目录装完后 CopyFiles
+  到 E 盘、RMDir 旧目录、SHCTX 重写注册表三键、WriteUninstaller 到
+  新位置）。注册表 `HKCU:...\Uninstall\BILIdown` 提供 Windows 卸载入口。
+  静默卸载（`uninstall.exe /S`）后安装目录与注册表完全清除；重装后
+  版本正确。用户数据（cookies.json、下载文件）在安装目录之外，卸载
+  不受影响。
+- **NSIS 钩子三连坑（都踩过）**：① `installDirectory` 不是合法配置项
+  （schema 只认 installMode/languages/hooks 等）；② `installMode`
+  合法值是 currentUser/perMachine/both，"passive" 是 updater 的属性；
+  ③ `.onInit` 模板已定义不能再定义（"already exists"），PREINSTALL
+  又太晚（SetOutPath 已执行）——只有 POSTINSTALL 搬迁可行。
