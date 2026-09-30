@@ -257,12 +257,14 @@ pub async fn preview_names(
 pub async fn naming_variables() -> Result<Vec<crate::types::NamingVariable>, String> {
     Ok(crate::naming::VARIABLES
         .iter()
-        .map(|(token, label, section, hint)| crate::types::NamingVariable {
-            token: (*token).to_string(),
-            label: (*label).to_string(),
-            section: (*section).to_string(),
-            hint: (*hint).to_string(),
-        })
+        .map(
+            |(token, label, section, hint)| crate::types::NamingVariable {
+                token: (*token).to_string(),
+                label: (*label).to_string(),
+                section: (*section).to_string(),
+                hint: (*hint).to_string(),
+            },
+        )
         .collect())
 }
 
@@ -467,10 +469,7 @@ fn source_cap(kind: &str, override_cap: usize) -> usize {
 fn range_slice(from: usize, page_size: usize) -> (u32, usize) {
     let from = from.max(1);
     let page_size = page_size.max(1);
-    (
-        ((from - 1) / page_size) as u32 + 1,
-        (from - 1) % page_size,
-    )
+    (((from - 1) / page_size) as u32 + 1, (from - 1) % page_size)
 }
 
 /// 批量来源的加载说明。
@@ -664,7 +663,10 @@ async fn fetch_batch_page(
         }
         // 系列：接口不给标题也不给上传者，第一页顺带各查一次
         BatchTarget::Series { mid, sid } => {
-            let data = client.series_archives(mid, sid, page).await.map_err(describe)?;
+            let data = client
+                .series_archives(mid, sid, page)
+                .await
+                .map_err(describe)?;
             let owner = if first {
                 client.user_name(mid).await
             } else {
@@ -769,10 +771,7 @@ async fn fetch_batch_page(
                 .unwrap_or_default();
             let meta = first.then(|| BatchMeta {
                 kind: "audio".to_string(),
-                title: format!(
-                    "{} 的音频",
-                    if owner.is_empty() { "该 UP" } else { &owner }
-                ),
+                title: format!("{} 的音频", if owner.is_empty() { "该 UP" } else { &owner }),
                 owner,
                 total: data.total_size as usize,
                 mid: 0,
@@ -821,7 +820,8 @@ async fn start_batch(
             "fav" => "收藏夹为空或不可访问".to_string(),
             "collection" => "合集为空或不可访问".to_string(),
             "series" => "系列为空或不可访问".to_string(),
-            "audio" => "这个 UP 没有音频投稿（B 站音频接口在缺 order/platform 参数时也会返回空）".to_string(),
+            "audio" => "这个 UP 没有音频投稿（B 站音频接口在缺 order/platform 参数时也会返回空）"
+                .to_string(),
             "space" => "该 UP 主没有可访问的投稿，或触发了风控".to_string(),
             _ => "来源没有可访问的内容".to_string(),
         });
@@ -1016,7 +1016,8 @@ async fn probe_one(
             probe_batch_first_page(client, state, trimmed, BatchTarget::Fav(fid)).await
         }
         Target::Collection { mid, sid } => {
-            probe_batch_first_page(client, state, trimmed, BatchTarget::Collection { mid, sid }).await
+            probe_batch_first_page(client, state, trimmed, BatchTarget::Collection { mid, sid })
+                .await
         }
         Target::Series { mid, sid } => {
             probe_batch_first_page(client, state, trimmed, BatchTarget::Series { mid, sid }).await
@@ -1032,7 +1033,8 @@ async fn probe_one(
             probe_batch_first_page(client, state, trimmed, BatchTarget::Space(mid)).await
         }
         Target::Bangumi { season_id, ep_id } => {
-            let (items, meta) = fetch_whole(client, Target::Bangumi { season_id, ep_id }, "bangumi").await?;
+            let (items, meta) =
+                fetch_whole(client, Target::Bangumi { season_id, ep_id }, "bangumi").await?;
             let meta = meta.ok_or_else(|| "来源没有可访问的内容".to_string())?;
             finish_batch(client, state, trimmed, BatchTarget::Whole, meta, items).await
         }
@@ -1157,9 +1159,9 @@ async fn probe_batch_first_page(
     if let BatchTarget::Collection { mid, sid } = target {
         if meta.mid != 0 && meta.mid != mid {
             let series = BatchTarget::Series { mid, sid };
-            let (items, meta) = fetch_batch_page(client, series, 1, "").await.map_err(|e| {
-                format!("这个链接既不是该 UP 的合集，也不是系列：{e}")
-            })?;
+            let (items, meta) = fetch_batch_page(client, series, 1, "")
+                .await
+                .map_err(|e| format!("这个链接既不是该 UP 的合集，也不是系列：{e}"))?;
             let meta = meta.ok_or_else(|| "来源没有可访问的内容".to_string())?;
             return finish_batch(client, state, key, series, meta, items).await;
         }
@@ -1238,7 +1240,10 @@ async fn probe_range_one(
     };
 
     if from > meta.total {
-        return Err(format!("这个来源只有 {} 条，第 {from} 条不存在", meta.total));
+        return Err(format!(
+            "这个来源只有 {} 条，第 {from} 条不存在",
+            meta.total
+        ));
     }
     items.drain(..skip.min(items.len()));
     if items.is_empty() {
@@ -1254,7 +1259,10 @@ async fn probe_range_one(
         Some(want) => {
             while cache.items.len() < want {
                 let before = cache.items.len();
-                if extend_batch(client, &mut cache, want - before).await.is_err() {
+                if extend_batch(client, &mut cache, want - before)
+                    .await
+                    .is_err()
+                {
                     break;
                 }
                 if cache.items.len() == before {
@@ -1772,10 +1780,7 @@ fn enqueue_download(app: &AppHandle, state: &AppState, req: DownloadRequest) -> 
 /// 每个未完成的下载目录里有一份 `task.json`（原始请求）；重新入队会重新取播放地址，
 /// 分片记录（`*.ranges`）让已经下过的字节不再重下 —— 这就是"断点续传 + 播放地址自动刷新"。
 #[tauri::command]
-pub async fn resume_pending(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<usize, String> {
+pub async fn resume_pending(app: AppHandle, state: State<'_, AppState>) -> Result<usize, String> {
     if !state.settings().resume_on_start {
         return Ok(0);
     }
@@ -1864,7 +1869,12 @@ async fn run_opus_download(
     let total = post.images.len();
     settings.log(
         "info",
-        &format!("图文 {}：{} 张图，{} 字", req.opus_id, total, post.text.chars().count()),
+        &format!(
+            "图文 {}：{} 张图，{} 字",
+            req.opus_id,
+            total,
+            post.text.chars().count()
+        ),
     );
     tokio::fs::write(&text_path, compose_opus_text(&post, &req.opus_id)).await?;
 
@@ -1930,11 +1940,9 @@ async fn run_audio_download(
     });
 
     let stream = client.audio_stream(sid).await?;
-    let url = stream
-        .cdns
-        .first()
-        .cloned()
-        .ok_or_else(|| BiliError::Unavailable("这条音频没有可下载的地址（可能是会员专享）".into()))?;
+    let url = stream.cdns.first().cloned().ok_or_else(|| {
+        BiliError::Unavailable("这条音频没有可下载的地址（可能是会员专享）".into())
+    })?;
 
     // 音频默认用原轨道的扩展名（B 站给的基本是 m4a）；设置里选了 MP3 就转码成 mp3
     let source_ext = audio_ext(&url);
@@ -1991,8 +1999,16 @@ async fn run_audio_download(
                 t.recalc();
             });
         });
-        download_with_throttle(&client.http, &url, &[], &out_file, &opts, on_progress, throttle.as_ref())
-            .await?;
+        download_with_throttle(
+            &client.http,
+            &url,
+            &[],
+            &out_file,
+            &opts,
+            on_progress,
+            throttle.as_ref(),
+        )
+        .await?;
     }
 
     // 要 MP3 而源不是 mp3（常见是 m4a）时转一道；转不了就留着原格式，别让任务失败
@@ -2006,8 +2022,13 @@ async fn run_audio_download(
                             tokio::fs::remove_file(&tmp).await.ok();
                         }
                         Err(e) => {
-                            settings.log("warn", &format!("转 MP3 失败，保留原格式（{source_ext}）: {e}"));
-                            tokio::fs::rename(&tmp, out_file.with_extension(source_ext)).await.ok();
+                            settings.log(
+                                "warn",
+                                &format!("转 MP3 失败，保留原格式（{source_ext}）: {e}"),
+                            );
+                            tokio::fs::rename(&tmp, out_file.with_extension(source_ext))
+                                .await
+                                .ok();
                         }
                     }
                 }
@@ -2284,7 +2305,8 @@ async fn run_download(
         if let Some(name) = client.collection_of(&req.bvid).await {
             naming.collection_title = name;
         }
-    }    tokio::fs::create_dir_all(&output_dir).await?;
+    }
+    tokio::fs::create_dir_all(&output_dir).await?;
     // 目录 = 文件夹层级（UP/合集…）+ 文件名模板；层级模板为空时前缀为空路径
     let out_file = output_dir
         .join(settings.output_folder_template(&naming))
@@ -2326,7 +2348,9 @@ async fn run_download(
     let audio_path = work_dir.join("audio.m4s");
     // 未完成时留下原始请求：下次启动（或重新下这条）能接着下，见 resume_pending
     if let Ok(text) = serde_json::to_string(req) {
-        tokio::fs::write(work_dir.join("task.json"), text).await.ok();
+        tokio::fs::write(work_dir.join("task.json"), text)
+            .await
+            .ok();
     }
     let video_opts = DownloadOptions {
         concurrency: settings.chunk_concurrency,
@@ -2498,15 +2522,14 @@ async fn write_sidecars(
                         Ok((bytes, content_type)) => {
                             let ext = image_ext(&info.pic, &content_type);
                             match write_image_file(settings, &bytes, ext, out_file).await {
-                                Ok(path) => settings
-                                    .log("info", &format!("封面已保存: {}", path.display())),
+                                Ok(path) => {
+                                    settings.log("info", &format!("封面已保存: {}", path.display()))
+                                }
                                 Err(e) => settings.log("warn", &format!("封面写入失败: {e}")),
                             }
                             cover_data.clear();
                         }
-                        Err(e) => {
-                            settings.log("warn", &format!("封面下载失败（不影响视频）: {e}"))
-                        }
+                        Err(e) => settings.log("warn", &format!("封面下载失败（不影响视频）: {e}")),
                     }
                 }
                 Ok(_) => settings.log("info", "这条没有封面可取，跳过"),
@@ -2527,8 +2550,10 @@ async fn write_sidecars(
         } else {
             let bvid = (!req.bvid.is_empty()).then(|| req.bvid.clone());
             match client.subtitles(bvid.as_deref(), req.ep_id, cid).await {
-                Ok(list) if list.is_empty() => settings
-                    .log("info", "这条没有可用字幕（没有人工字幕，AI 字幕也还没生成），跳过"),
+                Ok(list) if list.is_empty() => settings.log(
+                    "info",
+                    "这条没有可用字幕（没有人工字幕，AI 字幕也还没生成），跳过",
+                ),
                 Ok(list) => {
                     let mut saved = 0usize;
                     for (index, item) in list.iter().enumerate() {
@@ -2766,7 +2791,6 @@ pub async fn open_path(path: String) -> Result<(), String> {
     Ok(())
 }
 
-
 #[tauri::command]
 pub async fn pick_ffmpeg(app: AppHandle) -> Result<String, String> {
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -2864,14 +2888,24 @@ pub async fn rename_downloaded(
             if let (Some(old_ext), Some(_)) = (found.extension(), Path::new(&wanted).extension()) {
                 let old_ext = old_ext.to_string_lossy().to_string();
                 if !old_ext.is_empty() {
-                    wanted = format!("{}.{old_ext}", Path::new(&wanted).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default());
+                    wanted = format!(
+                        "{}.{old_ext}",
+                        Path::new(&wanted)
+                            .file_stem()
+                            .map(|s| s.to_string_lossy().to_string())
+                            .unwrap_or_default()
+                    );
                 }
             }
         }
 
         match found {
             Some(found) => {
-                if found.file_name().map(|s| s.to_string_lossy() == wanted).unwrap_or(false) {
+                if found
+                    .file_name()
+                    .map(|s| s.to_string_lossy() == wanted)
+                    .unwrap_or(false)
+                {
                     plan.skipped += 1;
                     continue;
                 }
@@ -2881,7 +2915,10 @@ pub async fn rename_downloaded(
                     plan.details.push(format!("跳过（同名已存在）：{wanted}"));
                     continue;
                 }
-                let from = found.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                let from = found
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_default();
                 plan.details.push(format!("{from}  →  {wanted}"));
                 if !dry_run {
                     tokio::fs::rename(&found, &target)
@@ -3170,7 +3207,10 @@ mod naming_tests {
 
     #[test]
     fn codec_comes_from_the_stream_not_the_setting() {
-        assert_eq!(naming_context(&request(), "hev1.1.6", "1080P").codec, "HEVC");
+        assert_eq!(
+            naming_context(&request(), "hev1.1.6", "1080P").codec,
+            "HEVC"
+        );
         assert_eq!(
             naming_context(&request(), "av01.0.12M.08", "1080P").codec,
             "AV1"
@@ -3321,8 +3361,13 @@ mod live_tests {
             "https://space.bilibili.com/486287787/video",
             "https://space.bilibili.com/927587/video",
         ] {
-            let probe = probe_one(&client, &app_state(), url, false).await.expect("解析成功");
-            println!("{} -> title={:?} owner={:?} total={}", url, probe.title, probe.owner, probe.total);
+            let probe = probe_one(&client, &app_state(), url, false)
+                .await
+                .expect("解析成功");
+            println!(
+                "{} -> title={:?} owner={:?} total={}",
+                url, probe.title, probe.owner, probe.total
+            );
             assert!(!probe.owner.trim().is_empty(), "{url} 的 UP 名是空的");
             assert!(
                 !probe.title.trim().starts_with("的投稿"),
@@ -3349,7 +3394,11 @@ mod live_tests {
         .expect("解析成功");
         assert_eq!(probe.kind, "audio");
         assert!(probe.loaded > 0, "应加载到音频");
-        assert!(probe.total > 200, "配音木成的音频应有两百多条，实际 {}", probe.total);
+        assert!(
+            probe.total > 200,
+            "配音木成的音频应有两百多条，实际 {}",
+            probe.total
+        );
         assert!(probe.items.iter().all(|item| !item.au_id.is_empty()));
 
         let first = probe.items[0].clone();
@@ -3374,18 +3423,25 @@ mod live_tests {
         let client = client();
         let state = app_state();
         let url = "https://space.bilibili.com/649910/upload/audio";
-        let probe = probe_one(&client, &state, url, false).await.expect("解析成功");
+        let probe = probe_one(&client, &state, url, false)
+            .await
+            .expect("解析成功");
         assert_eq!(probe.kind, "audio");
 
         let mut cache = state.take_batch(url).expect("缓存");
         let declared = cache.total;
-        extend_batch(&client, &mut cache, 400).await.expect("翻到底不该报错");
+        extend_batch(&client, &mut cache, 400)
+            .await
+            .expect("翻到底不该报错");
         let loaded = cache.items.len();
         let exhausted = cache.exhausted;
         state.put_batch(url.to_string(), cache.clone());
         let note = batch_to_source(&state.peek_batch(url).expect("缓存")).note;
         assert!(exhausted, "应标记为已到底");
-        assert!(loaded < declared, "这个接口报数 {declared} 大于实取 {loaded}，正是触发条件");
+        assert!(
+            loaded < declared,
+            "这个接口报数 {declared} 大于实取 {loaded}，正是触发条件"
+        );
         assert!(note.contains("可下载"), "应说明实际可下载条数：{note}");
         println!("audio 翻到底: 报数 {declared}，实取 {loaded}；提示 {note}");
     }
@@ -3410,9 +3466,15 @@ mod live_tests {
         assert_eq!(probe.total, 0, "图文接口不给总数");
 
         // 再往下一页翻（游标）
-        let mut cache = state.take_batch("https://space.bilibili.com/486287787/upload/opus").expect("缓存");
+        let mut cache = state
+            .take_batch("https://space.bilibili.com/486287787/upload/opus")
+            .expect("缓存");
         extend_batch(&client, &mut cache, 3).await.expect("翻页");
-        assert!(cache.items.len() > 20, "游标翻页应拿到更多条目，实际 {}", cache.items.len());
+        assert!(
+            cache.items.len() > 20,
+            "游标翻页应拿到更多条目，实际 {}",
+            cache.items.len()
+        );
 
         // 单条：正文与原图
         let first = probe.items[0].clone();
@@ -3460,7 +3522,9 @@ mod live_tests {
         let state = app_state();
         let url = "https://space.bilibili.com/927587/video";
 
-        probe_one(&client, &state, url, false).await.expect("首次解析");
+        probe_one(&client, &state, url, false)
+            .await
+            .expect("首次解析");
         let mut cache = state.take_batch(url).expect("首屏缓存");
         extend_batch(&client, &mut cache, SPACE_MAX_ITEMS * 2)
             .await
@@ -3474,7 +3538,10 @@ mod live_tests {
             .iter()
             .map(|item| item.bvid.clone())
             .collect();
-        assert!(state.peek_batch(url).expect("缓存").exhausted, "到上限后应标记已拉完");
+        assert!(
+            state.peek_batch(url).expect("缓存").exhausted,
+            "到上限后应标记已拉完"
+        );
         assert_eq!(head.len(), capped);
 
         let second = probe_range_one(&client, &state, url, capped + 1, None)
@@ -3501,9 +3568,14 @@ mod live_tests {
     #[ignore = "需要网络"]
     async fn live_probe_bangumi() {
         let client = client();
-        let probe = probe_one(&client, &app_state(), "https://www.bilibili.com/bangumi/play/ss39468", false)
-            .await
-            .expect("解析成功");
+        let probe = probe_one(
+            &client,
+            &app_state(),
+            "https://www.bilibili.com/bangumi/play/ss39468",
+            false,
+        )
+        .await
+        .expect("解析成功");
         assert_eq!(probe.kind, "bangumi");
         assert!(probe.loaded > 0);
         println!(
@@ -3524,9 +3596,14 @@ mod live_tests {
     #[ignore = "需要网络"]
     async fn live_probe_cheese() {
         let client = client();
-        let probe = probe_one(&client, &app_state(), "https://www.bilibili.com/cheese/play/ss1", false)
-            .await
-            .expect("解析成功");
+        let probe = probe_one(
+            &client,
+            &app_state(),
+            "https://www.bilibili.com/cheese/play/ss1",
+            false,
+        )
+        .await
+        .expect("解析成功");
         assert_eq!(probe.kind, "cheese");
         assert!(probe.loaded > 0);
         println!(
@@ -3543,7 +3620,9 @@ mod live_tests {
         let state = app_state();
         let input = "https://space.bilibili.com/1858731/favlist?fid=52568231";
 
-        let first = probe_one(&client, &state, input, false).await.expect("首页解析");
+        let first = probe_one(&client, &state, input, false)
+            .await
+            .expect("首页解析");
         println!(
             "首页 loaded={} total={} exhausted={}",
             first.loaded, first.total, first.exhausted
@@ -3613,9 +3692,14 @@ mod live_tests {
 
         // UP 空间：每页 30 条
         if let Ok(mid) = std::env::var("BILIDOWN_TEST_SPACE_MID") {
-            let space = probe_one(&client, &app_state(), &format!("https://space.bilibili.com/{mid}"), false)
-                .await
-                .expect("空间解析成功");
+            let space = probe_one(
+                &client,
+                &app_state(),
+                &format!("https://space.bilibili.com/{mid}"),
+                false,
+            )
+            .await
+            .expect("空间解析成功");
             println!(
                 "space loaded={} total={} → 至少翻了 {} 页",
                 space.loaded,
@@ -3631,7 +3715,9 @@ mod live_tests {
 
         // 合集：每页 100 条，用 BILIDOWN_TEST_COLLECTION_URL 指定
         if let Ok(url) = std::env::var("BILIDOWN_TEST_COLLECTION_URL") {
-            let collection = probe_one(&client, &app_state(), &url, false).await.expect("合集解析成功");
+            let collection = probe_one(&client, &app_state(), &url, false)
+                .await
+                .expect("合集解析成功");
             println!(
                 "coll  loaded={} total={} → 至少翻了 {} 页",
                 collection.loaded,

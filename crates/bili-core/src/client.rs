@@ -428,16 +428,22 @@ pub fn decode_danmaku(bytes: &[u8]) -> Result<String> {
     }
     inflate(bytes, true)
         .or_else(|| inflate(bytes, false))
-        .ok_or_else(|| BiliError::Unavailable("弹幕数据解不开（既不是明文也不是 deflate）".to_string()))
+        .ok_or_else(|| {
+            BiliError::Unavailable("弹幕数据解不开（既不是明文也不是 deflate）".to_string())
+        })
 }
 
 fn inflate(bytes: &[u8], raw: bool) -> Option<String> {
     use std::io::Read;
     let mut out = Vec::new();
     let ok = if raw {
-        flate2::read::DeflateDecoder::new(bytes).read_to_end(&mut out).is_ok()
+        flate2::read::DeflateDecoder::new(bytes)
+            .read_to_end(&mut out)
+            .is_ok()
     } else {
-        flate2::read::ZlibDecoder::new(bytes).read_to_end(&mut out).is_ok()
+        flate2::read::ZlibDecoder::new(bytes)
+            .read_to_end(&mut out)
+            .is_ok()
     };
     if !ok || out.is_empty() {
         return None;

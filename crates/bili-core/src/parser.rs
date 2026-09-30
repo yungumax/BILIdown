@@ -44,7 +44,10 @@ pub enum Target {
     /// 音频列表：mid
     AudioList(u64),
     /// 单条图文/专栏：id + 是不是专栏（旧链接 read/cv）
-    Post { id: u64, article: bool },
+    Post {
+        id: u64,
+        article: bool,
+    },
     /// 番剧：season_id 与 ep_id 至少一个存在
     Bangumi {
         season_id: Option<u64>,
@@ -297,16 +300,25 @@ mod tests {
         // 旧专栏链接与 opus 直链都是"单条"，只是标签不同
         assert_eq!(
             parse_target("https://www.bilibili.com/read/cv13397601").unwrap(),
-            Target::Post { id: 13397601, article: true }
+            Target::Post {
+                id: 13397601,
+                article: true
+            }
         );
         assert_eq!(
             parse_target("https://www.bilibili.com/opus/1179150912883523593").unwrap(),
-            Target::Post { id: 1179150912883523593, article: false }
+            Target::Post {
+                id: 1179150912883523593,
+                article: false
+            }
         );
         // 带查询串/结尾斜杠也要认
         assert_eq!(
             parse_target("bilibili.com/read/cv13397601?spm_id_from=333").unwrap(),
-            Target::Post { id: 13397601, article: true }
+            Target::Post {
+                id: 13397601,
+                article: true
+            }
         );
     }
 

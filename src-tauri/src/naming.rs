@@ -17,12 +17,22 @@ use std::path::PathBuf;
 /// （`variable_sections_stay_contiguous` 守着这条）。
 pub const VARIABLES: &[(&str, &str, &str, &str)] = &[
     // 标题与作者：任何来源都有
-    ("title", "标题", "标题与作者", "视频标题 / 合集条目 / 图文帖子"),
+    (
+        "title",
+        "标题",
+        "标题与作者",
+        "视频标题 / 合集条目 / 图文帖子",
+    ),
     ("owner_name", "UP 名", "标题与作者", "UP 主名称"),
     ("owner_mid", "UP MID", "标题与作者", "UP 主的数字 ID"),
     ("publish_date", "发布日期", "时间", "B 站发布日期"),
     ("date", "下载日期", "时间", "任务创建那天"),
-    ("source_kind", "来源类型", "来源与格式", "合集 / 收藏夹 / 系列 / UP 空间 / 图文 / 音频 / 番剧 / 课程"),
+    (
+        "source_kind",
+        "来源类型",
+        "来源与格式",
+        "合集 / 收藏夹 / 系列 / UP 空间 / 图文 / 音频 / 番剧 / 课程",
+    ),
     ("ext", "扩展名", "来源与格式", "视频 mp4/mkv、音频 m4a"),
     // 视频专属
     ("bvid", "BV 号", "视频标识", ""),
@@ -33,8 +43,18 @@ pub const VARIABLES: &[(&str, &str, &str, &str)] = &[
     ("quality", "清晰度", "画质与编码", ""),
     ("codec", "编码", "画质与编码", ""),
     // 批量来源：合集 / 收藏夹 / 系列 / UP 空间 / 图文 / 音频
-    ("collection_title", "合集名", "合集与序号", "合集 / 来源名，也是「文件夹」页的第二层目录"),
-    ("index", "序号", "合集与序号", "批次内按发布顺序；单条链接为空"),
+    (
+        "collection_title",
+        "合集名",
+        "合集与序号",
+        "合集 / 来源名，也是「文件夹」页的第二层目录",
+    ),
+    (
+        "index",
+        "序号",
+        "合集与序号",
+        "批次内按发布顺序；单条链接为空",
+    ),
     // 番剧 / 课程
     ("series_title", "剧集名", "剧集信息", "番剧 / 课程 / 系列名"),
     ("episode_index", "集序号", "剧集信息", ""),
@@ -307,7 +327,9 @@ mod tests {
     }
 
     fn render_str(template: &str) -> String {
-        render(template, &ctx(), "mp4").to_string_lossy().replace('\\', "/")
+        render(template, &ctx(), "mp4")
+            .to_string_lossy()
+            .replace('\\', "/")
     }
 
     #[test]
@@ -379,7 +401,10 @@ mod tests {
             .to_string_lossy()
             .to_string();
         // 只留下必要的前后下划线以外的空标记不该出现
-        assert!(!rendered.contains('{'), "空变量不该留下字面标记: {rendered}");
+        assert!(
+            !rendered.contains('{'),
+            "空变量不该留下字面标记: {rendered}"
+        );
         assert!(rendered.starts_with("标题_"));
     }
 
@@ -387,7 +412,9 @@ mod tests {
     fn illegal_characters_are_replaced_per_segment() {
         let mut c = ctx();
         c.title = "a:b*c?d".to_string();
-        let rendered = render("{title}/{bvid}", &c, "mp4").to_string_lossy().replace('\\', "/");
+        let rendered = render("{title}/{bvid}", &c, "mp4")
+            .to_string_lossy()
+            .replace('\\', "/");
         assert_eq!(rendered, "a_b_c_d/BV1xx411c7mD.mp4");
     }
 
@@ -490,8 +517,12 @@ mod tests {
             PathBuf::from("两天在读")
         );
         // 变量全空就是不建层级（返回空路径），且不会留下尾巴点
-        assert!(render_dir("{bvid}", &NamingContext::default()).as_os_str().is_empty());
-        assert!(!render_dir("{title}.", &ctx).to_string_lossy().ends_with('.'));
+        assert!(render_dir("{bvid}", &NamingContext::default())
+            .as_os_str()
+            .is_empty());
+        assert!(!render_dir("{title}.", &ctx)
+            .to_string_lossy()
+            .ends_with('.'));
     }
 
     #[test]

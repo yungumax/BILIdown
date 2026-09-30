@@ -67,7 +67,11 @@ pub fn srt_from_json(json: &str) -> Result<String, serde_json::Error> {
         index += 1;
         out.push_str(&index.to_string());
         out.push('\n');
-        out.push_str(&format!("{} --> {}\n", srt_time(line.from), srt_time(line.to)));
+        out.push_str(&format!(
+            "{} --> {}\n",
+            srt_time(line.from),
+            srt_time(line.to)
+        ));
         // B 站用 \n 表示换行，SRT 里就是真的换行
         out.push_str(&text.replace("\\n", "\n").replace("\r\n", "\n"));
         out.push_str("\n\n");
@@ -117,7 +121,10 @@ mod tests {
             {"from":8.0,"to":9.0,"content":"   "}
         ]}"#;
         let srt = srt_from_json(json).unwrap();
-        assert!(srt.starts_with("1\n00:00:01,234 --> 00:00:04,500\n第一句\n"), "{srt}");
+        assert!(
+            srt.starts_with("1\n00:00:01,234 --> 00:00:04,500\n第一句\n"),
+            "{srt}"
+        );
         assert!(srt.contains("2\n00:00:04,500 --> 01:01:01,007\n"), "{srt}");
         assert!(srt.contains("第二句\n换行了"), "\\n 要变成真换行: {srt}");
         assert!(!srt.contains("3\n"), "空内容不算一条");
@@ -131,9 +138,17 @@ mod tests {
 
     #[test]
     fn language_tag_falls_back_to_doc_then_sub() {
-        let item = SubtitleItem { lan: "zh-CN".into(), lan_doc: "中文（自动生成）".into(), ..Default::default() };
+        let item = SubtitleItem {
+            lan: "zh-CN".into(),
+            lan_doc: "中文（自动生成）".into(),
+            ..Default::default()
+        };
         assert_eq!(lang_tag(&item), "zh-CN");
-        let item = SubtitleItem { lan: String::new(), lan_doc: "英语".into(), ..Default::default() };
+        let item = SubtitleItem {
+            lan: String::new(),
+            lan_doc: "英语".into(),
+            ..Default::default()
+        };
         assert_eq!(lang_tag(&item), "sub", "非 ASCII 语言名兜底成 sub");
     }
 }

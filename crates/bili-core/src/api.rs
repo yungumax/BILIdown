@@ -17,8 +17,7 @@ const API_SERIES_ARCHIVES: &str = "https://api.bilibili.com/x/series/archives";
 const API_SERIES_META: &str = "https://api.bilibili.com/x/series/series";
 const API_SPACE_ARC: &str = "https://api.bilibili.com/x/space/wbi/arc/search";
 /// UP 主页的合集/系列列表（用来判断每条投稿属于哪个合集）
-const API_SEASONS_SERIES: &str =
-    "https://api.bilibili.com/x/polymer/web-space/home/seasons_series";
+const API_SEASONS_SERIES: &str = "https://api.bilibili.com/x/polymer/web-space/home/seasons_series";
 /// 图文（opus）列表：按 offset 游标翻页（page 参数无效，实测会重复返回第一页）
 const API_OPUS_FEED: &str = "https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/feed/space";
 /// 音频投稿列表（必须带 order/platform，否则静默返回空列表）
@@ -252,7 +251,11 @@ impl PlayUrlData {
     /// 逐条尝试：命中该档位就取；同档内多个编码时按这一条的编码偏好选。
     /// 全部没命中时按 `fallback` 处理：`fail` 返回 None，否则取可用的最高档
     /// （编码偏好沿用链上第一条明确指定的编码）。
-    pub fn pick_video_chain(&self, chain: &[(u32, String)], fallback: &str) -> Option<&MediaStream> {
+    pub fn pick_video_chain(
+        &self,
+        chain: &[(u32, String)],
+        fallback: &str,
+    ) -> Option<&MediaStream> {
         let dash = self.dash.as_ref()?;
         if dash.video.is_empty() {
             return None;
@@ -675,9 +678,15 @@ impl AudioKind {
 /// 音频档位约定：30216=64k / 30232=132k / 30280=192k 是普通音轨；
 /// 30250=杜比全景声、30251=Hi-Res 无损是需要单独指定的特殊音轨，按码率排序时不能混入。
 /// 在同一清晰度档内按编码偏好挑一条；偏好编码不存在时取该档第一条。
-fn pick_by_codec<'a>(same_quality: &[&'a MediaStream], codec_pref: &str) -> Option<&'a MediaStream> {
+fn pick_by_codec<'a>(
+    same_quality: &[&'a MediaStream],
+    codec_pref: &str,
+) -> Option<&'a MediaStream> {
     let wanted: Option<&MediaStream> = match codec_pref {
-        "avc" => same_quality.iter().find(|s| s.codecs.starts_with("avc")).copied(),
+        "avc" => same_quality
+            .iter()
+            .find(|s| s.codecs.starts_with("avc"))
+            .copied(),
         "hevc" => same_quality
             .iter()
             .find(|s| s.codecs.starts_with("hev") || s.codecs.starts_with("hvc"))
@@ -833,9 +842,7 @@ impl BiliClient {
 
     /// UP 主的合集列表（一页最多 20 个合集）。
     pub async fn space_collections(&self, mid: u64, page: u32) -> Result<SeasonsSeriesPage> {
-        let url = format!(
-            "{API_SEASONS_SERIES}?mid={mid}&page_num={page}&page_size=20"
-        );
+        let url = format!("{API_SEASONS_SERIES}?mid={mid}&page_num={page}&page_size=20");
         self.fetch_json(&url).await
     }
 
@@ -872,9 +879,7 @@ impl BiliClient {
     /// 务必带上 `order` 与 `platform`：少了它们接口 code 仍是 0，
     /// 却返回 `data: null`——看起来像"这个 UP 没有音频"。
     pub async fn audio_list(&self, mid: u64, page: u32) -> Result<AudioListPage> {
-        let url = format!(
-            "{API_AUDIO_LIST}?uid={mid}&pn={page}&ps=30&order=1&platform=web"
-        );
+        let url = format!("{API_AUDIO_LIST}?uid={mid}&pn={page}&ps=30&order=1&platform=web");
         // 这个接口末页之后会返回 data: null（报的总数还常常大于实取条数），
         // 必须按"没有更多"处理，否则翻到底会报格式异常
         Ok(self.fetch_json_opt(&url).await?.unwrap_or_default())
@@ -1171,10 +1176,11 @@ mod tests {
 
     #[test]
     fn video_chain_prefers_codec_inside_the_matched_tier() {
-        let p = play(vec![stream(80, "hev1.1.6"), stream(80, "avc1.640028")], vec![]);
-        let picked = p
-            .pick_video_chain(&[pref(80, "avc")], "nearest")
-            .unwrap();
+        let p = play(
+            vec![stream(80, "hev1.1.6"), stream(80, "avc1.640028")],
+            vec![],
+        );
+        let picked = p.pick_video_chain(&[pref(80, "avc")], "nearest").unwrap();
         assert_eq!(picked.id, 80);
         assert!(picked.codecs.starts_with("avc"));
     }
@@ -1239,7 +1245,8 @@ mod tests {
     }
 
     #[test]
-    fn picks_requested_quality_and_prefers_avc() {        let p = play(
+    fn picks_requested_quality_and_prefers_avc() {
+        let p = play(
             vec![
                 stream(80, "avc1.640028"),
                 stream(80, "hev1.1.6"),

@@ -45,9 +45,15 @@ pub struct FfmpegStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BatchTarget {
     Fav(u64),
-    Collection { mid: u64, sid: u64 },
+    Collection {
+        mid: u64,
+        sid: u64,
+    },
     /// 系列：链接与合集同形，接口不同（见 parser 里的说明）
-    Series { mid: u64, sid: u64 },
+    Series {
+        mid: u64,
+        sid: u64,
+    },
     /// 图文列表：mid（游标翻页，见 next_offset）
     Opus(u64),
     /// 音频投稿列表：mid
@@ -618,7 +624,10 @@ impl AppState {
 
     /// 读缓存的 ffmpeg 探测结果；没有缓存时返回 None（调用方给中性文案，不谎报）。
     pub fn ffmpeg_cached(&self) -> Option<FfmpegStatus> {
-        self.ffmpeg.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.ffmpeg
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn set_ffmpeg_status(&self, status: FfmpegStatus) -> FfmpegStatus {
@@ -693,7 +702,10 @@ impl AppState {
                     "info",
                     &format!("数据目录已更换，登录凭据已复制到 {}", next_data.display()),
                 ),
-                Err(e) => next.log("warn", &format!("换数据目录时复制凭据失败（重新登录即可）: {e}")),
+                Err(e) => next.log(
+                    "warn",
+                    &format!("换数据目录时复制凭据失败（重新登录即可）: {e}"),
+                ),
             }
         }
         let previous = {
@@ -766,24 +778,49 @@ mod preset_tests {
     fn folder_presets_may_be_empty_but_naming_presets_may_not() {
         let mut settings = Settings::default();
         settings.naming_presets = vec![
-            NamingPreset { name: "空模板".into(), template: "   ".into() },
-            NamingPreset { name: "  ".into(), template: "{title}.{ext}".into() },
-            NamingPreset { name: "留下".into(), template: "{title}.{ext}".into() },
+            NamingPreset {
+                name: "空模板".into(),
+                template: "   ".into(),
+            },
+            NamingPreset {
+                name: "  ".into(),
+                template: "{title}.{ext}".into(),
+            },
+            NamingPreset {
+                name: "留下".into(),
+                template: "{title}.{ext}".into(),
+            },
         ];
         settings.folder_presets = vec![
-            NamingPreset { name: "不建文件夹".into(), template: String::new() },
-            NamingPreset { name: "  ".into(), template: "{owner_name}".into() },
-            NamingPreset { name: "留下".into(), template: " {owner_name} ".into() },
+            NamingPreset {
+                name: "不建文件夹".into(),
+                template: String::new(),
+            },
+            NamingPreset {
+                name: "  ".into(),
+                template: "{owner_name}".into(),
+            },
+            NamingPreset {
+                name: "留下".into(),
+                template: " {owner_name} ".into(),
+            },
         ];
 
         settings.clamp();
 
-        assert_eq!(settings.naming_presets.len(), 1, "空模板的命名预设应当被丢掉");
+        assert_eq!(
+            settings.naming_presets.len(),
+            1,
+            "空模板的命名预设应当被丢掉"
+        );
         assert_eq!(settings.naming_presets[0].name, "留下");
         assert_eq!(settings.folder_presets.len(), 2, "空模板的文件夹预设要留下");
         assert_eq!(settings.folder_presets[0].name, "不建文件夹");
         assert_eq!(settings.folder_presets[0].template, "");
-        assert_eq!(settings.folder_presets[1].template, "{owner_name}", "两端空白要清掉");
+        assert_eq!(
+            settings.folder_presets[1].template, "{owner_name}",
+            "两端空白要清掉"
+        );
     }
 }
 
@@ -844,7 +881,10 @@ mod pref_tests {
         let mut s = Settings::default();
         s.default_quality = 80;
         s.codec_pref = "hevc".to_string();
-        s.quality_prefs = vec![QualityPref { qn: 80, codec: "hevc".to_string() }];
+        s.quality_prefs = vec![QualityPref {
+            qn: 80,
+            codec: "hevc".to_string(),
+        }];
         s.default_audio = "flac".to_string();
         s.audio_prefs = vec!["flac".to_string()];
         s.migrate();
@@ -860,8 +900,14 @@ mod pref_tests {
     fn real_custom_order_is_kept() {
         let mut s = Settings::default();
         s.quality_prefs = vec![
-            QualityPref { qn: 80, codec: "avc".to_string() },
-            QualityPref { qn: 64, codec: "auto".to_string() },
+            QualityPref {
+                qn: 80,
+                codec: "avc".to_string(),
+            },
+            QualityPref {
+                qn: 64,
+                codec: "auto".to_string(),
+            },
         ];
         s.audio_prefs = vec!["flac".to_string(), "auto".to_string()];
         s.migrate();

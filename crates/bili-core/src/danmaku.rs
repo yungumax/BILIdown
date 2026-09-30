@@ -38,7 +38,9 @@ pub fn parse_segment(bytes: &[u8]) -> Vec<DanmakuElem> {
         match wire {
             // 顶层 field 1 = 一条弹幕
             2 => {
-                let Some((len, next)) = read_varint(bytes, cursor) else { break };
+                let Some((len, next)) = read_varint(bytes, cursor) else {
+                    break;
+                };
                 cursor = next;
                 let end = (cursor + len as usize).min(bytes.len());
                 if field == 1 {
@@ -49,7 +51,9 @@ pub fn parse_segment(bytes: &[u8]) -> Vec<DanmakuElem> {
                 cursor = end;
             }
             0 => {
-                let Some((_, next)) = read_varint(bytes, cursor) else { break };
+                let Some((_, next)) = read_varint(bytes, cursor) else {
+                    break;
+                };
                 cursor = next;
             }
             1 => cursor += 8,
@@ -204,7 +208,15 @@ mod tests {
         out.extend_from_slice(text.as_bytes());
     }
 
-    fn one_elem(id: u64, progress: u64, mode: u64, color: u64, ctime: u64, hash: &str, content: &str) -> Vec<u8> {
+    fn one_elem(
+        id: u64,
+        progress: u64,
+        mode: u64,
+        color: u64,
+        ctime: u64,
+        hash: &str,
+        content: &str,
+    ) -> Vec<u8> {
         let mut elem = Vec::new();
         field_varint(1, id, &mut elem);
         field_varint(2, progress, &mut elem);
@@ -223,7 +235,15 @@ mod tests {
 
     #[test]
     fn parses_segment_with_unknown_fields_skipped() {
-        let mut seg = one_elem(59044123, 52400, 1, 16777215, 1320891024, "f4dbdf21", "很有观赏性");
+        let mut seg = one_elem(
+            59044123,
+            52400,
+            1,
+            16777215,
+            1320891024,
+            "f4dbdf21",
+            "很有观赏性",
+        );
         // 未知字段（field 26 varint、field 20 字符串）不该把解析带偏
         let mut tail = Vec::new();
         field_varint(26, 279786, &mut tail);
@@ -279,7 +299,10 @@ mod tests {
         let first = xml.find("<d p=").unwrap();
         assert!(xml[first..].starts_with("<d p=\"1.00000,5,18,255,1320891000,0,abcd,2\">早</d>"));
         assert!(xml.contains("<d p=\"23.82600,1,25,16777215,1320891024,0,f4dbdf21,59044123\">"));
-        assert!(xml.contains("阵亡.&lt;b&gt;&amp;&quot;引号&quot;"), "内容里的 XML 元字符要转义");
+        assert!(
+            xml.contains("阵亡.&lt;b&gt;&amp;&quot;引号&quot;"),
+            "内容里的 XML 元字符要转义"
+        );
         assert_eq!(xml.matches("<d p=").count(), 2);
     }
 }

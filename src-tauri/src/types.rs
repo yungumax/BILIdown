@@ -69,7 +69,6 @@ pub struct BatchVideo {
     pub duration: u64,
 }
 
-
 /// 统一的解析结果：
 /// - kind=video：单视频，bvid/cid/cover/duration 有效，items 为空
 /// - kind=fav/collection/space：普通视频批量

@@ -317,8 +317,15 @@ async fn append_resume_log(path: &Path, offset: u64, len: u64) {
         .open(path)
         .await
     {
-        let _ = file.write_all(format!("{offset} {len}
-").as_bytes()).await;
+        let _ = file
+            .write_all(
+                format!(
+                    "{offset} {len}
+"
+                )
+                .as_bytes(),
+            )
+            .await;
     }
 }
 

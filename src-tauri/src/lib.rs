@@ -78,11 +78,8 @@ pub fn run() {
                 "light" => false,
                 _ => matches!(window.theme(), Ok(Theme::Dark)),
             };
-            let _ = window.set_background_color(Some(if resolved_dark {
-                BG_DARK
-            } else {
-                BG_LIGHT
-            }));
+            let _ =
+                window.set_background_color(Some(if resolved_dark { BG_DARK } else { BG_LIGHT }));
 
             Ok(())
         })

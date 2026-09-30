@@ -127,7 +127,9 @@ pub fn parse_page(html: &str) -> Result<OpusPost> {
                                 .map(|nodes| {
                                     nodes
                                         .iter()
-                                        .filter_map(|n| n.pointer("/word/words").and_then(|v| v.as_str()))
+                                        .filter_map(|n| {
+                                            n.pointer("/word/words").and_then(|v| v.as_str())
+                                        })
                                         .collect::<Vec<_>>()
                                         .join("")
                                 })
@@ -141,9 +143,11 @@ pub fn parse_page(html: &str) -> Result<OpusPost> {
                         }
                         // 2 = 图片
                         Some(2) => {
-                            if let Some(pics) = para.pointer("/pic/pics").and_then(|v| v.as_array()) {
+                            if let Some(pics) = para.pointer("/pic/pics").and_then(|v| v.as_array())
+                            {
                                 for pic in pics {
-                                    if let Ok(image) = serde_json::from_value::<OpusImage>(pic.clone())
+                                    if let Ok(image) =
+                                        serde_json::from_value::<OpusImage>(pic.clone())
                                     {
                                         if !image.url.is_empty() {
                                             post.images.push(image);
@@ -219,7 +223,10 @@ fn initial_state(html: &str) -> Result<serde_json::Value> {
 /// `detail` 有时是对象（图文页）、有时是数组（动态页）；
 /// `modules` 有时是数组（每项带 module_type）、有时是按类型名命名的对象。
 fn modules_from_state(state: &serde_json::Value) -> Vec<(String, serde_json::Value)> {
-    let detail = state.get("detail").cloned().unwrap_or(serde_json::Value::Null);
+    let detail = state
+        .get("detail")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
     let candidates = match detail {
         serde_json::Value::Array(items) => items,
         other => vec![other],
@@ -252,7 +259,10 @@ fn modules_from_state(state: &serde_json::Value) -> Vec<(String, serde_json::Val
 }
 
 fn text_of(value: Option<&serde_json::Value>) -> String {
-    value.and_then(|v| v.as_str()).unwrap_or_default().to_string()
+    value
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn id_str_or_num<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
@@ -311,7 +321,8 @@ window.__INITIAL_STATE__={"detail":{"basic":{"title":"t"},"modules":[
 
     #[test]
     fn braces_or_quotes_inside_strings_do_not_break_scan() {
-        let post = parse_page(&PAGE.replace("第一段", "带 } 和 { 还有 \\\" 引号")).expect("解析成功");
+        let post =
+            parse_page(&PAGE.replace("第一段", "带 } 和 { 还有 \\\" 引号")).expect("解析成功");
         assert!(post.text.starts_with("带 } 和 {"));
         assert_eq!(post.images.len(), 2, "后面的图片仍然要解出来");
     }
@@ -335,7 +346,9 @@ window.__INITIAL_STATE__={"detail":{"modules":[
 
     #[test]
     fn rejects_page_without_content() {
-        let empty = PAGE.replace(r#""para_type":1"#, r#""para_type":9"#).replace(r#""para_type":2"#, r#""para_type":9"#);
+        let empty = PAGE
+            .replace(r#""para_type":1"#, r#""para_type":9"#)
+            .replace(r#""para_type":2"#, r#""para_type":9"#);
         assert!(parse_page(&empty).is_err());
         assert!(parse_page("<html>没有状态</html>").is_err());
     }
