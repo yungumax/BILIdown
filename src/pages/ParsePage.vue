@@ -1682,10 +1682,6 @@ input:focus {
   color: var(--faint);
 }
 
-.video-detail .file-line {
-  align-items: flex-start;
-}
-
 /* 选择页占满可用高度：顶部工具条与底部统计不随滚动移动 */
 .fill-height {
   display: flex;

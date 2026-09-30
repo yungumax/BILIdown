@@ -14,9 +14,12 @@ const grab = (text, open, close) => {
 };
 
 // Rust: ("token", "说明", "一级", "二级"),
-const rustRows = [...grab(rust, "pub const VARIABLES: &[(&str, &str, &str, &str)] = &[", "];").matchAll(
-  /\(\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]*)",\s*"([^"]*)"\s*\)/g
-)].map((m) => [m[1], m[2], m[3], m[4]]);
+// rustfmt 会把超长元组拆成多行，行内正则会漏抓——按括号段切再从段里挑字符串
+const rustRows = [...grab(rust, "pub const VARIABLES: &[(&str, &str, &str, &str)] = &[", "];")
+  .matchAll(/\(([^()]*)\)/g)]
+  .map((m) => [...m[1].matchAll(/"([^"]*)"/g)].map((x) => x[1]))
+  .filter((row) => row.length >= 4)
+  .map((row) => row.slice(0, 4));
 
 // JS: ["token", "说明", "一级", "二级"],
 const jsRows = [...grab(js, "const VARIABLES = [", "];").matchAll(

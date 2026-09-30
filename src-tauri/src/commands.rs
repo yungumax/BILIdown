@@ -2323,7 +2323,7 @@ async fn run_download(
                 settings.log("info", &format!("文件已存在，跳过任务: {path}"));
                 // 视频不重下，但封面/字幕/弹幕这些旁挂文件该补还得补
                 // （用户可能是后来才勾上的）
-                write_sidecars(&client, &settings, &req, &out_file).await;
+                write_sidecars(&client, &settings, req, &out_file).await;
                 mutate(&shared, &app, |t| {
                     t.status = TaskStatus::Done;
                     t.video_pct = 100.0;
@@ -2446,7 +2446,7 @@ async fn run_download(
     }
 
     // 封面 / 字幕 / 弹幕：与视频同名的独立文件，都不合成进视频
-    write_sidecars(&client, &settings, &req, &out_file).await;
+    write_sidecars(&client, &settings, req, &out_file).await;
 
     let out_path = out_file.to_string_lossy().to_string();
     mutate(&shared, &app, |t| {
@@ -2605,7 +2605,6 @@ async fn write_sidecars(
 }
 
 /// 设置里指定了 ffmpeg 路径就交给查找逻辑优先使用。
-
 fn explicit_ffmpeg(settings: &crate::state::Settings) -> Option<PathBuf> {
     let path = settings.ffmpeg_path.trim();
     (!path.is_empty()).then(|| PathBuf::from(path))

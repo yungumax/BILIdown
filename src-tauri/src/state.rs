@@ -765,8 +765,10 @@ mod preset_tests {
     /// 老设置里的裸 `{title}` 会被等价改写成 `{title}.{ext}`（渲染结果完全一样）。
     #[test]
     fn legacy_bare_title_template_is_normalised() {
-        let mut settings = Settings::default();
-        settings.naming_template = "{title}".to_string();
+        let mut settings = Settings {
+            naming_template: "{title}".to_string(),
+            ..Settings::default()
+        };
         settings.migrate();
         assert_eq!(settings.naming_template, "{title}.{ext}");
     }
@@ -776,35 +778,37 @@ mod preset_tests {
     /// 会把这类预设悄悄吞掉。
     #[test]
     fn folder_presets_may_be_empty_but_naming_presets_may_not() {
-        let mut settings = Settings::default();
-        settings.naming_presets = vec![
-            NamingPreset {
-                name: "空模板".into(),
-                template: "   ".into(),
-            },
-            NamingPreset {
-                name: "  ".into(),
-                template: "{title}.{ext}".into(),
-            },
-            NamingPreset {
-                name: "留下".into(),
-                template: "{title}.{ext}".into(),
-            },
-        ];
-        settings.folder_presets = vec![
-            NamingPreset {
-                name: "不建文件夹".into(),
-                template: String::new(),
-            },
-            NamingPreset {
-                name: "  ".into(),
-                template: "{owner_name}".into(),
-            },
-            NamingPreset {
-                name: "留下".into(),
-                template: " {owner_name} ".into(),
-            },
-        ];
+        let mut settings = Settings {
+            naming_presets: vec![
+                NamingPreset {
+                    name: "空模板".into(),
+                    template: "   ".into(),
+                },
+                NamingPreset {
+                    name: "  ".into(),
+                    template: "{title}.{ext}".into(),
+                },
+                NamingPreset {
+                    name: "留下".into(),
+                    template: "{title}.{ext}".into(),
+                },
+            ],
+            folder_presets: vec![
+                NamingPreset {
+                    name: "不建文件夹".into(),
+                    template: String::new(),
+                },
+                NamingPreset {
+                    name: "  ".into(),
+                    template: "{owner_name}".into(),
+                },
+                NamingPreset {
+                    name: "留下".into(),
+                    template: " {owner_name} ".into(),
+                },
+            ],
+            ..Settings::default()
+        };
 
         settings.clamp();
 
@@ -836,19 +840,23 @@ mod pref_tests {
         assert_eq!(s.audio_format, "source");
         assert_eq!(s.image_format, "source");
 
-        let mut s = Settings::default();
-        s.container = "mkv".to_string(); // 老设置里的 MKV：MKV 已从界面去掉
-        s.audio_format = "flac".to_string();
-        s.image_format = "png".to_string();
+        let mut s = Settings {
+            container: "mkv".to_string(), // 老设置里的 MKV：MKV 已从界面去掉
+            audio_format: "flac".to_string(),
+            image_format: "png".to_string(),
+            ..Settings::default()
+        };
         s.clamp();
         assert_eq!(s.container, "mp4", "mkv 要落回 mp4");
         assert_eq!(s.audio_format, "source");
         assert_eq!(s.image_format, "source");
 
-        let mut s = Settings::default();
-        s.container = "ts".to_string();
-        s.audio_format = "mp3".to_string();
-        s.image_format = "jpg".to_string();
+        let mut s = Settings {
+            container: "ts".to_string(),
+            audio_format: "mp3".to_string(),
+            image_format: "jpg".to_string(),
+            ..Settings::default()
+        };
         s.clamp();
         assert_eq!(s.container_ext(), "ts");
         assert_eq!(s.audio_format, "mp3");
@@ -878,15 +886,17 @@ mod pref_tests {
     /// 让界面回到"未自定义"，单值下拉重新说了算。
     #[test]
     fn legacy_single_row_is_unfolded() {
-        let mut s = Settings::default();
-        s.default_quality = 80;
-        s.codec_pref = "hevc".to_string();
-        s.quality_prefs = vec![QualityPref {
-            qn: 80,
-            codec: "hevc".to_string(),
-        }];
-        s.default_audio = "flac".to_string();
-        s.audio_prefs = vec!["flac".to_string()];
+        let mut s = Settings {
+            default_quality: 80,
+            codec_pref: "hevc".to_string(),
+            quality_prefs: vec![QualityPref {
+                qn: 80,
+                codec: "hevc".to_string(),
+            }],
+            default_audio: "flac".to_string(),
+            audio_prefs: vec!["flac".to_string()],
+            ..Settings::default()
+        };
         s.migrate();
         assert!(s.quality_prefs.is_empty());
         assert!(s.audio_prefs.is_empty());
@@ -898,18 +908,20 @@ mod pref_tests {
     /// 真正自定义过的顺序（两行以上）不能被清掉。
     #[test]
     fn real_custom_order_is_kept() {
-        let mut s = Settings::default();
-        s.quality_prefs = vec![
-            QualityPref {
-                qn: 80,
-                codec: "avc".to_string(),
-            },
-            QualityPref {
-                qn: 64,
-                codec: "auto".to_string(),
-            },
-        ];
-        s.audio_prefs = vec!["flac".to_string(), "auto".to_string()];
+        let mut s = Settings {
+            quality_prefs: vec![
+                QualityPref {
+                    qn: 80,
+                    codec: "avc".to_string(),
+                },
+                QualityPref {
+                    qn: 64,
+                    codec: "auto".to_string(),
+                },
+            ],
+            audio_prefs: vec!["flac".to_string(), "auto".to_string()],
+            ..Settings::default()
+        };
         s.migrate();
         assert_eq!(s.quality_prefs.len(), 2);
         assert_eq!(s.audio_prefs.len(), 2);

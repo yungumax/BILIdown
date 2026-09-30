@@ -1093,15 +1093,6 @@ h2 {
   font-size: 12.5px;
 }
 
-.page-now {
-  min-width: 26px;
-  padding: 4px 8px;
-  font-size: 12.5px;
-  text-align: center;
-  color: #fff;
-  background: var(--accent);
-  border-radius: var(--radius-sm);
-}
 
 .jump {
   width: 58px;
