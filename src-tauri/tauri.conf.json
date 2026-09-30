@@ -29,7 +29,8 @@
     "createUpdaterArtifacts": true,
     "windows": {
       "nsis": {
-        "installDirectory": "E:\\02GJ\\BILIdown"
+        "installMode": "currentUser",
+        "installerHooks": "./nsis/install-dir.nsh"
       }
     }
   },
