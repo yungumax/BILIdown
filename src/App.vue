@@ -76,6 +76,15 @@ onMounted(async () => {
 
   await loadSettings();
   refreshFfmpeg();
+  // 自动更新：设置里开了「自动检测」就启动时静默查一次（只提示，不自动装）
+  if (settings.value?.update_check) {
+    api
+      .updateCheck()
+      .then((update) => {
+        if (update) showToast(`发现新版本 v${update.version}，到「设置 · 应用更新」下载安装`);
+      })
+      .catch(() => {});
+  }
   // 上次没下完的任务：设置里开了「启动时自动继续」就接着下（分片记录让已下载的字节不重下）
   if (settings.value?.resume_on_start) {
     api

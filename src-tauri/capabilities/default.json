@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "默认能力：允许前端调用本应用注册的命令、事件，以及自定义标题栏所需的窗口控制",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-minimize",
@@ -11,6 +13,9 @@
     "core:window:allow-start-dragging",
     "core:window:allow-is-maximized",
     "core:window:allow-set-background-color",
-    "core:window:allow-show"
+    "core:window:allow-show",
+    "updater:default",
+    "process:allow-restart",
+    "process:allow-exit"
   ]
 }

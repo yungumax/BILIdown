@@ -139,6 +139,37 @@ export async function exportDiagnostics() {
   return invoke("export_diagnostics");
 }
 
+/** 自动更新：检测（插件，含签名校验） */
+export async function updateCheck() {
+  const { check } = await import("@tauri-apps/plugin-updater");
+  return check();
+}
+
+/** 自动更新：下载并安装（onProgress 收字节流，界面显示进度） */
+export async function updateDownloadAndInstall(update, onProgress) {
+  let received = 0;
+  let total = 0;
+  await update.downloadAndInstall((event) => {
+    switch (event.event) {
+      case "Started":
+        total = event.data.contentLength || 0;
+        break;
+      case "Progress":
+        received += event.data.chunkLength;
+        break;
+      case "Finished":
+        break;
+    }
+    if (onProgress) onProgress({ received, total });
+  });
+}
+
+/** 安装完成后重启 */
+export async function relaunchApp() {
+  const { relaunch } = await import("@tauri-apps/plugin-process");
+  return relaunch();
+}
+
 export async function checkUpdates() {
   if (!hasTauri)
     return { current: "0.1.0", latest: "", up_to_date: true, error: "" };

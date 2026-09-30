@@ -404,3 +404,18 @@ exe 的 shim（技能启动器只认 exe），用户级环境变量 `IMPECCABLE_
 | `ui-v5` | 当前版：回到 v1 平面化并优化（对比度达标、发丝行线、平色状态、浏览器界面主题化） |
 
 回退：`git checkout ui-v1 -- src/styles.css`（只回样式，不影响后续功能）
+
+## 十、自动更新（2026-09-30 接入）
+
+- **tauri-plugin-updater + tauri-plugin-process**：检测/下载/安装走
+  GitHub Releases 签名更新包（endpoints 指向
+  `releases/latest/download/latest.json`，Windows 被动安装模式）。
+- **接线**：设置「应用更新」页——插件检测优先（拿到的 Update 对象存
+  `pendingUpdate`），失败回退原 Releases API 只读检测；发现新版本出
+  「下载并安装」（字节流进度百分比），装完出「立即重启」（process 插件
+  relaunch）。设置里开了「自动检测」则启动时静默查一次，只 toast 提示。
+- **发布前提（还没做，发布时需要）**：`tauri signer generate` 生成密钥对，
+  公钥填 tauri.conf.json 的 `plugins.updater.pubkey`（当前为空——
+  插件检测会失败，自动回退只读检测，不影响使用）；
+  CI 打包时 `createUpdaterArtifacts: true` 已开，会上传签名产物与
+  latest.json；私钥放 GitHub Secrets（TAURI_SIGNING_PRIVATE_KEY）。

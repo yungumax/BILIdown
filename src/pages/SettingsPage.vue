@@ -527,14 +527,57 @@ function reset() {
   beginDraft();
 }
 
+/** 检测：优先走 updater 插件（带签名校验，能拿到可安装的 Update 对象）；
+    插件不可用（未配 pubkey/离线）时回退到原来的 Releases API 只读检测 */
+const pendingUpdate = ref(null);
+const downloading = ref(false);
+const downloadPct = ref(0);
+
 async function checkUpdate() {
   checkingUpdate.value = true;
+  pendingUpdate.value = null;
   try {
-    updateResult.value = await api.checkUpdates();
-  } catch (error) {
-    updateResult.value = { current: props.settings?.version || "", latest: "", up_to_date: false, error: String(error) };
+    const update = await api.updateCheck();
+    if (update) {
+      pendingUpdate.value = update;
+      updateResult.value = { current: update.currentVersion?.value || "", latest: update.version, up_to_date: false, error: "" };
+    } else {
+      updateResult.value = { current: props.settings?.version || "", latest: "", up_to_date: true, error: "" };
+    }
+  } catch {
+    // 插件路走不通：回退到只读检测
+    try {
+      updateResult.value = await api.checkUpdates();
+    } catch (error) {
+      updateResult.value = { current: props.settings?.version || "", latest: "", up_to_date: false, error: String(error) };
+    }
   } finally {
     checkingUpdate.value = false;
+  }
+}
+
+/** 下载并安装：进度条走字节流；完成后提示重启（被动安装模式，退出时替换） */
+async function installUpdate() {
+  if (!pendingUpdate.value || downloading.value) return;
+  downloading.value = true;
+  downloadPct.value = 0;
+  try {
+    await api.updateDownloadAndInstall(pendingUpdate.value, ({ received, total }) => {
+      downloadPct.value = total ? Math.min(100, Math.round((received / total) * 100)) : 0;
+    });
+    updateResult.value = { ...updateResult.value, installed: true };
+  } catch (error) {
+    updateResult.value = { ...updateResult.value, error: `下载或安装失败: ${String(error)}` };
+  } finally {
+    downloading.value = false;
+  }
+}
+
+async function relaunchAfterUpdate() {
+  try {
+    await api.relaunchApp();
+  } catch (error) {
+    emit("toast", `重启失败：${String(error)}，可手动重启完成更新`);
   }
 }
 
@@ -1227,9 +1270,22 @@ async function open(path) {
               <p v-if="updateResult" class="note top">
                 <template v-if="updateResult.error">无法检测：{{ updateResult.error }}</template>
                 <template v-else-if="updateResult.up_to_date">已是最新版本（{{ updateResult.current }}）</template>
-                <template v-else>
-                  发现新版本 v{{ updateResult.latest }}，可到 Releases 页面下载。
+                <template v-else-if="updateResult.installed">
+                  已下载并安装，重启后生效。
                 </template>
+                <template v-else>
+                  发现新版本 v{{ updateResult.latest }}。
+                  <template v-if="pendingUpdate">
+                    <button class="primary" :disabled="downloading" style="margin-left: 10px" @click="installUpdate">
+                      {{ downloading ? `下载中 ${downloadPct}%` : "下载并安装" }}
+                    </button>
+                    <span v-if="downloading" class="update-progress">{{ downloadPct }}%</span>
+                  </template>
+                  <template v-else>可到 Releases 页面下载。</template>
+                </template>
+                <button v-if="updateResult.installed" class="primary" style="margin-left: 10px" @click="relaunchAfterUpdate">
+                  立即重启
+                </button>
               </p>
             </div>
 
