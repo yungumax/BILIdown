@@ -2548,14 +2548,12 @@ option:disabled {
 </style>
 
 <style scoped>
-/* 第七轮追加：表格行悬停左缘指示线（box-shadow 画线，零布局位移）。
-   不给 box-shadow 挂过渡——快速划过多行时每行的"余晖"会叠成一排
-   碎粉线（用户截图踩过）；进出都即时切换，只剩当前行的线。 */
-.batch-table tbody tr {
-  transition: background var(--motion-fast) var(--ease-out);
-}
-
-.batch-table tbody tr:hover {
+/* 第七轮追加：表格行悬停左缘指示线。两个踩过的坑：
+   1) 悬停行背景设在 td 上（tr:hover td），td 的不透明背景会盖住 tr 的
+      inset shadow——线画在 tr 上只能露出边角。线必须挂在
+      td:first-child 上才整行可见。
+   2) 不给 box-shadow 挂过渡——快速划过多行时余晖叠成一排碎粉线。 */
+.batch-table tbody tr:hover td:first-child {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 </style>
