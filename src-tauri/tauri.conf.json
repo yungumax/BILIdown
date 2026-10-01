@@ -30,7 +30,12 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "installerHooks": "./nsis/install-dir.nsh"
+        "installerHooks": "./nsis/install-dir.nsh",
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
+        "displayLanguageSelector": false
       }
     }
   },

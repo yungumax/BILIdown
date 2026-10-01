@@ -35,7 +35,7 @@ struct Cli {
     #[arg(long)]
     logout: bool,
 
-    /// 登录态文件路径（默认 D:\Zcode\_data\bilidown\cookies.json）
+    /// 登录态文件路径（默认 %APPDATA%\com.yungumax.bilidown\cookies.json）
     #[arg(long, value_name = "PATH")]
     cookie_file: Option<PathBuf>,
 

@@ -224,14 +224,19 @@ pub fn poll_url(qrcode_key: &str) -> String {
 
 /// 默认登录态存放路径。
 ///
-/// 当前按用户环境约定放在 D 盘；Tauri 版改为应用数据目录（M2 处理）。
+/// 开发者可用 `BILIDOWN_COOKIE_FILE` 环境变量覆盖（沙箱/多实例测试用）；
+/// 正式安装版默认落 `%APPDATA%\com.yungumax.bilidown\`，与用户数据一起，
+/// 不依赖任何 D 盘路径，也不进安装目录（卸载不删数据）。
 pub fn default_cookie_path() -> PathBuf {
     if let Ok(custom) = std::env::var("BILIDOWN_COOKIE_FILE") {
         if !custom.trim().is_empty() {
             return PathBuf::from(custom);
         }
     }
-    PathBuf::from(r"D:\Zcode\_data\bilidown\cookies.json")
+    let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(appdata)
+        .join("com.yungumax.bilidown")
+        .join("cookies.json")
 }
 
 impl BiliClient {

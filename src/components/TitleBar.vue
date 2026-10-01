@@ -188,6 +188,11 @@ function onDrag(event) {
   height: 46px;
   padding-left: 14px;
   background: var(--card);
+  /* 顶栏要压过主内容区：.content 里的玻璃卡带 backdrop-filter（自建
+     stacking context），DOM 顺序又在顶栏后——不给顶栏高 z 的话，
+     主题菜单的下半截会被内容卡片盖住（踩过） */
+  position: relative;
+  z-index: 20;
   border-bottom: 1px solid var(--line);
   user-select: none;
 }
