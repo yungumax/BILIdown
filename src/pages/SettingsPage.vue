@@ -12,7 +12,7 @@ const props = defineProps({
 });
 const emit = defineEmits(["toast", "save", "reset", "reload", "login", "logout"]);
 
-// 分类图标：值是 public/icons/ 下的 PNG 文件名
+// 分类图标：值是 iconfont 图标名（见 src/icons.js）
 const CATEGORY_ICONS = {
   download: "download",
   media: "album",

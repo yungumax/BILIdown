@@ -1,11 +1,12 @@
 /* 设计令牌与基础样式。
    浅色为默认；深色通过 <html data-theme="dark"> 切换（见 app 里的主题处理）。 */
 
-/* 界面字体：霞鹜文楷（LXGW WenKai，OFL 开源协议）。
-   TTF 约 24MB——打包后 LZMA 压缩显著缩小。只内置 Regular，声明 100 900。 */
+/* 界面字体：钉钉进步体（永久免费商用，见 public/fonts/README.md）。
+   只内置这一款 Regular，声明 100 900 整个字重区间 —— 界面上的粗细交给浏览器合成，
+   免得其它字重的文字落到回退字体、出现两种字形混排。 */
 @font-face {
-  font-family: "LXGW WenKai";
-  src: url("/fonts/LXGWWenKai-Regular.ttf") format("truetype");
+  font-family: "DingTalk JinBuTi";
+  src: url("/fonts/dingtalk-jinbuti-regular.woff2") format("woff2");
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
@@ -61,7 +62,7 @@
   /* 2026-09-29 用户定稿：整站回微软雅黑——钉钉进步体的新旧字形混排
      （"渊""频"等字保留旧印刷写法）观感突兀。@font-face 保留（随时可切回：
      把 "Microsoft YaHei UI" 挪回第一位即可），字体文件也还在 public/fonts。 */
-  --font: "LXGW WenKai", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+  --font: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
     "Noto Sans SC", -apple-system, "Segoe UI", system-ui, sans-serif;
 }
 
