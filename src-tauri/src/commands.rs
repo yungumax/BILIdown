@@ -14,7 +14,7 @@ use bili_core::parser::{is_short_link, parse_target, Target};
 use bili_core::{ffmpeg, BiliClient};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::Semaphore;
 
@@ -2700,6 +2700,90 @@ pub fn cancel_download(
     };
     std::fs::remove_dir_all(state.output_dir().join(".bilitmp").join(work_key)).ok();
     Ok(())
+}
+
+/// 打开内嵌 B 站登录页的子 WebView 窗口。
+///
+/// 用户在官方登录页里完成账密/短信/扫码任意一种登录；完成后由前端
+/// 调 `web_login_cookies` 收割该 WebView 里的 B 站 Cookie。
+#[tauri::command]
+pub async fn web_login_open(app: AppHandle) -> Result<(), String> {
+    if app.get_webview_window("web-login").is_some() {
+        // 已开着就聚焦即可
+        let w = app.get_webview_window("web-login").unwrap();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    let url: tauri::Url = "https://passport.bilibili.com/login"
+        .parse()
+        .map_err(describe)?;
+    let _window = tauri::WebviewWindowBuilder::new(&app, "web-login", tauri::WebviewUrl::External(url))
+        .title("登录 B 站")
+        .inner_size(420.0, 560.0)
+        .resizable(true)
+        .build()
+        .map_err(describe)?;
+    Ok(())
+}
+
+/// 关闭内嵌登录窗口。
+#[tauri::command]
+pub fn web_login_close(app: AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("web-login") {
+        let _ = w.close();
+    }
+    Ok(())
+}
+
+/// 从内嵌登录窗口收割 B 站登录 Cookie，回写主应用登录态。
+///
+/// 判定：收割到的 Cookie 里能组齐登录三件套（SESSDATA/bili_jct/DedeUserID）
+/// 即视为已登录；随后存盘、注入主 client、刷新 wbi、返回 LoginInfo。
+#[tauri::command]
+pub async fn web_login_cookies(state: State<'_, AppState>, app: AppHandle) -> Result<LoginInfo, String> {
+    use std::collections::BTreeMap;
+
+    let webview = app
+        .get_webview_window("web-login")
+        .ok_or_else(|| "登录窗口已关闭".to_string())?;
+    let url: tauri::Url = "https://passport.bilibili.com"
+        .parse()
+        .map_err(describe)?;
+    // cookies_for_url 是阻塞调用（WebView2 需在其它线程读），命令本身是 async
+    let raw = tokio::task::spawn_blocking(move || webview.cookies_for_url(url))
+        .await
+        .map_err(|e| format!("Cookie 读取任务失败: {e}"))?
+        .map_err(describe)?;
+
+    // 按 name 聚合（同名取最后一个，passport 域的登录 Cookie 是最终值）
+    let mut by_name: BTreeMap<String, String> = BTreeMap::new();
+    for cookie in raw {
+        by_name.insert(cookie.name().to_string(), cookie.value().to_string());
+    }
+
+    let get = |k: &str| by_name.get(k).cloned().unwrap_or_default();
+    let sessdata = get("SESSDATA");
+    let bili_jct = get("bili_jct");
+    let dede_user_id = get("DedeUserID");
+
+    if sessdata.is_empty() || bili_jct.is_empty() || dede_user_id.is_empty() {
+        return Err("尚未检测到登录成功——请在登录页完成登录后重试".to_string());
+    }
+
+    let cookies = bili_core::login::Cookies::from_pairs_json(&serde_json::json!({
+        "sessdata": sessdata,
+        "bili_jct": bili_jct,
+        "dede_user_id": dede_user_id,
+        "dede_user_id_ck_md5": get("DedeUserID__ckMd5"),
+        "sid": get("sid"),
+    }))
+    .map_err(describe)?;
+    cookies.save(&state.cookies_path()).map_err(describe)?;
+    let client = state.client();
+    client.set_cookies(&cookies).map_err(describe)?;
+    let _ = client.refresh_wbi_keys().await;
+    let login = current_login(&client).await;
+    Ok(login)
 }
 
 #[tauri::command]

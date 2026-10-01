@@ -3,7 +3,8 @@
   "identifier": "default",
   "description": "默认能力：允许前端调用本应用注册的命令、事件，以及自定义标题栏所需的窗口控制",
   "windows": [
-    "main"
+    "main",
+    "web-login"
   ],
   "permissions": [
     "core:default",

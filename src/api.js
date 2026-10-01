@@ -170,6 +170,22 @@ export async function relaunchApp() {
   return relaunch();
 }
 
+/** 网页登录：打开内嵌 B 站登录页子窗口 */
+export async function webLoginOpen() {
+  return invoke("web_login_open");
+}
+
+/** 网页登录：收割登录 Cookie，返回 LoginInfo（未登录时抛错） */
+export async function webLoginCookies() {
+  return invoke("web_login_cookies");
+}
+
+/** 网页登录：关闭内嵌窗口 */
+export async function webLoginClose() {
+  if (!hasTauri) return;
+  return invoke("web_login_close").catch(() => {});
+}
+
 export async function checkUpdates() {
   if (!hasTauri)
     return { current: "0.1.0", latest: "", up_to_date: true, error: "" };

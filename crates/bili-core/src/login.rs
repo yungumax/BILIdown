@@ -150,6 +150,26 @@ impl Cookies {
         pairs
     }
 
+    /// 从 JSON（含 5 个登录 Cookie 字段）构建。
+    ///
+    /// 给 Tauri 侧用：从 WebView 收割到的 Cookie 组装成结构。
+    pub fn from_pairs_json(json: &serde_json::Value) -> Result<Self> {
+        let get = |k: &str| {
+            json.get(k)
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string()
+        };
+        Ok(Self {
+            sessdata: get("sessdata"),
+            bili_jct: get("bili_jct"),
+            dede_user_id: get("dede_user_id"),
+            dede_user_id_ck_md5: get("dede_user_id_ck_md5"),
+            sid: get("sid"),
+            ..Self::default()
+        })
+    }
+
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;

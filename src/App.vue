@@ -278,6 +278,14 @@ function clearFinished() {
   tasks.value = tasks.value.filter((task) => RUNNING.includes(task.status));
 }
 
+/** 网页登录收割成功：写登录态 + 刷新界面 */
+async function onWebConfirmed(loginInfo) {
+  login.value = loginInfo;
+  showToast(`已登录：${loginInfo.uname}`);
+  showLogin.value = false;
+  refreshQr();
+}
+
 function openLogin() {
   showLogin.value = true;
   if (!login.value.logged_in) {
@@ -419,7 +427,7 @@ async function doLogout() {
       @close="closeLogin"
       @refresh="refreshQr"
       @logout="doLogout"
-    />
+    @web-confirmed="onWebConfirmed" />
   </div>
 </template>
 

@@ -1,13 +1,14 @@
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
 import QRCode from "qrcode";
+import * as api from "../api";
 
 const props = defineProps({
   qr: { type: Object, default: null },
   state: { type: String, default: "loading" },
   login: { type: Object, default: () => ({ logged_in: false }) },
 });
-const emit = defineEmits(["close", "refresh", "logout"]);
+const emit = defineEmits(["close", "refresh", "logout", "web-confirmed"]);
 
 const canvas = ref(null);
 
@@ -37,13 +38,48 @@ async function draw() {
 
 onMounted(draw);
 watch(() => props.qr, draw);
+
+/* ── 网页登录（内嵌 B 站官方登录页）────────────────────────
+   账密/短信/扫码都走 B 站自己的页面，应用只负责开窗与收 Cookie */
+const mode = ref("qr");
+const webBusy = ref(false);
+
+async function openWebLogin() {
+  if (webBusy.value) return;
+  webBusy.value = true;
+  try {
+    await api.webLoginOpen();
+    // 开窗后轮询 Cookie：登录成功（三件套齐）即收割并通知主应用
+    for (let i = 0; i < 150; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const login = await api.webLoginCookies();
+        // 成功：让主应用刷新登录态并关弹窗
+        mode.value = "qr";
+        emit("web-confirmed", login);
+        return;
+      } catch {
+        // 未登录或窗口已关——继续轮询直到用户放弃（关闭弹窗时组件卸载）
+      }
+    }
+  } finally {
+    webBusy.value = false;
+  }
+}
+
+async function closeWebLogin() {
+  mode.value = "qr";
+  try {
+    await api.webLoginClose();
+  } catch {}
+}
 </script>
 
 <template>
   <div class="backdrop" @click.self="emit('close')">
     <div class="dialog pop-in" role="dialog" aria-modal="true">
       <header class="head">
-        <h2>{{ login.logged_in ? "账号" : "扫码登录" }}</h2>
+        <h2>{{ login.logged_in ? "账号" : mode === "qr" ? "扫码登录" : "网页登录" }}</h2>
         <button class="close" title="关闭" @click="emit('close')">✕</button>
       </header>
 
@@ -65,6 +101,33 @@ watch(() => props.qr, draw);
       </template>
 
       <template v-else>
+        <!-- 登录方式切换 -->
+        <div class="login-tabs">
+          <button :class="{ active: mode === 'qr' }" @click="mode = 'qr'">扫码登录</button>
+          <button
+            :class="{ active: mode === 'web' }"
+            @click="if (mode !== 'web') { mode = 'web'; openWebLogin(); }"
+          >
+            {{ webBusy ? "等待登录…" : "网页登录" }}
+          </button>
+        </div>
+
+        <template v-if="mode === 'web'">
+          <div class="web-login-hint">
+            <p class="hint">已打开 B 站官方登录窗口（独立小窗）。</p>
+            <p class="hint">账号密码、短信验证、扫码均可——全部在 B 站官方页面完成，本应用不接触你的密码。</p>
+            <p class="hint">登录成功后点下方按钮完成绑定。</p>
+          </div>
+          <div class="actions">
+            <button class="ghost" @click="closeWebLogin">返回扫码</button>
+            <span class="spacer"></span>
+            <button class="primary" :disabled="webBusy" @click="openWebLogin">
+              {{ webBusy ? "检测登录中…" : "我已登录，完成绑定" }}
+            </button>
+          </div>
+        </template>
+
+        <template v-else>
         <div class="qr-area">
           <canvas v-show="showQr" ref="canvas"></canvas>
           <div v-if="state === 'loading'" class="spinner" aria-hidden="true"></div>
@@ -76,6 +139,7 @@ watch(() => props.qr, draw);
         <p v-if="qr?.url" class="link-hint">
           终端或手机无法扫描时，可在已登录 B 站的浏览器里打开同一链接完成授权。
         </p>
+        </template>
       </template>
     </div>
   </div>
@@ -267,5 +331,58 @@ h2 {
   0% { transform: translateY(4px); opacity: 0.3; }
   60% { transform: none; opacity: 1; }
   100% { transform: none; opacity: 1; }
+}
+</style>
+
+<style scoped>
+/* 登录方式切换 tabs（与解析页 tabs 同语言） */
+.login-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.login-tabs button {
+  padding: 5px 14px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--muted);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
+}
+
+.login-tabs button:not(.active):hover {
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.login-tabs button.active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.web-login-hint .hint {
+  margin: 6px 0 0;
+  line-height: 1.6;
+}
+
+/* tab 切换动效：内容块淡入上浮 */
+.dialog > .login-tabs + .web-login-hint,
+.dialog > template + .qr-area {
+  animation: mode-in 260ms var(--ease-out);
+}
+
+@keyframes mode-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 网页登录等待时主钮不扫光只呼吸（轻提示） */
+.primary:disabled {
+  opacity: 0.6;
 }
 </style>
