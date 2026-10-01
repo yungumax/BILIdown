@@ -41,7 +41,7 @@ B 站视频下载器。技术栈 Tauri 2 + Rust + Vue 3，NSIS 安装包分发�
 - **新用户**：从 [Releases](https://github.com/yungumax/BILIdown/releases/latest) 下载 `BILIdown_x.y.z_x64-setup.exe`，被动模式安装（不需要管理员权限）。
 - **老用户**：应用内「设置 → 应用更新 → 检测更新」一键在线升级（下载签名安装包 → 安装 → 重启）。
 - **卸载**：Windows 设置 → 应用 → BILIdown，或运行 `%LOCALAPPDATA%\BILIdown\uninstall.exe`。卸载只删程序本体（`%LOCALAPPDATA%\BILIdown\`），**用户数据与下载文件不在安装目录、不会被删**。
-- **数据位置**：登录凭据 `cookies.json` 在启动时指定的数据目录（默认 `D:\Zcode\_data\bilidown\`）；下载文件在设置里指定的输出目录。
+- **数据位置**：登录凭据 `cookies.json` 默认在 `%APPDATA%\com.yungumax.bilidown\`（设置里可改数据目录）；下载文件在设置里指定的输出目录。安装/卸载不影响这些数据。
 
 ## 构建
 
