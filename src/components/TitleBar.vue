@@ -423,38 +423,3 @@ function onDrag(event) {
   transition: transform var(--motion) var(--ease-out);
 }
 </style>
-
-<style scoped>
-/* PNG 图标适配：窗口控制钮的 img 限到旧 SVG 尺寸（14px） */
-.ctrl .icon-img {
-  width: 14px;
-  height: 14px;
-  transform: none; /* 窗口钮不需要放大——PNG 本身够清楚 */
-}
-
-/* 应用 logo（标题栏左侧） */
-.logo .icon-img, .app-logo .icon-img, .titlebar > span:first-child .icon-img {
-  width: 20px;
-  height: 20px;
-  transform: none;
-}
-
-/* 主题按钮图标 */
-.icon-btn .icon-img {
-  width: 16px;
-  height: 16px;
-  transform: none;
-}
-
-/* 登录 chip 图标 */
-.login-chip .icon-img {
-  width: 18px;
-  height: 18px;
-  transform: none;
-}
-
-.login-chip .caret {
-  width: 15px;
-  height: 15px;
-}
-</style>
