@@ -1,12 +1,12 @@
 /* 设计令牌与基础样式。
    浅色为默认；深色通过 <html data-theme="dark"> 切换（见 app 里的主题处理）。 */
 
-/* 界面字体：钉钉进步体（永久免费商用，见 public/fonts/README.md）。
+/* 界面字体：霞鹜文楷（LXGW WenKai，OFL 开源协议）。
    只内置这一款 Regular，声明 100 900 整个字重区间 —— 界面上的粗细交给浏览器合成，
    免得其它字重的文字落到回退字体、出现两种字形混排。 */
 @font-face {
-  font-family: "DingTalk JinBuTi";
-  src: url("/fonts/dingtalk-jinbuti-regular.woff2") format("woff2");
+  font-family: "LXGW WenKai";
+  src: url("/fonts/LXGWWenKai-Regular.ttf") format("truetype");
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
@@ -62,7 +62,7 @@
   /* 2026-09-29 用户定稿：整站回微软雅黑——钉钉进步体的新旧字形混排
      （"渊""频"等字保留旧印刷写法）观感突兀。@font-face 保留（随时可切回：
      把 "Microsoft YaHei UI" 挪回第一位即可），字体文件也还在 public/fonts。 */
-  --font: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
+  --font: "LXGW WenKai", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC",
     "Noto Sans SC", -apple-system, "Segoe UI", system-ui, sans-serif;
 }
 
@@ -558,4 +558,171 @@ body .sidebar .nav-item {
     background var(--motion-fast) var(--ease-out),
     color var(--motion-fast) var(--ease-out),
     border-color var(--motion-fast) var(--ease-out);
+}
+
+
+/* ── PNG 图标适配层：旧 CSS 用 .xxx svg 选择器控制尺寸/颜色，
+   <img> 不命中这些选择器——这里把所有旧 svg 规则的 img 等价物补上 ── */
+
+/* 全局按钮内图标（旧 .ghost svg / .primary svg / button svg 都是 15-17px） */
+button .icon-img,
+.ghost .icon-img,
+.primary .icon-img,
+.act .icon-img {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+/* 按钮内带文字的图标稍小 */
+button .icon-img + span,
+.ghost .icon-img + span {
+  margin-left: 6px;
+}
+
+/* 窗口控制钮（旧 .ctrl svg 14px） */
+.ctrl .icon-img {
+  width: 14px;
+  height: 14px;
+}
+
+/* 侧栏导航（旧 22px） */
+.nav-item .icon-img {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+/* 侧栏激活态：PNG 不能用 currentColor 变色——用 opacity 提示 */
+.nav-item.active .icon-img {
+  opacity: 1;
+}
+
+.nav-item:not(.active) .icon-img {
+  opacity: 0.55;
+}
+
+.nav-item:hover .icon-img {
+  opacity: 0.85;
+}
+
+/* 设置分类（旧 22px） */
+.cats .icon-img,
+.cats button .icon-img {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+.cats button:not(.active) .icon-img {
+  opacity: 0.55;
+}
+
+/* 标题栏品牌 logo */
+.brand .icon-img {
+  width: 20px;
+  height: 20px;
+}
+
+/* 登录 chip 图标 */
+.login-chip .icon-img {
+  width: 18px;
+  height: 18px;
+}
+
+.login-chip .caret,
+.login-chip .icon-img[src*="chevron"] {
+  width: 15px;
+  height: 15px;
+}
+
+/* 主题按钮图标 */
+.icon-btn .icon-img {
+  width: 16px;
+  height: 16px;
+}
+
+/* 设置页 FFmpeg 图标 */
+.env-row .icon-img,
+.env-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.env-row .env-icon .icon-img {
+  width: 100%;
+  height: 100%;
+}
+
+/* 解析页来源图标 */
+.source .icon-img,
+.parsed-bar .icon-img,
+.source-tag .icon-img {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+/* 搜索图标 */
+.search-icon .icon-img {
+  width: 16px;
+  height: 16px;
+}
+
+/* mini-toggle 箭头 */
+.mini-toggle .icon-img {
+  width: 16px;
+  height: 16px;
+}
+
+/* 表格行内缩略图旁的图标 */
+.thumb .icon-img {
+  width: 100%;
+  height: 100%;
+}
+
+/* 空状态图标（旧 .empty-icon 44px 容器） */
+.empty-icon .icon-img {
+  width: 100%;
+  height: 100%;
+}
+
+/* 弹层内图标 */
+.batch-item .icon-img,
+.parse-item .icon-img,
+.dl-pop .icon-img,
+.theme-item .icon-img {
+  width: 15px;
+  height: 15px;
+}
+
+/* 弹层选中态 */
+.batch-item.on .icon-img,
+.theme-item.active .icon-img {
+  opacity: 1;
+}
+
+/* 内容库集合卡 */
+.pick .icon-img {
+  width: 12px;
+  height: 12px;
+}
+
+/* 视频格子 hover 的下载图标 */
+.vrow .dl .icon-img,
+.dl .icon-img {
+  width: 13px;
+  height: 13px;
+}
+
+/* 步骤条圆点内对勾 */
+.steps .dot .icon-img {
+  width: 17px;
+  height: 17px;
+}
+
+/* 传输行阶段图标（如有） */
+.stages .icon-img {
+  width: 13px;
+  height: 13px;
 }

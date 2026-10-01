@@ -56,18 +56,6 @@ const ICON_SHAPES = {
   ],
 };
 
-const ThemeIcon = {
-  props: { mode: { type: String, required: true } },
-  render() {
-    return h(
-      "svg",
-      { viewBox: "0 0 24 24", "aria-hidden": "true" },
-      (ICON_SHAPES[this.mode] || ICON_SHAPES.system).map((shape) =>
-        h(shape.tag, shape.attrs)
-      )
-    );
-  },
-};
 
 const currentLabel = computed(
   () => THEME_OPTIONS.find((option) => option.value === props.theme)?.label || "跟随系统"
@@ -131,7 +119,7 @@ function onDrag(event) {
         :aria-expanded="picking"
         @click="picking = !picking"
       >
-        <ThemeIcon :mode="theme" />
+        <Icon :name="theme === 'light' ? 'info' : 'slidersH'" />
       </button>
 
       <Transition name="picker">
@@ -145,7 +133,7 @@ function onDrag(event) {
             :aria-checked="option.value === theme"
             @click="choose(option.value)"
           >
-            <ThemeIcon :mode="option.value" />
+            <Icon :name="option.value === 'light' ? 'info' : option.value === 'dark' ? 'lock' : 'server'" />
             <span class="label">{{ option.label }}</span>
             <Icon v-if="option.value === theme" name="check" class="check" />
           </button>
