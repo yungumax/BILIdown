@@ -19,10 +19,11 @@ const props = defineProps({ name: { type: String, required: true } });
   height: 100%;
   object-fit: contain;
   pointer-events: none;
-  /* 深色主题：白色原图直接用 */
-  filter: brightness(1);
   user-select: none;
   -webkit-user-drag: none;
+  /* PNG 有透明边距（256px 画布内容约 60-70%），视觉上比旧 SVG 小一圈；
+     放大 30% 并保持居中，补偿边距让视觉尺寸对齐旧 SVG */
+  transform: scale(1.3);
 }
 
 /* 浅色主题：白色 PNG 反转为深色 */

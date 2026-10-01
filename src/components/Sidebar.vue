@@ -303,3 +303,12 @@ nav {
   height: 16px;
 }
 </style>
+
+<style scoped>
+/* mini-toggle 的折叠箭头不需要放大（PNG 本身清楚） */
+.mini-toggle .icon-img {
+  width: 16px;
+  height: 16px;
+  transform: none;
+}
+</style>
