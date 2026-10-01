@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import QRCode from "qrcode";
 import * as api from "../api";
 
@@ -43,6 +43,15 @@ watch(() => props.qr, draw);
    账密/短信/扫码都走 B 站自己的页面，应用只负责开窗与收 Cookie */
 const mode = ref("qr");
 const webBusy = ref(false);
+
+// 从网页登录切回扫码时，canvas 因 v-if 被销毁重建——qr 没变不会触发上面的 watch，
+// 必须在 mode 回 qr 时手动重画（否则二维码空白）
+watch(mode, async (m) => {
+  if (m === "qr") {
+    await nextTick();
+    draw();
+  }
+});
 
 async function openWebLogin() {
   if (webBusy.value) return;
