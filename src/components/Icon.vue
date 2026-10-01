@@ -1,37 +1,24 @@
 <script setup>
-/**
- * 图标渲染器——PNG 版。
- * 文件在 public/icons/<name>.png（白色 256px，无间距：内容占满整个画布）。
- * 尺寸完全由父元素的 CSS width/height 决定（与旧 SVG 行为一致——
- * 不需要任何 scale 补偿，object-fit: contain 恰好铺满）。
- * 颜色：深色主题白色原图直接显示；浅色主题 invert(1) 反转为深色。
- */
-defineProps({ name: { type: String, required: true } });
+import { ICONS } from "../icons.js";
+
+// 图标集来自 iconfont 公共库 cid=54475（见 src/icons.js 的说明）。
+// 尺寸由所在位置的 CSS 决定（父级作用域的 .icon / .ghost svg 之类照样命中这个根 svg），
+// 颜色跟随 currentColor。
+const props = defineProps({
+  name: { type: String, required: true },
+});
+
+const paths = ICONS[props.name] ?? [];
 </script>
 
 <template>
-  <img :src="'/icons/' + name + '.png'" :alt="''" class="icon-img" draggable="false" />
+  <svg viewBox="0 0 1024 1024" aria-hidden="true">
+    <path
+      v-for="(path, index) in paths"
+      :key="index"
+      :d="path.d"
+      :fill-rule="path.rule || null"
+      fill="currentColor"
+    />
+  </svg>
 </template>
-
-<style scoped>
-.icon-img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  pointer-events: none;
-  user-select: none;
-  -webkit-user-drag: none;
-}
-
-/* 浅色主题：白色 PNG 反转为深色 */
-:root[data-theme="light"] .icon-img {
-  filter: invert(1);
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .icon-img {
-    filter: invert(1);
-  }
-}
-</style>
