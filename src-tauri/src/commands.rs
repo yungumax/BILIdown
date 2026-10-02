@@ -2868,15 +2868,11 @@ pub async fn reveal_path(path: String) -> Result<(), String> {
         return Err("路径为空".to_string());
     }
     // explorer /select,"path" 定位并选中。
-    // PowerShell 实测：cmd /c 传 explorer /select,"含空格路径" 能正确打开并选中。
-    // Rust 直接调 explorer 无论 arg/raw_arg 都有引号问题——走 cmd /c 最可靠。
+    // 必须 raw_arg 且路径自带引号：raw_arg 原样传给 Windows 命令行，
+    // 含空格路径不加引号 explorer 只读到第一个空格就断了（三版踩坑结论）。
     use std::os::windows::process::CommandExt;
-    let select_cmd = format!(
-        "explorer /select,\"{}\"",
-        path.replace('/', "\\")
-    );
-    std::process::Command::new("cmd")
-        .args(["/c", &select_cmd])
+    std::process::Command::new("explorer")
+        .raw_arg(format!("/select,\"{}\"", path.replace('/', "\\")))
         .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .spawn()
         .map_err(describe)?;
