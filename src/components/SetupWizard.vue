@@ -202,13 +202,14 @@ onMounted(() => {
 
       <p v-if="error" class="error">{{ error }}</p>
 
-      <button class="primary start" :disabled="saving || !dir.trim()" @click="finish">
-        {{ saving ? "保存中…" : "开始使用" }}
-      </button>
-
-      <button class="ghost skip" :disabled="saving" @click="skip">
-        跳过，稍后在设置中配置
-      </button>
+      <div class="actions">
+        <button class="primary start" :disabled="saving || !dir.trim()" @click="finish">
+          {{ saving ? "保存中…" : "开始使用" }}
+        </button>
+        <button class="skip" :disabled="saving" @click="skip">
+          跳过，稍后在设置中配置
+        </button>
+      </div>
 
       <p class="hint">登录 B 站账号后可下载 1080P 及以上清晰度；不登录也能下载 480P。</p>
     </div>
@@ -432,17 +433,33 @@ h1 {
   color: var(--err);
 }
 
-.start {
-  width: 100%;
+.actions {
+  display: flex;
+  gap: 10px;
   margin-top: 20px;
+}
+
+.start {
+  flex: 1;
   padding: 10px 0;
   font-size: 14px;
   font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.start:hover:not(:disabled) {
+  background: var(--accent-dark);
+}
+
+.start:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .skip {
-  width: 100%;
-  margin-top: 10px;
+  flex: 1;
   padding: 9px 0;
   font-size: 13px;
   color: var(--muted);
