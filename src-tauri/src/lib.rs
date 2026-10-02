@@ -100,6 +100,7 @@ pub fn run() {
             commands::logout,
             commands::choose_output_dir,
             commands::open_path,
+            commands::reveal_path,
             commands::pick_ffmpeg,
             commands::ffmpeg_status,
             commands::naming_variables,

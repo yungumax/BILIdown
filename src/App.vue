@@ -266,6 +266,14 @@ async function cancelTask(taskId) {
   }
 }
 
+async function revealPath(path) {
+  try {
+    await api.revealPath(path);
+  } catch (error) {
+    showToast(String(error));
+  }
+}
+
 async function openPath(path) {
   try {
     await api.openPath(path);
@@ -388,6 +396,7 @@ async function doLogout() {
           :tasks="tasks"
           @cancel="cancelTask"
           @open="openPath"
+          @reveal="revealPath"
           @clear="clearFinished"
         />
         <SettingsPage

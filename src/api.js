@@ -186,6 +186,12 @@ export async function webLoginClose() {
   return invoke("web_login_close").catch(() => {});
 }
 
+/** 在资源管理器中选中该文件（不打开） */
+export async function revealPath(path) {
+  if (!hasTauri) return;
+  return invoke("reveal_path", { path });
+}
+
 export async function checkUpdates() {
   if (!hasTauri)
     return { current: "0.1.0", latest: "", up_to_date: true, error: "" };

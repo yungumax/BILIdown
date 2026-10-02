@@ -6,7 +6,7 @@ import TaskRow from "../components/TaskRow.vue";
 const props = defineProps({
   tasks: { type: Array, required: true },
 });
-const emit = defineEmits(["cancel", "open", "clear"]);
+const emit = defineEmits(["cancel", "open", "reveal", "clear"]);
 
 const RUNNING = ["queued", "downloading", "merging"];
 

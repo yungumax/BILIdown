@@ -2861,6 +2861,20 @@ pub async fn choose_output_dir(
     }
 }
 
+/// 在资源管理器中选中该文件（不打开，只定位到所在文件夹并高亮）。
+#[tauri::command]
+pub async fn reveal_path(path: String) -> Result<(), String> {
+    if path.trim().is_empty() {
+        return Err("路径为空".to_string());
+    }
+    // explorer /select 定位并选中；同样不检查退出码（explorer 总是非 0）
+    std::process::Command::new("explorer")
+        .arg(format!("/select,{}", path.replace('/', "\\")))
+        .spawn()
+        .map_err(describe)?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn open_path(path: String) -> Result<(), String> {
     if path.trim().is_empty() {

@@ -5,7 +5,7 @@ import { animate } from "animejs";
 const props = defineProps({
   task: { type: Object, required: true },
 });
-const emit = defineEmits(["cancel", "open"]);
+const emit = defineEmits(["cancel", "open", "reveal"]);
 
 const RUNNING = ["queued", "downloading", "merging"];
 
@@ -113,9 +113,12 @@ function human(bytes) {
       <span class="spacer"></span>
       <span class="status">{{ STATUS_TEXT[task.status] }}</span>
       <button v-if="canCancel" class="action" @click="emit('cancel')">取消</button>
-      <button v-else-if="canOpen" class="action" @click="emit('open', task.output_path)">
-        {{ task.status === "done" ? "打开" : "定位" }}
-      </button>
+      <template v-else-if="canOpen">
+        <button class="action" title="在资源管理器中选中该文件" @click="emit('reveal', task.output_path)">打开位置</button>
+        <button class="action" @click="emit('open', task.output_path)">
+          {{ task.status === "done" ? "打开" : "定位" }}
+        </button>
+      </template>
     </div>
 
     <div class="bar">
