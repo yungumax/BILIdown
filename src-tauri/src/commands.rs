@@ -2717,12 +2717,13 @@ pub async fn web_login_open(app: AppHandle) -> Result<(), String> {
     let url: tauri::Url = "https://passport.bilibili.com/login"
         .parse()
         .map_err(describe)?;
-    let _window = tauri::WebviewWindowBuilder::new(&app, "web-login", tauri::WebviewUrl::External(url))
-        .title("登录 B 站")
-        .inner_size(420.0, 560.0)
-        .resizable(true)
-        .build()
-        .map_err(describe)?;
+    let _window =
+        tauri::WebviewWindowBuilder::new(&app, "web-login", tauri::WebviewUrl::External(url))
+            .title("登录 B 站")
+            .inner_size(420.0, 560.0)
+            .resizable(true)
+            .build()
+            .map_err(describe)?;
     Ok(())
 }
 
@@ -2740,15 +2741,16 @@ pub fn web_login_close(app: AppHandle) -> Result<(), String> {
 /// 判定：收割到的 Cookie 里能组齐登录三件套（SESSDATA/bili_jct/DedeUserID）
 /// 即视为已登录；随后存盘、注入主 client、刷新 wbi、返回 LoginInfo。
 #[tauri::command]
-pub async fn web_login_cookies(state: State<'_, AppState>, app: AppHandle) -> Result<LoginInfo, String> {
+pub async fn web_login_cookies(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<LoginInfo, String> {
     use std::collections::BTreeMap;
 
     let webview = app
         .get_webview_window("web-login")
         .ok_or_else(|| "登录窗口已关闭".to_string())?;
-    let url: tauri::Url = "https://passport.bilibili.com"
-        .parse()
-        .map_err(describe)?;
+    let url: tauri::Url = "https://passport.bilibili.com".parse().map_err(describe)?;
     // cookies_for_url 是阻塞调用（WebView2 需在其它线程读），命令本身是 async
     let raw = tokio::task::spawn_blocking(move || webview.cookies_for_url(url))
         .await
