@@ -6,6 +6,13 @@
 import { onMounted, ref } from "vue";
 import Icon from "./Icon.vue";
 import * as api from "../api";
+import {
+  QUALITY_CHOICES,
+  AUDIO_PREFS,
+  VIDEO_FORMATS,
+  AUDIO_FORMATS,
+  IMAGE_FORMATS,
+} from "../settings-options";
 
 const props = defineProps({
   settings: { type: Object, default: null },
@@ -14,6 +21,14 @@ const props = defineProps({
 const emit = defineEmits(["done"]);
 
 const dir = ref(props.settings?.output_dir || "");
+// 媒体偏好：初值即当前设置（首次安装就是后端默认值，什么都不改也能直接开始）
+const quality = ref(props.settings?.default_quality ?? 0);
+const audio = ref(props.settings?.default_audio || "auto");
+const container = ref(props.settings?.container || "mp4");
+const audioFormat = ref(props.settings?.audio_format || "source");
+const imageFormat = ref(props.settings?.image_format || "source");
+const cover = ref(props.settings?.download_cover ?? true);
+const danmaku = ref(props.settings?.download_danmaku ?? true);
 const picking = ref(false);
 const saving = ref(false);
 const error = ref("");
@@ -41,6 +56,13 @@ async function finish() {
     await api.updateSettings({
       ...props.settings,
       output_dir: dir.value.trim(),
+      default_quality: quality.value,
+      default_audio: audio.value,
+      container: container.value,
+      audio_format: audioFormat.value,
+      image_format: imageFormat.value,
+      download_cover: cover.value,
+      download_danmaku: danmaku.value,
       setup_done: true,
     });
     emit("done", dir.value.trim());
@@ -82,7 +104,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <p class="lead">开始前，先确定下载文件保存在哪里。之后可以在「设置 → 下载」里随时修改。</p>
+      <p class="lead">开始前，先确定下载目录与默认偏好。之后都可以在「设置」里随时修改。</p>
 
       <div class="dir-field">
         <label>保存目录</label>
@@ -91,6 +113,68 @@ onMounted(() => {
           <button class="ghost" :disabled="picking" @click="pickDir">
             {{ picking ? "选择中…" : "选择文件夹" }}
           </button>
+        </div>
+      </div>
+
+      <div class="media-field">
+        <label class="section-label">下载偏好</label>
+        <div class="grid2">
+          <div class="field">
+            <label>视频清晰度</label>
+            <select v-model.number="quality">
+              <option v-for="item in QUALITY_CHOICES" :key="item.value" :value="item.value">
+                {{ item.label }}
+              </option>
+            </select>
+          </div>
+          <div class="field">
+            <label>音频质量</label>
+            <select v-model="audio">
+              <option v-for="item in AUDIO_PREFS" :key="item.value" :value="item.value">
+                {{ item.label }}
+              </option>
+            </select>
+          </div>
+        </div>
+        <div class="grid3">
+          <div class="field">
+            <label>视频格式</label>
+            <select v-model="container">
+              <option v-for="item in VIDEO_FORMATS" :key="item.value" :value="item.value">
+                {{ item.label }}
+              </option>
+            </select>
+          </div>
+          <div class="field">
+            <label>音频格式</label>
+            <select v-model="audioFormat">
+              <option v-for="item in AUDIO_FORMATS" :key="item.value" :value="item.value">
+                {{ item.label }}
+              </option>
+            </select>
+          </div>
+          <div class="field">
+            <label>图片格式</label>
+            <select v-model="imageFormat">
+              <option v-for="item in IMAGE_FORMATS" :key="item.value" :value="item.value">
+                {{ item.label }}
+              </option>
+            </select>
+          </div>
+        </div>
+        <p class="note">
+          视频格式只管封装（MP4 通用、TS 给剪辑工具）；音频格式只管「音频」来源的成品，
+          视频里的音轨保持原编码；图片格式只管图文图片与封面。后两项选转码需要 ffmpeg。
+        </p>
+        <div class="grid2 checks">
+          <label class="check card-check">
+            <input type="checkbox" v-model="cover" />
+            <span>下载封面（独立图片）</span>
+          </label>
+          <label class="check card-check">
+            <input type="checkbox" v-model="danmaku" />
+            <span>下载弹幕（独立 .xml）</span>
+          </label>
         </div>
       </div>
 
@@ -133,8 +217,10 @@ onMounted(() => {
 }
 
 .setup-card {
-  width: 460px;
+  width: 520px;
   max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   padding: 30px 32px 26px;
   background: var(--card);
   border: 1px solid var(--line);
@@ -207,6 +293,93 @@ h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.media-field {
+  margin-top: 20px;
+}
+
+.section-label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field label {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.field select {
+  width: 100%;
+  padding: 7px 10px;
+  color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  transition: border-color 0.15s ease;
+}
+
+.field select:hover {
+  border-color: var(--accent-line);
+}
+
+.field select:focus {
+  outline: none;
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.note {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--faint);
+}
+
+.checks {
+  margin-top: 12px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.check input {
+  flex: none;
+}
+
+.card-check {
+  padding: 10px 12px;
+  background: var(--raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
 }
 
 .env-line {

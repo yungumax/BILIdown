@@ -250,9 +250,10 @@ impl Default for Settings {
             image_format: "source".to_string(),
             codec_pref: "auto".to_string(),
             quality_fallback: "nearest".to_string(),
-            download_cover: false,
+            // 封面/弹幕默认勾上：都存独立文件、不影响视频本体，新装用户基本都要
+            download_cover: true,
             download_subtitles: false,
-            download_danmaku: false,
+            download_danmaku: true,
             embed_cover: false,
             embed_subtitles: false,
             retry_count: 3,
@@ -400,13 +401,17 @@ impl Settings {
         if !matches!(self.image_format.as_str(), "source" | "jpg") {
             self.image_format = "source".to_string();
         }
-        if !matches!(self.codec_pref.as_str(), "auto" | "avc" | "hevc") {
+        if !matches!(self.codec_pref.as_str(), "auto" | "avc" | "hevc" | "av1") {
             self.codec_pref = "auto".to_string();
         }
         if !matches!(self.quality_fallback.as_str(), "nearest" | "fail") {
             self.quality_fallback = "nearest".to_string();
         }
-        if !matches!(self.default_audio.as_str(), "normal" | "dolby" | "flac") {
+        // auto（最佳可用）与 normal（普通音轨）在挑流端等价，但都是界面下拉里的合法选择
+        if !matches!(
+            self.default_audio.as_str(),
+            "auto" | "normal" | "dolby" | "flac"
+        ) {
             self.default_audio = "normal".to_string();
         }
         // 优先顺序列表：**空着是合法的**（= 没自定义，用媒体页上面的视频清晰度 / 音频质量），
