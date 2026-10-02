@@ -2029,8 +2029,9 @@ input::placeholder {
 
 .switch .knob {
   position: absolute;
-  top: 2.5px;
-  left: 3px;
+  /* 轨道 21px、滑块 19px：上下各留 1px 才是居中；左右同理，选中行程 = 38-19-1-1 */
+  top: 1px;
+  left: 1px;
   width: 19px;
   height: 19px;
   background: #fff;
@@ -2043,7 +2044,7 @@ input::placeholder {
 }
 
 .switch input:checked + .track .knob {
-  transform: translateX(16px);
+  transform: translateX(17px);
 }
 
 .version {
