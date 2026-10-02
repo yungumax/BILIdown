@@ -88,6 +88,7 @@ watch(
           :task="task"
           @cancel="emit('cancel', task.id)"
           @open="emit('open', $event)"
+          @reveal="emit('reveal', $event)"
         />
       </ul>
     </section>
