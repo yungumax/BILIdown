@@ -65,7 +65,22 @@ async function finish() {
       download_danmaku: danmaku.value,
       setup_done: true,
     });
-    emit("done", dir.value.trim());
+    emit("done", dir.value.trim(), false);
+  } catch (e) {
+    error.value = String(e);
+  } finally {
+    saving.value = false;
+  }
+}
+
+/** 跳过：一条设置都不改（目录用默认、偏好保持出厂值），只标记引导完成 */
+async function skip() {
+  if (saving.value) return;
+  saving.value = true;
+  error.value = "";
+  try {
+    await api.updateSettings({ ...props.settings, setup_done: true });
+    emit("done", "", true);
   } catch (e) {
     error.value = String(e);
   } finally {
@@ -189,6 +204,10 @@ onMounted(() => {
 
       <button class="primary start" :disabled="saving || !dir.trim()" @click="finish">
         {{ saving ? "保存中…" : "开始使用" }}
+      </button>
+
+      <button class="ghost skip" :disabled="saving" @click="skip">
+        跳过，稍后在设置中配置
       </button>
 
       <p class="hint">登录 B 站账号后可下载 1080P 及以上清晰度；不登录也能下载 480P。</p>
@@ -419,6 +438,23 @@ h1 {
   padding: 10px 0;
   font-size: 14px;
   font-weight: 600;
+}
+
+.skip {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 0;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.skip:hover {
+  border-color: var(--accent-line);
+  color: var(--text);
 }
 
 .hint {

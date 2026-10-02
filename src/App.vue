@@ -297,10 +297,11 @@ async function onWebConfirmed(loginInfo) {
   refreshQr();
 }
 
-/** 引导完成：重新读设置（setup_done 已置 true），引导页自动隐藏 */
-async function finishSetup() {
+/** 引导完成：重新读设置（setup_done 已置 true），引导页自动隐藏。
+ *  跳过也走这里（skipped=true）：一条设置都不改，提示语换成去设置里配。 */
+async function finishSetup(skipped) {
   await loadSettings();
-  showToast("设置完成，开始使用吧");
+  showToast(skipped ? "已跳过，随时到「设置」里配置" : "设置完成，开始使用吧");
 }
 
 function openLogin() {

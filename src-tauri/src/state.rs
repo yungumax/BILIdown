@@ -241,7 +241,9 @@ impl Default for Settings {
             chunk_mb: 4,
             keep_temp: false,
             naming: "title".to_string(),
-            naming_template: "{title}.{ext}".to_string(),
+            // 默认带批量序号：合集/收藏夹下载按 "01 标题" 落盘，名称排序即列表顺序；
+            // 单视频的 {index} 是空值（sanitizer 再 trim 掉前导空格），落成纯标题不受影响
+            naming_template: "{index} {title}.{ext}".to_string(),
             naming_presets: Vec::new(),
             folder_presets: Vec::new(),
             rename_conflict: "skip".to_string(),
@@ -765,11 +767,11 @@ impl AppState {
 mod preset_tests {
     use super::*;
 
-    /// 内置预设「默认（默认）」的模板就是后端的默认值——点「恢复默认」之后
+    /// 内置预设「批量带序号（默认）」的模板就是后端的默认值——点「恢复默认」之后
     /// 下拉要能认出它（认不出的表现是显示"自定义模板"）。
     #[test]
     fn default_naming_template_is_the_default_preset() {
-        assert_eq!(Settings::default().naming_template, "{title}.{ext}");
+        assert_eq!(Settings::default().naming_template, "{index} {title}.{ext}");
     }
 
     /// 老设置里的裸 `{title}` 会被等价改写成 `{title}.{ext}`（渲染结果完全一样）。

@@ -65,12 +65,14 @@ const draft = ref(null);
 // 每个预设对应**一种来源形状**，多了就是重复：
 // 单条（{title}）／多P（分P）／批量列表（序号）／番剧课程（集）。
 // 想在自己的文件里再挂点别的（比如 {quality}），存成"我的预设"即可。
-// 「单文件（默认）」就是"没挑别的时用的那一个"：模板等于后端 naming_template 的兜底值，
-// 软件没设置过命名模板时用它的命名。文件夹那边同理（见 FOLDER_PRESETS 的第一项）。
+// 「批量带序号（默认）」就是"没挑别的时用的那一个"：模板等于后端 naming_template 的兜底值，
+// 批量下载按 "01 标题" 落盘（名称排序即列表顺序），单视频的 {index} 是空值、落成纯标题。
+// 文件夹那边同理（见 FOLDER_PRESETS 的第一项）。
 const BUILTIN_PRESETS = [
-  { name: "单文件（默认）", template: "{title}.{ext}" },
+  { name: "批量带序号（默认）", template: "{index} {title}.{ext}" },
+  { name: "单文件", template: "{title}.{ext}" },
   { name: "分P视频", template: "P{part_index} - {part_title}.{ext}" },
-  { name: "合集/列表", template: "{index} {title}.{ext}" },
+  // 原名「合集/列表」，与批量带序号同模板；由它升任默认后不再单列（重名会让下拉认不出选中的是哪个）
   { name: "番剧/课程", template: "第{episode_index}集 - {episode_title}.{ext}" },
 ];
 
