@@ -225,6 +225,10 @@ pub struct Settings {
     pub proxy: String,
     /// 外观：light / dark / system
     pub theme: String,
+    /// 首次启动引导是否已完成（老配置缺这个字段时 serde default=false，
+    /// 会让老用户也看到一次引导——可接受，之后保存即置 true）
+    #[serde(default)]
+    pub setup_done: bool,
 }
 
 impl Default for Settings {
@@ -273,6 +277,7 @@ impl Default for Settings {
             audio_prefs: Vec::new(),
             proxy: String::new(),
             theme: "system".to_string(),
+            setup_done: false,
         }
     }
 }

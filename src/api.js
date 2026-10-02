@@ -312,6 +312,7 @@ const mock = (() => {
       parse_rest_ms: 3000,
       ffmpeg_path: "",
       update_check: false,
+      setup_done: true,
       log_level: "info",
       data_dir: "",
       default_quality: 0,

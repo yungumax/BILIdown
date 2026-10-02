@@ -6,6 +6,7 @@ import * as api from "./api";
 import TitleBar from "./components/TitleBar.vue";
 import Sidebar from "./components/Sidebar.vue";
 import LoginDialog from "./components/LoginDialog.vue";
+import SetupWizard from "./components/SetupWizard.vue";
 import ParsePage from "./pages/ParsePage.vue";
 import TransferPage from "./pages/TransferPage.vue";
 import SettingsPage from "./pages/SettingsPage.vue";
@@ -42,6 +43,8 @@ const outputDir = ref("");
 const tasks = ref([]);
 const toastText = ref("");
 const showLogin = ref(false);
+/** 首次启动引导：settings 已加载且没完成过引导 */
+const showSetup = computed(() => !!settings.value && settings.value.setup_done === false);
 const qr = ref(null);
 const loginState = ref("loading");
 const settings = ref(null);
@@ -294,6 +297,12 @@ async function onWebConfirmed(loginInfo) {
   refreshQr();
 }
 
+/** 引导完成：重新读设置（setup_done 已置 true），引导页自动隐藏 */
+async function finishSetup() {
+  await loadSettings();
+  showToast("设置完成，开始使用吧");
+}
+
 function openLogin() {
   showLogin.value = true;
   if (!login.value.logged_in) {
@@ -427,6 +436,13 @@ async function doLogout() {
     <Transition name="toast">
       <div v-if="toastText" class="toast">{{ toastText }}</div>
     </Transition>
+
+    <SetupWizard
+      v-if="showSetup"
+      :settings="settings"
+      :env="settingsEnv"
+      @done="finishSetup"
+    />
 
     <LoginDialog
       v-if="showLogin"
