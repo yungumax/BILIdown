@@ -198,6 +198,8 @@ pub enum TaskStatus {
     Queued,
     Downloading,
     Merging,
+    /// 用户暂停：中止下载但保留 .bilitmp 分片，恢复时接着下
+    Paused,
     Done,
     Failed,
     Canceled,

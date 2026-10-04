@@ -6,9 +6,17 @@ import TaskRow from "../components/TaskRow.vue";
 const props = defineProps({
   tasks: { type: Array, required: true },
 });
-const emit = defineEmits(["cancel", "open", "reveal", "clear"]);
+const emit = defineEmits(["cancel", "open", "reveal", "clear", "pause", "resume", "pause-all", "resume-all"]);
 
 const RUNNING = ["queued", "downloading", "merging"];
+
+/** 可暂停（进行中）/ 可恢复（已暂停）的任务数，驱动头部两个批量按钮的显隐 */
+const pausableCount = computed(
+  () => props.tasks.filter((task) => RUNNING.includes(task.status)).length
+);
+const pausedCount = computed(
+  () => props.tasks.filter((task) => task.status === "paused").length
+);
 
 /** 统计数字滚动：进行中/已结束随任务变化补间，而不是跳变 */
 const runningCount = ref(0);
@@ -70,6 +78,12 @@ watch(
           {{ runningCount }} 进行中
           <template v-if="finishedCount"> · {{ finishedCount }} 已结束</template>
         </span>
+        <button v-if="pausedCount" class="ghost" @click="emit('resume-all')">
+          全部开始
+        </button>
+        <button v-if="pausableCount" class="ghost" @click="emit('pause-all')">
+          全部暂停
+        </button>
         <button v-if="finishedCount" class="ghost" @click="emit('clear')">
           清除已结束
         </button>
@@ -87,6 +101,8 @@ watch(
           :data-id="task.id"
           :task="task"
           @cancel="emit('cancel', task.id)"
+          @pause="emit('pause', task.id)"
+          @resume="emit('resume', task.id)"
           @open="emit('open', $event)"
           @reveal="emit('reveal', $event)"
         />

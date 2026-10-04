@@ -92,6 +92,8 @@ pub fn run() {
             commands::probe_range,
             commands::start_download,
             commands::cancel_download,
+            commands::pause_download,
+            commands::resume_download,
             commands::login_qrcode,
             commands::web_login_open,
             commands::web_login_cookies,

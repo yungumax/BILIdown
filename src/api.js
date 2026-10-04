@@ -61,6 +61,16 @@ export async function cancelDownload(taskId) {
   return invoke("cancel_download", { taskId });
 }
 
+export async function pauseDownload(taskId) {
+  if (!hasTauri) return mock.pause(taskId);
+  return invoke("pause_download", { taskId });
+}
+
+export async function resumeDownload(taskId) {
+  if (!hasTauri) return mock.resume(taskId);
+  return invoke("resume_download", { taskId });
+}
+
 export async function loginQrcode() {
   if (!hasTauri) return mock.qrcode();
   return invoke("login_qrcode");
@@ -263,6 +273,7 @@ function emptyLogin() {
 const mock = (() => {
   const listeners = new Set();
   const timers = new Map();
+  const mockTasks = new Map();
 
   const status = () => ({
     version: "0.1.0",
@@ -449,6 +460,7 @@ const mock = (() => {
       message: "排队中",
       cover: "",
     };
+    mockTasks.set(id, task);
     const videoTotal = 16.7 * 1024 * 1024;
     const audioTotal = 0.5 * 1024 * 1024;
     emit(task);
@@ -501,6 +513,42 @@ const mock = (() => {
     const timer = timers.get(taskId);
     if (timer) clearInterval(timer);
     timers.delete(taskId);
+  };
+
+  // 预览模式的暂停/继续：停掉模拟进度、记住停在哪儿，继续时接着走完
+  const pause = async (taskId) => {
+    const timer = timers.get(taskId);
+    if (timer) clearInterval(timer);
+    timers.delete(taskId);
+    const task = mockTasks.get(taskId);
+    if (task && !["done", "failed", "canceled", "paused"].includes(task.status)) {
+      task.status = "paused";
+      task.message = "已暂停";
+      task.speed_bps = 0;
+      emit({ ...task });
+    }
+  };
+
+  const resume = async (taskId) => {
+    const task = mockTasks.get(taskId);
+    if (!task || task.status !== "paused") return;
+    task.status = "downloading";
+    task.message = "恢复下载";
+    emit({ ...task });
+    const timer = setInterval(() => {
+      task.video_pct = Math.min(100, task.video_pct + 20);
+      task.audio_pct = Math.min(100, task.audio_pct + (task.video_pct >= 100 ? 30 : 0));
+      task.downloaded = (Math.max(task.video_pct, task.audio_pct) / 100) * task.total;
+      if (task.video_pct >= 100 && task.audio_pct >= 100) {
+        clearInterval(timer);
+        timers.delete(taskId);
+        task.status = "done";
+        task.message = "已完成";
+        task.output_path = `${status().output_dir}\\${task.title}.mp4`;
+      }
+      emit({ ...task });
+    }, 260);
+    timers.set(taskId, timer);
   };
 
   const qrcode = async () => ({
@@ -672,6 +720,8 @@ const mock = (() => {
     probe,
     start,
     cancel,
+    pause,
+    resume,
     qrcode,
     poll,
     onUpdate,

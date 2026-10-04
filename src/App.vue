@@ -269,6 +269,35 @@ async function cancelTask(taskId) {
   }
 }
 
+async function pauseTask(taskId) {
+  try {
+    await api.pauseDownload(taskId);
+  } catch (error) {
+    showToast(String(error));
+  }
+}
+
+async function resumeTask(taskId) {
+  try {
+    await api.resumeDownload(taskId);
+  } catch (error) {
+    showToast(String(error));
+  }
+}
+
+/** 全部暂停/全部开始：逐个调单任务命令，事件逐条回来，列表跟着逐行变化 */
+async function pauseAllTasks() {
+  for (const task of tasks.value.filter((t) => RUNNING.includes(t.status))) {
+    await pauseTask(task.id);
+  }
+}
+
+async function resumeAllTasks() {
+  for (const task of tasks.value.filter((t) => t.status === "paused")) {
+    await resumeTask(task.id);
+  }
+}
+
 async function revealPath(path) {
   try {
     await api.revealPath(path);
@@ -405,6 +434,10 @@ async function doLogout() {
           :class="{ 'page-in': page === 'transfer' }"
           :tasks="tasks"
           @cancel="cancelTask"
+          @pause="pauseTask"
+          @resume="resumeTask"
+          @pause-all="pauseAllTasks"
+          @resume-all="resumeAllTasks"
           @open="openPath"
           @reveal="revealPath"
           @clear="clearFinished"

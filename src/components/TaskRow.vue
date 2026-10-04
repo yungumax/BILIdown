@@ -5,7 +5,7 @@ import { animate } from "animejs";
 const props = defineProps({
   task: { type: Object, required: true },
 });
-const emit = defineEmits(["cancel", "open", "reveal"]);
+const emit = defineEmits(["cancel", "open", "reveal", "pause", "resume"]);
 
 const RUNNING = ["queued", "downloading", "merging"];
 
@@ -30,6 +30,7 @@ const STATUS_TEXT = {
   queued: "排队中",
   downloading: "下载中",
   merging: "合成中",
+  paused: "已暂停",
   done: "已完成",
   failed: "失败",
   canceled: "已取消",
@@ -47,6 +48,7 @@ const stages = computed(() => {
     if (active) return { pct, text: `${pct.toFixed(0)}%`, state: "active" };
     if (failed) return { pct, text: "中断", state: "failed" };
     if (canceled) return { pct, text: "已取消", state: "idle" };
+    if (task.status === "paused") return { pct, text: "已暂停", state: "idle" };
     return { pct, text: "待处理", state: "idle" };
   };
 
@@ -90,7 +92,9 @@ const speedText = computed(() =>
   props.task.speed_bps > 0 ? `${human(props.task.speed_bps)}/s` : ""
 );
 
-const canCancel = computed(() => RUNNING.includes(props.task.status));
+const canCancel = computed(() => RUNNING.includes(props.task.status) || props.task.status === "paused");
+const canPause = computed(() => RUNNING.includes(props.task.status));
+const isPaused = computed(() => props.task.status === "paused");
 const canOpen = computed(() => !!props.task.output_path);
 
 function human(bytes) {
@@ -112,6 +116,8 @@ function human(bytes) {
       <span v-if="task.quality_label" class="quality">{{ task.quality_label }}</span>
       <span class="spacer"></span>
       <span class="status">{{ STATUS_TEXT[task.status] }}</span>
+      <button v-if="isPaused" class="action" @click="emit('resume')">继续</button>
+      <button v-else-if="canPause" class="action" @click="emit('pause')">暂停</button>
       <button v-if="canCancel" class="action" @click="emit('cancel')">取消</button>
       <template v-else-if="canOpen">
         <button class="action" title="在资源管理器中选中该文件" @click="emit('reveal', task.output_path)">打开位置</button>
@@ -221,6 +227,10 @@ function human(bytes) {
 
 .row.failed .status {
   color: var(--err);
+}
+
+.row.paused .status {
+  color: var(--faint);
 }
 
 .action {

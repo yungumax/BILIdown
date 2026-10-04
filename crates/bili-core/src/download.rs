@@ -121,7 +121,14 @@ pub async fn download_with_throttle(
     let (chosen_url, total, range_supported) = probe_candidates(http, url, backup_urls).await?;
 
     let downloaded = Arc::new(AtomicU64::new(0));
-    let reporter = spawn_reporter(downloaded.clone(), total, progress.clone());
+    // 进度上报放在 JoinSet 里：父 future 被中止（暂停/取消）时一起死，
+    // 不然这个 detached 循环会永远滴答下去，还把暂停态覆盖回下载中
+    let mut background = tokio::task::JoinSet::new();
+    let reporter_downloaded = downloaded.clone();
+    let reporter_progress = progress.clone();
+    background.spawn(async move {
+        report_loop(reporter_downloaded, total, reporter_progress).await;
+    });
 
     let result = if range_supported && total > opts.chunk_size {
         download_chunked(
@@ -142,7 +149,8 @@ pub async fn download_with_throttle(
         download_sequential(http, &chosen_url, dest, downloaded.clone()).await
     };
 
-    reporter.abort();
+    background.abort_all();
+    while background.join_next().await.is_some() {}
     result?;
 
     // 补一次终值，让调用方拿到 100%
@@ -389,26 +397,22 @@ async fn write_at(path: &Path, offset: u64, data: Vec<u8>) -> Result<()> {
     .map_err(|e| BiliError::Unavailable(format!("写入线程异常: {e}")))?
 }
 
-fn spawn_reporter(
-    downloaded: Arc<AtomicU64>,
-    total: u64,
-    progress: ProgressFn,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let start = Instant::now();
-        loop {
-            tokio::time::sleep(Duration::from_millis(500)).await;
-            let now = downloaded.load(Ordering::Relaxed);
-            let elapsed = start.elapsed().as_secs_f64();
-            progress(Progress {
-                downloaded: now,
-                total,
-                speed_bps: if elapsed > 0.0 {
-                    now as f64 / elapsed
-                } else {
-                    0.0
-                },
-            });
-        }
-    })
+/// 进度上报循环：每 500ms 把计数器换算成进度回调给调用方。
+/// 注意这只在 `download_with_throttle` 的 JoinSet 里跑，不自己 tokio::spawn。
+async fn report_loop(downloaded: Arc<AtomicU64>, total: u64, progress: ProgressFn) {
+    let start = Instant::now();
+    loop {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let now = downloaded.load(Ordering::Relaxed);
+        let elapsed = start.elapsed().as_secs_f64();
+        progress(Progress {
+            downloaded: now,
+            total,
+            speed_bps: if elapsed > 0.0 {
+                now as f64 / elapsed
+            } else {
+                0.0
+            },
+        });
+    }
 }

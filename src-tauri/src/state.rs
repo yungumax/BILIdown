@@ -14,6 +14,9 @@ pub const DEFAULT_MAX_CONCURRENT_TASKS: usize = 2;
 pub struct TaskEntry {
     pub snapshot: Arc<Mutex<TaskUpdate>>,
     pub abort: Option<tokio::task::AbortHandle>,
+    /// 原始请求：暂停后恢复要从头重跑下载（排队中就暂停的任务，磁盘上还没有
+    /// task.json，只能靠内存里这份；见 commands::resume_download）
+    pub req: Option<std::sync::Arc<crate::types::DownloadRequest>>,
 }
 
 pub struct AppState {

@@ -1707,32 +1707,62 @@ fn enqueue_download(app: &AppHandle, state: &AppState, req: DownloadRequest) -> 
         quality_name(req.quality).to_string()
     };
     let shared = Arc::new(Mutex::new(initial.clone()));
-
-    let client = state.client();
-    let output_dir = state.output_dir();
-    let slots = state.slots();
-    let settings = state.settings();
-    let task_id = id.clone();
-    let shared_for_task = shared.clone();
-    let task_app = app.clone();
+    let req = Arc::new(req);
 
     state
         .settings()
-        .log("info", &format!("任务入队: {}（{task_id}）", req.title));
+        .log("info", &format!("任务入队: {}（{id}）", req.title));
 
-    let handle = tokio::spawn(async move {
-        // 播放地址会自动过期：开着「链接过期时自动刷新」时，失败就重取地址再来一次。
-        // 分片记录（*.ranges）让已经下过的字节不重下，所以这个重试很便宜。
+    let abort = spawn_download_loop(
+        app.clone(),
+        state.client(),
+        state.slots(),
+        state.settings(),
+        state.output_dir(),
+        req.clone(),
+        shared.clone(),
+    );
+
+    state
+        .tasks
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(
+            id.clone(),
+            TaskEntry {
+                snapshot: shared,
+                abort: Some(abort),
+                req: Some(req),
+            },
+        );
+
+    let _ = app.emit(TASK_EVENT, initial);
+    id
+}
+
+/// 下载重试循环（入队与「暂停后恢复」共用）：播放地址会自动过期，开着
+/// 「链接过期时自动刷新」时，失败就重取地址再来一次。分片记录（*.ranges）
+/// 让已经下过的字节不重下，所以这个重试和暂停后恢复都很便宜。
+fn spawn_download_loop(
+    app: AppHandle,
+    client: Arc<BiliClient>,
+    slots: Arc<Semaphore>,
+    settings: crate::state::Settings,
+    output_dir: std::path::PathBuf,
+    req: Arc<DownloadRequest>,
+    shared: Arc<Mutex<TaskUpdate>>,
+) -> tokio::task::AbortHandle {
+    tokio::spawn(async move {
         let mut attempt = 0u32;
         loop {
             let result = run_download(
-                task_app.clone(),
+                app.clone(),
                 client.clone(),
                 slots.clone(),
                 settings.clone(),
                 output_dir.clone(),
                 &req,
-                shared_for_task.clone(),
+                shared.clone(),
             )
             .await;
             match result {
@@ -1747,8 +1777,12 @@ fn enqueue_download(app: &AppHandle, state: &AppState, req: DownloadRequest) -> 
                         );
                         continue;
                     }
-                    mutate(&shared_for_task, &task_app, |t| {
-                        if t.status != TaskStatus::Done && t.status != TaskStatus::Canceled {
+                    mutate(&shared, &app, |t| {
+                        // 暂停与取消是用户意志，错误收尾不许覆盖
+                        if !matches!(
+                            t.status,
+                            TaskStatus::Done | TaskStatus::Canceled | TaskStatus::Paused
+                        ) {
                             t.status = TaskStatus::Failed;
                             t.message = e.to_string();
                         }
@@ -1757,22 +1791,8 @@ fn enqueue_download(app: &AppHandle, state: &AppState, req: DownloadRequest) -> 
                 }
             }
         }
-    });
-
-    state
-        .tasks
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(
-            task_id,
-            TaskEntry {
-                snapshot: shared,
-                abort: Some(handle.abort_handle()),
-            },
-        );
-
-    let _ = app.emit(TASK_EVENT, initial);
-    id
+    })
+    .abort_handle()
 }
 
 /// 启动续传：把 `.bilitmp` 里没下完的任务重新入队。
@@ -1990,6 +2010,10 @@ async fn run_audio_download(
         let app = app.clone();
         let on_progress: ProgressFn = Arc::new(move |p: Progress| {
             mutate(&shared, &app, |t| {
+                // 暂停/取消是用户意志：在途的一次进度回调不许覆盖回下载中
+                if matches!(t.status, TaskStatus::Paused | TaskStatus::Canceled) {
+                    return;
+                }
                 t.status = TaskStatus::Downloading;
                 t.message = "下载音频".to_string();
                 t.video_pct = percent(p.downloaded, p.total);
@@ -2372,6 +2396,10 @@ async fn run_download(
         let app = app.clone();
         let on_progress: ProgressFn = Arc::new(move |p: Progress| {
             mutate(&shared, &app, |t| {
+                // 暂停/取消是用户意志：在途的一次进度回调不许覆盖回下载中
+                if matches!(t.status, TaskStatus::Paused | TaskStatus::Canceled) {
+                    return;
+                }
                 t.status = TaskStatus::Downloading;
                 t.message = "下载视频流".to_string();
                 t.video_pct = percent(p.downloaded, p.total);
@@ -2400,6 +2428,10 @@ async fn run_download(
         let app = app.clone();
         let on_progress: ProgressFn = Arc::new(move |p: Progress| {
             mutate(&shared, &app, |t| {
+                // 暂停/取消是用户意志：在途的一次进度回调不许覆盖回下载中
+                if matches!(t.status, TaskStatus::Paused | TaskStatus::Canceled) {
+                    return;
+                }
                 t.message = "下载音频流".to_string();
                 t.audio_pct = percent(p.downloaded, p.total);
                 t.audio_bytes = p.downloaded;
@@ -2699,6 +2731,102 @@ pub fn cancel_download(
         bvid
     };
     std::fs::remove_dir_all(state.output_dir().join(".bilitmp").join(work_key)).ok();
+    Ok(())
+}
+
+/// 暂停一个任务：中止下载但保留 `.bilitmp` 分片记录，恢复时不重下已完成的字节。
+/// 与取消的唯一区别就是不删临时目录——暂停是"待会儿接着下"，取消是"不要了"。
+#[tauri::command]
+pub fn pause_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    task_id: String,
+) -> Result<(), String> {
+    let (snapshot, abort) = {
+        let tasks = state.tasks.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(entry) = tasks.get(&task_id) else {
+            return Err("任务不存在".to_string());
+        };
+        (entry.snapshot.clone(), entry.abort.clone())
+    };
+
+    // 「查终态 + 写暂停」要在同一把锁里完成：分开的话，暂停可能落在任务完成的
+    // 缝隙里，把刚写好的 Done 覆盖成 Paused（小视频合成只要一瞬，实测踩过）。
+    // mutate() 自己会拿锁，不能在持锁时调用，这里手工改 + 补发事件。
+    {
+        let mut snap = snapshot.lock().unwrap_or_else(|e| e.into_inner());
+        if matches!(
+            snap.status,
+            TaskStatus::Done | TaskStatus::Failed | TaskStatus::Canceled | TaskStatus::Paused
+        ) {
+            return Ok(());
+        }
+        snap.status = TaskStatus::Paused;
+        snap.message = "已暂停".to_string();
+        snap.speed_bps = 0.0;
+    }
+    let _ = app.emit(
+        TASK_EVENT,
+        snapshot.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+    );
+
+    // 先落状态再中止（与取消同序）：abort 生效后任务不会再有写入
+    if let Some(handle) = abort {
+        handle.abort();
+    }
+    Ok(())
+}
+
+/// 恢复一个暂停中的任务：用内存里留存的原始请求重跑下载循环。
+/// 分片记录让已下字节不重下；排队中的任务暂停时还没有分片，恢复等于重新排队。
+/// 必须是 async 命令——里面的 tokio::spawn 要在运行时上下文里才能调（同步命令
+/// 跑在主线程，实测直接 panic "no reactor running"）。
+#[tauri::command]
+pub async fn resume_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    task_id: String,
+) -> Result<(), String> {
+    let (snapshot, req) = {
+        let tasks = state.tasks.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(entry) = tasks.get(&task_id) else {
+            return Err("任务不存在".to_string());
+        };
+        {
+            let snap = entry.snapshot.lock().unwrap_or_else(|e| e.into_inner());
+            if snap.status != TaskStatus::Paused {
+                return Err("任务不在暂停状态".to_string());
+            }
+        }
+        let Some(req) = entry.req.clone() else {
+            return Err("缺少原始下载请求，无法恢复".to_string());
+        };
+        (entry.snapshot.clone(), req)
+    };
+
+    mutate(&snapshot, &app, |t| {
+        t.status = TaskStatus::Queued;
+        t.message = "恢复下载".to_string();
+        t.speed_bps = 0.0;
+    });
+
+    let abort = spawn_download_loop(
+        app.clone(),
+        state.client(),
+        state.slots(),
+        state.settings(),
+        state.output_dir(),
+        req,
+        snapshot,
+    );
+    if let Some(entry) = state
+        .tasks
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_mut(&task_id)
+    {
+        entry.abort = Some(abort);
+    }
     Ok(())
 }
 
