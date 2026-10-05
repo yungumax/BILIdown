@@ -565,6 +565,39 @@ const tableRows = computed(() => {
       });
       continue;
     }
+    // UP 空间 + 合集映射完整：按合集分组展示与编号——同合集的行排在一起，
+    // {index} 在合集内从 1 编起（文件落在合集各自的文件夹里，编号跟着文件夹走）。
+    // 组的先后按各组首条的出现位置（≈发布顺序），"单独投稿"也参与分组。
+    // 编号用"组内已出现的次序"而不是"组内总数倒序"：加载下一批只会往组尾追加
+    // 更早的视频，已编号的条目永远不动——编号冻结、不漂移。
+    if (source.probe.kind === "space" && source.probe.collection_mapped && fromIndex === 1) {
+      const groups = new Map();
+      source.probe.items.forEach((entry, position) => {
+        const key = entry.collection || "单独投稿";
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push({ entry, position });
+      });
+      for (const members of groups.values()) {
+        for (const [local, { entry, position }] of members.entries()) {
+          const ck = contentKey(entry, source);
+          if (seenItems.has(ck)) continue;
+          seenItems.add(ck);
+          rows.push({
+            key: entryKey(source.probe, entry),
+            seq: rows.length + 1,
+            index: position + 1,
+            abs: local + 1,
+            collection: entry.collection || "单独投稿",
+            title: entry.title,
+            owner: entry.owner,
+            duration: entry.duration,
+            entry,
+            source,
+          });
+        }
+      }
+      continue;
+    }
     source.probe.items.forEach((entry, position) => {
       const ck = contentKey(entry, source);
       if (seenItems.has(ck)) return;
@@ -574,6 +607,7 @@ const tableRows = computed(() => {
         seq: rows.length + 1,
         index: position + 1,
         abs: absOf(position),
+        collection: entry.collection || "",
         title: entry.title,
         owner: entry.owner,
         duration: entry.duration,
@@ -584,6 +618,11 @@ const tableRows = computed(() => {
   }
   return rows;
 });
+
+/** 合集列：只有解析阶段真的定出了合集归属（空间+映射成功）才出现这列，
+ *  其它来源每行显示"—"，不占地方 */
+const showCollectionCol = computed(() => tableRows.value.some((row) => row.collection));
+const tableColCount = computed(() => (showCollectionCol.value ? 6 : 5));
 
 /** 行悬停时显示该行将落盘的文件名：由后端用与下载同一个渲染器算出 */
 const fileNames = ref([]);
@@ -636,6 +675,10 @@ async function loadMore() {
     source.probe.exhausted = more.exhausted;
     source.probe.capped = more.capped;
     source.probe.note = more.note;
+    // 合集映射的最新状态要跟上：补查失败会翻成 false，分组随之退回平铺
+    if (more.collection_mapped !== undefined) {
+      source.probe.collection_mapped = more.collection_mapped;
+    }
   } catch (error) {
     emit("toast", String(error));
   } finally {
@@ -1154,6 +1197,7 @@ async function startSingle(item) {
                 />
               </th>
               <th class="col-idx">序号</th>
+              <th v-if="showCollectionCol" class="col-coll">合集</th>
               <th>标题</th>
               <th class="col-owner">UP 主</th>
               <th class="col-dur">时长</th>
@@ -1168,7 +1212,7 @@ async function startSingle(item) {
                 :title="isCollapsed(group.source.input) ? '展开这个来源' : '收起这个来源'"
                 @click="toggleGroup(group.source.input)"
               >
-                <td colspan="5">
+                <td :colspan="tableColCount">
                   <input
                     type="checkbox"
                     class="group-check"
@@ -1198,6 +1242,9 @@ async function startSingle(item) {
                   <input type="checkbox" :checked="isSelected(row)" @change="toggleEntry(row)" />
                 </td>
                 <td class="col-idx num">{{ paddedSeq(row) }}</td>
+                <td v-if="showCollectionCol" class="col-coll" :title="row.collection">
+                  {{ row.collection || "—" }}
+                </td>
                 <td class="col-title">{{ row.title }}</td>
                 <td class="col-owner" :title="row.owner">{{ row.owner || "—" }}</td>
                 <td class="col-dur num">
@@ -2028,6 +2075,18 @@ input:focus {
 .batch-table td.col-dur {
   width: 84px;
   text-align: center;
+}
+
+/* 合集列：空间按合集分组时展示归属；收窄并截断长合集名，悬停有完整 title */
+.batch-table th.col-coll,
+.batch-table td.col-coll {
+  width: 140px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  color: var(--muted);
 }
 
 

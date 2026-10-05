@@ -66,6 +66,14 @@ pub enum BatchTarget {
     Whole,
 }
 
+/// 合集标签：解析 UP 空间时从合集枚举里一次拿到的归属与 cid。
+/// cid 一并带全，下载时连 video_info 补查都省掉。
+#[derive(Debug, Clone)]
+pub struct CollectionTag {
+    pub title: String,
+    pub cid: u64,
+}
+
 /// 批量来源的增量加载缓存。
 ///
 /// 解析时只拉第一页，「继续解析」接着往后拉：收藏夹 130 条要 7 次请求，
@@ -79,6 +87,12 @@ pub struct BatchCache {
     /// 来源声明的总条数
     pub total: usize,
     pub items: Vec<crate::types::BatchVideo>,
+    /// 空间来源的合集映射（bvid → 合集名 + cid）。只在首次解析建一次，
+    /// 「继续解析」的后续页直接查它，不再重复请求。
+    pub collections: HashMap<String, CollectionTag>,
+    /// 合集映射是否完整枚举成功：只有 true 才允许前端按合集分组、
+    /// 下载时跳过逐条补查（此时"不在任何合集"也会被标成"单独投稿"）。
+    pub collections_mapped: bool,
     /// 这批第一条在来源里的序号（1 起）。按序号加载时不是 1，
     /// 界面上的序号列与命名模板的 {index} 都按它换算成来源内的真实位置。
     pub from_index: usize,

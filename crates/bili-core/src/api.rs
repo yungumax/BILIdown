@@ -158,7 +158,8 @@ pub struct VideoInfo {
     pub pages: Vec<Page>,
 }
 
-/// 视频所属的合集。批量解析时用它把"一个视频"展开成"整个合集"。
+/// 视频所属的合集。批量解析时用它把"一个视频"展开成"整个合集"：
+/// 一条 video_info 就带回合集全部成员的 bvid 与 cid。
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct UgcSeason {
     #[serde(default)]
@@ -167,6 +168,24 @@ pub struct UgcSeason {
     pub mid: u64,
     #[serde(default, deserialize_with = "string_or_null")]
     pub title: String,
+    #[serde(default, deserialize_with = "vec_or_null")]
+    pub sections: Vec<SeasonSection>,
+}
+
+/// 合集内的一个分区（通常只有一个，成员都在它的 episodes 里）。
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SeasonSection {
+    #[serde(default, deserialize_with = "vec_or_null")]
+    pub episodes: Vec<SeasonEpisode>,
+}
+
+/// 合集成员条目：bvid 与 cid 都在，cid 正是 playurl 要的分 P id。
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SeasonEpisode {
+    #[serde(default)]
+    pub bvid: String,
+    #[serde(default)]
+    pub cid: u64,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

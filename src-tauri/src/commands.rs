@@ -1,6 +1,6 @@
 //! 暴露给前端的命令，是界面与 `bili-core` 之间的唯一通道。
 
-use crate::state::{AppState, BatchCache, BatchTarget, TaskEntry};
+use crate::state::{AppState, BatchCache, BatchTarget, CollectionTag, TaskEntry};
 use crate::types::*;
 use base64::Engine;
 use bili_core::api::{codec_name, quality_name};
@@ -12,6 +12,7 @@ use bili_core::ffmpeg::Container;
 use bili_core::login::{self, Cookies, LoginState};
 use bili_core::parser::{is_short_link, parse_target, Target};
 use bili_core::{ffmpeg, BiliClient};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -808,12 +809,15 @@ async fn fetch_batch_page(
 /// 解析批量来源：拉第一页建缓存，顺带探一次可用清晰度/音轨。
 ///
 /// `cap` 是这一批的单次上限快照，之后改设置不影响已经打开的清单。
+/// `map_collections`：空间来源首次解析时枚举 UP 的全部合集，把每条视频的
+/// 合集归属（和 cid）一次定死——按序号加载的分批不走这里（编号是全局位置）。
 async fn start_batch(
     client: &BiliClient,
     target: BatchTarget,
     meta: BatchMeta,
     items: Vec<BatchVideo>,
     cap: usize,
+    map_collections: bool,
 ) -> Result<BatchCache, String> {
     if items.is_empty() {
         return Err(match meta.kind.as_str() {
@@ -827,6 +831,15 @@ async fn start_batch(
         });
     }
 
+    let mut items = items;
+    let mut collections = HashMap::new();
+    let mut collections_mapped = false;
+    if let (BatchTarget::Space(_), true) = (&target, map_collections) {
+        let mapped = map_space_collections(client, &items, &mut collections).await;
+        collections_mapped = mapped;
+        apply_collection_tags(&mut items, &collections, mapped);
+    }
+
     let source = if meta.kind == "bangumi" {
         "bangumi"
     } else if meta.kind == "cheese" {
@@ -837,7 +850,6 @@ async fn start_batch(
     let (qualities, audios, recommended_quality, best_quality) =
         probe_media_options(client, &items[0], source).await;
 
-    let mut items = items;
     fill_missing_owner(&mut items, &meta.owner);
 
     let exhausted = if meta.kind == "opus" {
@@ -852,6 +864,8 @@ async fn start_batch(
         owner: meta.owner,
         total: meta.total,
         items,
+        collections,
+        collections_mapped,
         from_index: 1,
         cap,
         next_page: 2,
@@ -862,6 +876,99 @@ async fn start_batch(
         recommended_quality,
         best_quality,
     })
+}
+
+/// 合集映射的补查预算：每次解析/续拉最多补查多少条视频详情。
+/// 一页最多 30 条，未映射的条目每条最多花 1 次请求（查到合集就把整个合集
+/// 的成员都标上），预算永远够用——它是给接口报错兜底的，不是常态上限。
+const MAP_VIDEO_INFO_BUDGET: u32 = 40;
+
+/// 空间合集映射：用 `video_info` 的 `ugc_season` 自举——查一条视频的详情，
+/// 就带回它所在合集**全部成员**的 bvid 与 cid，整组合一起定。
+///
+/// 不枚举 UP 的全部合集（合集大户有 100+ 个，逐个翻内容既慢又容易 -352），
+/// 只查「已加载条目」的代表：几十条视频通常集中在几个最近更新的合集里，
+/// 几次请求就能全部覆盖。`map` 跨页复用（续拉时新条目大多已被旧请求覆盖）。
+/// 返回值 = 是否所有条目都定好了归属（true 时连"单独投稿"也是权威结论）。
+async fn map_space_collections(
+    client: &BiliClient,
+    items: &[BatchVideo],
+    map: &mut HashMap<String, CollectionTag>,
+) -> bool {
+    let mut budget = MAP_VIDEO_INFO_BUDGET;
+    for item in items.iter() {
+        if item.bvid.is_empty() || map.contains_key(&item.bvid) {
+            continue;
+        }
+        if budget == 0 {
+            return false;
+        }
+        budget -= 1;
+        let info = match client.video_info(&item.bvid).await {
+            Ok(info) => info,
+            // 接口报错（风控/网络）就整体收手：宁可退回下载时逐条补查，不给半截结论
+            Err(_) => return false,
+        };
+        let own_cid = info.cid;
+        match info.ugc_season {
+            Some(season) if season.id != 0 && !season.title.trim().is_empty() => {
+                let title = season.title.trim().to_string();
+                for section in &season.sections {
+                    for ep in &section.episodes {
+                        if !ep.bvid.is_empty() && !map.contains_key(&ep.bvid) {
+                            map.insert(
+                                ep.bvid.clone(),
+                                CollectionTag {
+                                    title: title.clone(),
+                                    cid: ep.cid,
+                                },
+                            );
+                        }
+                    }
+                }
+                // 成员列表万一小得没含自己，也要把自己标上
+                map.entry(item.bvid.clone()).or_insert(CollectionTag {
+                    title,
+                    cid: own_cid,
+                });
+            }
+            // 不属于任何合集：这是确定的"单独投稿"，同样进映射
+            _ => {
+                map.insert(
+                    item.bvid.clone(),
+                    CollectionTag {
+                        title: "单独投稿".to_string(),
+                        cid: own_cid,
+                    },
+                );
+            }
+        }
+    }
+    true
+}
+
+/// 把合集映射落到条目上：归属、cid 一次补齐。映射完整时，不在任何合集的
+/// 条目也明确标成"单独投稿"——下载与预览都拿这个当权威结论，不再补查。
+fn apply_collection_tags(
+    items: &mut [BatchVideo],
+    map: &HashMap<String, CollectionTag>,
+    mapped: bool,
+) {
+    for item in items.iter_mut() {
+        if item.bvid.is_empty() {
+            continue;
+        }
+        match map.get(&item.bvid) {
+            Some(tag) => {
+                item.collection = tag.title.clone();
+                if item.cid == 0 {
+                    item.cid = tag.cid;
+                }
+            }
+            None if mapped => item.collection = "单独投稿".to_string(),
+            None => {}
+        }
+    }
 }
 
 /// 继续往后拉，至少再取 `want` 条（到来源末尾或单次上限为止）。
@@ -886,6 +993,13 @@ async fn extend_batch(
         }
         let mut items = items;
         fill_missing_owner(&mut items, &cache.owner);
+        // 后续页的合集映射：已覆盖的条目直接命中旧映射（零请求），没覆盖的
+        // 自举补查。补查失败就把映射标记翻成 false，前端退回平铺展示。
+        if cache.kind == "space" {
+            let complete = map_space_collections(client, &items, &mut cache.collections).await;
+            cache.collections_mapped = cache.collections_mapped && complete;
+            apply_collection_tags(&mut items, &cache.collections, cache.collections_mapped);
+        }
         cache.items.extend(items);
         cache.next_page = page + 1;
         if let Some(meta) = &meta {
@@ -951,6 +1065,7 @@ fn batch_to_source(cache: &BatchCache) -> ProbeSource {
         recommended_quality: cache.recommended_quality,
         best_quality: cache.best_quality,
         items: cache.items.clone(),
+        collection_mapped: cache.collections_mapped,
     }
 }
 
@@ -1128,6 +1243,7 @@ async fn probe_post(
         audios: Vec::new(),
         recommended_quality: 0,
         best_quality: 0,
+        collection_mapped: false,
         items: vec![BatchVideo {
             bvid: String::new(),
             cid: 0,
@@ -1179,7 +1295,7 @@ async fn finish_batch(
     items: Vec<BatchVideo>,
 ) -> Result<ProbeSource, String> {
     let cap = source_cap(&meta.kind, state.settings().parse_cap);
-    let cache = start_batch(client, target, meta, items, cap).await?;
+    let cache = start_batch(client, target, meta, items, cap, true).await?;
     let source = batch_to_source(&cache);
     state.put_batch(key.to_string(), cache);
     Ok(source)
@@ -1251,7 +1367,8 @@ async fn probe_range_one(
     }
 
     let cap = source_cap(&meta.kind, state.settings().parse_cap);
-    let mut cache = start_batch(client, target, meta, items, cap).await?;
+    // 按序号加载：编号是来源里的全局位置，不做合集映射（前端也不会按合集重排）
+    let mut cache = start_batch(client, target, meta, items, cap, false).await?;
     cache.from_index = from;
     cache.next_page = page + 1;
     match size.filter(|n| *n > 0) {
@@ -1303,6 +1420,7 @@ async fn probe_more_one(
         total: cache.total,
         exhausted: cache.exhausted,
         capped: cache.items.len() >= cache.cap,
+        collection_mapped: cache.collections_mapped,
         note: batch_to_source(&cache).note,
     };
     state.put_batch(key.to_string(), cache);
@@ -1442,6 +1560,7 @@ async fn probe_video_bvid(client: &BiliClient, bvid: &str) -> Result<ProbeSource
         audios,
         recommended_quality,
         best_quality,
+        collection_mapped: false,
         items: Vec::new(),
     })
 }
@@ -2322,10 +2441,14 @@ async fn run_download(
     let mut naming = naming_context(req, &video.codecs, quality_name(video.id));
     // UP 投稿/收藏夹里的视频，按它**实际所属的合集**分层，而不是按来源名。
     //
-    // 为什么逐条查、不先枚举 UP 的全部合集：合集列表接口连查十几个就被风控
-    // （实测 code=-352，且会持续一段时间），而视频详情本来就随下载逐条请求，
-    // 节奏天然安全。查不到（不属于任何合集）就保持前端给的默认层。
-    if matches!(req.source.as_str(), "space" | "fav") && !req.bvid.is_empty() {
+    // 空间来源在解析阶段就完成了合集映射（collection_resolved）时，前端给的
+    // 归属（含"单独投稿"）就是权威结论，这里一个请求都不用发。
+    // 没映射过的（按序号加载、老任务、收藏夹）才逐条补查：视频详情本来就随
+    // 下载逐条请求，节奏天然安全。查不到（不属于任何合集）就保持前端给的默认层。
+    if matches!(req.source.as_str(), "space" | "fav")
+        && !req.bvid.is_empty()
+        && !req.naming.collection_resolved
+    {
         if let Some(name) = client.collection_of(&req.bvid).await {
             naming.collection_title = name;
         }
@@ -3406,6 +3529,7 @@ mod naming_tests {
                 episode_index: 3,
                 episode_title: "第三集".to_string(),
                 collection_title: "合集".to_string(),
+                collection_resolved: false,
                 index: 7,
                 date: "2026-09-26".to_string(),
                 publish_date: "2026-01-02".to_string(),
