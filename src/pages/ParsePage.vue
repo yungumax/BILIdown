@@ -537,16 +537,20 @@ const tableRows = computed(() => {
     const fromIndex = source.probe.from_index || 1;
     // 编号 = 在来源里的固定序号（**1 = 最旧**，越新编号越大）。
     //
-    // 用"总数 - 位置 + 1"换算：位置在列表末尾追加时不会变，总数一旦拉满也不变，
-    // 所以编号冻结、不漂移；预览与下载用同一个值，不会一个号一个样。
-    // 图文原本没有总数，改为解析时把整份列表拉完（见 parse() 里的 loadAll），
-    // 拉满后 items.length 就是总数，于是全来源方向一致。
-    // 番剧/课程本来就按集数顺序给，不倒。
-    const episode = source.probe.kind === "bangumi" || source.probe.kind === "cheese";
+    // 收藏夹/空间/系列接口按"新→旧"给，用"总数 - 位置 + 1"换算成 1 = 最旧：
+    // 位置在列表末尾追加时不会变，总数一旦拉满也不变，所以编号冻结、不漂移；
+    // 预览与下载用同一个值，不会一个号一个样。
+    // 番剧/课程按集数顺序给；**合集**接口给的就是 UP 设定的展示顺序
+    // （连载合集通常是旧→新，实测纪录片合集 4月28日 在首位）——
+    // 这两类都顺着数（第 1 条 = 1），倒了反而和 B 站合集页的顺序拧着。
+    const orderedFirst =
+      source.probe.kind === "bangumi" ||
+      source.probe.kind === "cheese" ||
+      source.probe.kind === "collection";
     const count = source.probe.items.length;
     const total = source.probe.total || count;
     const absOf = (position) =>
-      episode ? fromIndex + position : Math.max(total - (fromIndex + position) + 1, 1);
+      orderedFirst ? fromIndex + position : Math.max(total - (fromIndex + position) + 1, 1);
     if (source.probe.kind === "video") {
       const ck = contentKey(null, source);
       if (seenItems.has(ck)) continue;
