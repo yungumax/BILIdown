@@ -150,10 +150,6 @@ async function parse() {
   }
   if (!inputs.length || parsing.value) return;
 
-  // 贴一条就只解析那一条（单个视频就是单个视频）；贴多行时，视频链接
-  // 才展开为所在合集——用行数继承合并前「单个链接 / 批量解析」两个 tab 的语义
-  const preferCollection = inputs.length > 1;
-
   // 按解析节奏分批：批内并发、批间等待、每 N 条休息，降低触发风控的概率
   parsing.value = true;
   items.value = [];
@@ -170,7 +166,8 @@ async function parse() {
 
   const probeOne = async (input) => {
     try {
-      const probe = await api.probeSource(input, preferCollection);
+      // 视频链接一律先看归属：在合集/系列里就解析整个合集/系列，不在就只解析这一个
+      const probe = await api.probeSource(input, true);
       // 同一个来源（同一链接/同一合集的另一个视频）只保留第一次
       if (probe.key && seenKeys.has(probe.key)) {
         skipped.push({
@@ -1244,7 +1241,7 @@ async function startSingle(item) {
       ></textarea>
 
       <p class="hint">
-        每行一个来源；只贴一条视频链接就只解析该视频，贴多行时视频链接会展开为所在的合集。
+        每行一个来源；视频链接会解析为它所在的合集或系列，不在合集/系列里就只解析该视频。
         合集、收藏夹、系列、UP 空间、图文与音频都会按页加载，单条图文/专栏链接直接解析。
       </p>
 

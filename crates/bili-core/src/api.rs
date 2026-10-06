@@ -481,12 +481,22 @@ pub struct SeasonsSeriesPage {
 pub struct SeasonsSeriesItems {
     #[serde(default, rename = "seasons_list", deserialize_with = "vec_or_null")]
     pub seasons: Vec<SeasonSummary>,
+    /// 系列（老式合集）：字段名与合集不同（series_id），meta 结构共用 SeriesMeta
+    #[serde(default, rename = "series_list", deserialize_with = "vec_or_null")]
+    pub series: Vec<SeriesSummary>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct SeasonSummary {
     #[serde(default)]
     pub meta: SeasonMeta,
+}
+
+/// 系列清单条目：meta 里的 series_id 是它的 id。
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SeriesSummary {
+    #[serde(default)]
+    pub meta: SeriesMeta,
 }
 
 /// 音频投稿分页。
@@ -562,6 +572,12 @@ pub struct SeriesMeta {
     pub name: String,
     #[serde(default)]
     pub mid: u64,
+    /// 系列清单接口（seasons_series）给的条目带 id 与总数；
+    /// 系列标题接口（series_meta）不给这两个，serde default 兜底
+    #[serde(default)]
+    pub series_id: u64,
+    #[serde(default)]
+    pub total: u32,
 }
 
 /// UP 空间投稿分页。`vlist` 不含 cid，下载时按 bvid 补查。

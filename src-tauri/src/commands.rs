@@ -1080,9 +1080,58 @@ async fn probe_video_or_collection(
                     return Ok(source);
                 }
             }
+            // 不在合集里：再查它属于哪个**系列**（老式合集）。系列的归属没有
+            // 现成接口，只能拿 UP 的系列清单逐个翻成员；UP 的系列通常不多。
+            let mid = info.owner.mid;
+            if mid > 0 {
+                if let Some((sid, name)) = series_of(client, mid, bvid).await {
+                    let target = BatchTarget::Series { mid, sid };
+                    let (items, meta) = fetch_batch_page(client, target, 1, "").await?;
+                    if let Some(meta) = meta {
+                        let mut source =
+                            finish_batch(client, state, key, target, meta, items).await?;
+                        source.key = format!("series:{mid}:{sid}");
+                        source.note = format!("该视频属于系列「{}」，已按系列解析", name);
+                        return Ok(source);
+                    }
+                }
+            }
         }
     }
     probe_video_bvid(client, bvid).await
+}
+
+/// 系列核对预算：清单最多翻 3 页（60 个系列）、最多核对 12 个系列的成员，
+/// 超出就放弃（按单视频解析）——系列是老机制，多数 UP 要么没有要么一两个。
+const MAX_SERIES_LIST_PAGES: u32 = 3;
+const MAX_SERIES_CHECKED: u32 = 12;
+
+/// 找出视频属于 UP 的哪个系列。没有成员归属的直查接口，只能拿系列清单
+/// 逐个翻第一页成员核对；任何一步失败都安静返回 None（按单视频处理）。
+async fn series_of(client: &BiliClient, mid: u64, bvid: &str) -> Option<(u64, String)> {
+    let mut checked = 0u32;
+    for page in 1..=MAX_SERIES_LIST_PAGES {
+        let data = client.space_collections(mid, page).await.ok()?;
+        let list = &data.items_lists.series;
+        for s in list {
+            let sid = s.meta.series_id;
+            if sid == 0 || checked >= MAX_SERIES_CHECKED {
+                continue;
+            }
+            checked += 1;
+            // 单个系列翻不动就跳过，别让一个失败断送整个查找
+            let Ok(archives) = client.series_archives(mid, sid, 1).await else {
+                continue;
+            };
+            if archives.archives.iter().any(|a| a.bvid == bvid) {
+                return Some((sid, s.meta.name.clone()));
+            }
+        }
+        if list.len() < 20 {
+            return None;
+        }
+    }
+    None
 }
 
 /// 单条图文/专栏：抓一次页面状态，包装成"只有一条"的来源。
