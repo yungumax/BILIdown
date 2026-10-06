@@ -68,9 +68,6 @@ export function batchNaming(batch, entry, position) {
     // - 图文/音频：给类型层（图文 / 音频），既分开了内容类型又不重复 UP 名
     // - 单条图文/专栏：没有合集层，留空（否则标题在路径里出现两次）
     collection_title: folderLevel(batch, entry),
-    // 空间解析时合集归属已在解析阶段定死（含"单独投稿"），下载端不再逐条补查。
-    // 这个标志随请求落到 task.json，断点续传的恢复也不补查。
-    collection_resolved: batch.kind === "space" && !!batch.collection_mapped,
     source_kind: KIND_LABELS[batch.kind] ?? "视频",
     // {index} 的补零宽度按本批条数算：20 条补到 2 位、几千条补到 4 位，
     // 这样目录按名称排序才是 01、02 … 10，而不是 1、10、2

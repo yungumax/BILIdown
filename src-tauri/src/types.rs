@@ -117,10 +117,6 @@ pub struct ProbeSource {
     pub recommended_quality: u32,
     pub best_quality: u32,
     pub items: Vec<BatchVideo>,
-    /// UP 空间解析时合集归属已逐条定好（含"单独投稿"）；界面据此按合集分组展示，
-    /// 下载也不再逐条补查。按序号加载或映射枚举失败时为 false。
-    #[serde(default)]
-    pub collection_mapped: bool,
 }
 
 /// 前端发起的下载请求。要序列化是因为未完成的下载会把它写进 `.bilitmp/<key>/task.json`，
@@ -175,10 +171,6 @@ pub struct NamingMeta {
     pub episode_index: u32,
     pub episode_title: String,
     pub collection_title: String,
-    /// 空间解析时合集归属已在解析阶段定死（映射枚举成功，连"单独投稿"也是权威结论），
-    /// 下载时不再逐条补查。老任务没有这个字段，serde default = false 走旧补查。
-    #[serde(default)]
-    pub collection_resolved: bool,
     pub index: u32,
     /// 已经按本地时间格式化好的 YYYY-MM-DD
     pub date: String,
@@ -309,10 +301,6 @@ pub struct ProbeMore {
     /// 见 [`ProbeSource::capped`]：续拉之后也要带着，否则界面会丢掉"加载下一批"
     #[serde(default)]
     pub capped: bool,
-    /// 空间来源的合集映射最新状态（补查失败会从 true 翻成 false，
-    /// 界面要跟着退回平铺展示，不能拿旧标记给新条目乱分组）
-    #[serde(default)]
-    pub collection_mapped: bool,
     pub note: String,
 }
 
