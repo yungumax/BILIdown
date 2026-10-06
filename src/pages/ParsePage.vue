@@ -1766,6 +1766,12 @@ input:focus {
   gap: 8px 10px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--line-soft);
+  /* 入场动画给工具条留了内联 transform（单位阵）→ 自成层叠上下文，
+     里面的「每批/继续解析/下载设置」弹层 z-index 只在条内有效；
+     表格行在 DOM 里靠后，会把整个工具条（含弹层）盖住。
+     把工具条抬到行之上，弹层才能正常浮在表格上方。 */
+  position: relative;
+  z-index: 2;
 }
 
 /* 计数与动作成组：整组靠右（margin-left:auto），窄到放不下时整组换行，
