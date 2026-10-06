@@ -23,7 +23,6 @@ const props = defineProps({
 });
 const emit = defineEmits(["toast", "goto"]);
 
-const mode = ref("batch");
 const text = ref("");
 const parsing = ref(false);
 
@@ -127,7 +126,6 @@ watch(
   async (stamp) => {
     const url = props.pendingSource?.url;
     if (!stamp || !url) return;
-    mode.value = "batch";
     text.value = url;
     view.value = "input";
     await nextTick();
@@ -152,6 +150,10 @@ async function parse() {
   }
   if (!inputs.length || parsing.value) return;
 
+  // 贴一条就只解析那一条（单个视频就是单个视频）；贴多行时，视频链接
+  // 才展开为所在合集——用行数继承合并前「单个链接 / 批量解析」两个 tab 的语义
+  const preferCollection = inputs.length > 1;
+
   // 按解析节奏分批：批内并发、批间等待、每 N 条休息，降低触发风控的概率
   parsing.value = true;
   items.value = [];
@@ -168,8 +170,7 @@ async function parse() {
 
   const probeOne = async (input) => {
     try {
-      // 批量解析模式下，视频链接会去解析它所在的合集；单个视频模式只解析这一个
-      const probe = await api.probeSource(input, mode.value === "batch");
+      const probe = await api.probeSource(input, preferCollection);
       // 同一个来源（同一链接/同一合集的另一个视频）只保留第一次
       if (probe.key && seenKeys.has(probe.key)) {
         skipped.push({
@@ -1233,35 +1234,18 @@ async function startSingle(item) {
       <h1>解析链接</h1>
       <p class="lead">粘贴一个或多个 Bilibili 来源，解析后再选择要下载的内容与清晰度。</p>
 
-      <div class="tabs" role="tablist">
-        <button :class="{ active: mode === 'batch' }" role="tab" @click="mode = 'batch'">
-          批量解析
-        </button>
-        <button :class="{ active: mode === 'single' }" role="tab" @click="mode = 'single'">
-          单个链接
-        </button>
-      </div>
-
       <textarea
-        v-if="mode === 'batch'"
         v-model="text"
         rows="7"
         spellcheck="false"
-        placeholder="https://www.bilibili.com/video/BV1Vkag6TExf&#10;https://space.bilibili.com/xxx/favlist?fid=xxx&#10;https://space.bilibili.com/xxx/lists/xxx&#10;https://space.bilibili.com/xxx&#10;https://www.bilibili.com/bangumi/play/ssxxx"
+        placeholder="https://www.bilibili.com/video/BV1Vkag6TExf（视频链接、BV 号或 av 号）&#10;https://space.bilibili.com/xxx/favlist?fid=xxx&#10;https://space.bilibili.com/xxx&#10;https://www.bilibili.com/bangumi/play/ssxxx"
         @keydown.ctrl.enter="parse"
         @keydown.meta.enter="parse"
       ></textarea>
-      <input
-        v-else
-        v-model="text"
-        spellcheck="false"
-        autocomplete="off"
-        placeholder="粘贴视频链接、BV 号或 av 号"
-        @keydown.enter="parse"
-      />
 
       <p class="hint">
-        每行一个来源；合集、收藏夹、系列、UP 空间、图文与音频都会按页加载，单条图文/专栏链接直接解析。
+        每行一个来源；只贴一条视频链接就只解析该视频，贴多行时视频链接会展开为所在的合集。
+        合集、收藏夹、系列、UP 空间、图文与音频都会按页加载，单条图文/专栏链接直接解析。
       </p>
 
       <div class="actions">
@@ -1278,7 +1262,7 @@ async function startSingle(item) {
         </span>
       </div>
 
-      <div v-if="mode === 'batch'" class="sources">
+      <div class="sources">
         <span class="sources-label">支持来源</span>
         <span v-for="source in sources" :key="source.label" class="source">
           <Icon :name="source.icon" />
@@ -1370,34 +1354,6 @@ h1 {
   margin: 7px 0 0;
   font-size: 13px;
   color: var(--muted);
-}
-
-.tabs {
-  display: flex;
-  gap: 8px;
-  margin: 12px 0 12px;
-}
-
-.tabs button {
-  padding: 6px 15px;
-  font-size: 12.5px;
-  color: var(--muted);
-  background: var(--field);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  transition: all 0.15s ease;
-}
-
-.tabs button:hover {
-  color: var(--text);
-  border-color: var(--line);
-}
-
-.tabs button.active {
-  color: var(--accent-dark);
-  background: var(--accent-soft);
-  border-color: var(--accent-line);
-  font-weight: 600;
 }
 
 /* 勾选框不算"输入框"：这条规则里的 width:100% 会把它拉成整行宽 */
@@ -2545,17 +2501,6 @@ option:disabled {
   0% { transform: scale(0.85); opacity: 0; }
   60% { transform: scale(1.06); opacity: 1; }
   100% { transform: none; opacity: 1; }
-}
-</style>
-
-<style scoped>
-/* 第六轮追加：模式 tab 悬停文字微升 */
-.tabs button {
-  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out);
-}
-
-.tabs button:not(.active):hover {
-  transform: translateY(-1px);
 }
 </style>
 
