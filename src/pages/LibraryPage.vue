@@ -968,6 +968,9 @@ h2 {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* 网格默认 align-content:stretch 会把行拉高填满剩余空间——卡片被拉成
+     一整条长盒子。行保持自然高度、顶部堆叠，空出来的留在下方 */
+  align-content: start;
 }
 
 .card.lib-fill .foot {
