@@ -265,6 +265,9 @@ function selectNone() {
 // 首次解析只给第一页，「继续解析」用后端缓存接着往后拉。
 const view = ref("input"); // input | select
 
+/** 操作说明折叠面板：默认收起，不占高频操作的空间 */
+const showGuide = ref(false);
+
 // 选择页入场：工具条 + 表格行级联（列表以列表的方式出现）
 watch(view, async (v) => {
   if (v !== "select" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -1270,6 +1273,52 @@ async function startSingle(item) {
           {{ source.label }}
         </span>
       </div>
+
+      <!-- 操作说明：折叠面板，默认收起 -->
+      <div class="guide" :class="{ open: showGuide }">
+        <button class="guide-toggle" @click="showGuide = !showGuide">
+          <Icon name="info" />
+          <span>操作说明</span>
+          <span class="spacer"></span>
+          <Icon name="chevronDown" class="guide-caret" />
+        </button>
+        <div v-show="showGuide" class="guide-body">
+          <div class="guide-sec">
+            <h3>一次完整的下载</h3>
+            <ol class="guide-steps">
+              <li><b>粘贴链接</b>：视频、合集、收藏夹、UP 空间、番剧、图文、音频都支持，每行一个，可混贴。</li>
+              <li><b>开始解析</b>：点「开始解析」或按 Ctrl + Enter；成功后自动进入「选择内容」。</li>
+              <li><b>勾选与下载</b>：勾选要下载的条目，可在「下载设置」里调整本来源的清晰度 / 音轨，点「下载所选」。</li>
+              <li><b>查看进度</b>：到「传输」页看进度，行内可暂停 / 继续 / 取消，完成后「打开位置」定位文件。</li>
+            </ol>
+          </div>
+          <div class="guide-sec">
+            <h3>链接会怎么解析</h3>
+            <ul>
+              <li>视频链接：有所在合集就解析整个合集；没有合集再看系列；都没有就只解析这一个视频。</li>
+              <li>合集、收藏夹、UP 空间等大来源按页加载：先出第一页，其余用「继续解析」接着拉。</li>
+            </ul>
+          </div>
+          <div class="guide-sec">
+            <h3>「选择内容」页的工具条</h3>
+            <ul>
+              <li><b>每批 N</b>：每次「继续解析」拉取的条数。</li>
+              <li><b>继续解析</b>：多拉一批；右侧箭头里还有「后台解析全部并下载」——把剩余条数拉完并全部加入下载队列。</li>
+              <li><b>按序号加载</b>：来源超过单次上限（合集 / 收藏夹 500 条、UP 空间 300 条）时，从指定序号分批拉取。</li>
+              <li><b>重命名已下载</b>：按当前命名模板给已下载的文件重新编号；点两次确认，不会误触。</li>
+            </ul>
+          </div>
+          <div class="guide-sec">
+            <h3>小贴士</h3>
+            <ul>
+              <li>默认命名「批量带序号」：文件落成 <span class="code">01 标题.mp4</span> 这样的形式，可在「设置 → 文件命名」里更改。</li>
+              <li>重复下载不会产生副本：已存在的文件自动跳过，并补齐封面、弹幕等旁的独立文件。</li>
+              <li>清晰度：登录后最高 1080P；大会员可解锁 4K / 8K / HDR / 杜比视界 / 无损音轨。</li>
+              <li>弹幕存为与视频同名的 .xml（弹弹play 可直接播放，或转成字幕给其它播放器）；音视频合成需要 ffmpeg。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- 解析结果入口：成功的一律进「选择内容」页，这里只留入口与失败项 -->
@@ -1479,6 +1528,97 @@ input:focus {
   width: 17px;
   height: 17px;
   color: var(--accent);
+}
+
+/* 操作说明：折叠面板（默认收起） */
+.guide {
+  margin-top: 12px;
+  background: var(--raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+}
+
+.guide-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.guide-toggle:hover {
+  color: var(--text);
+}
+
+.guide-toggle svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+}
+
+.guide-toggle .spacer {
+  flex: 1;
+}
+
+.guide-caret {
+  color: var(--faint);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.guide.open .guide-caret {
+  transform: rotate(180deg);
+}
+
+.guide-body {
+  padding: 2px 14px 8px;
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+.guide-sec {
+  padding: 10px 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.guide-sec h3 {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.guide-steps {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.guide-steps li,
+.guide-sec ul li {
+  margin: 2px 0;
+}
+
+.guide-sec ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.guide b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.guide .code {
+  padding: 1px 5px;
+  font-size: 11.5px;
+  color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
 }
 
 /* 解析结果里的去重明细 */
