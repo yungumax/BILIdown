@@ -1275,17 +1275,18 @@ async function startSingle(item) {
           {{ source.label }}
         </span>
       </div>
+    </section>
 
-      <!-- 操作说明：折叠面板，默认收起；折叠/展开时卡片高度随动 -->
-      <div class="guide" :class="{ open: showGuide }">
-        <button class="guide-toggle" :aria-expanded="showGuide" @click="showGuide = !showGuide">
-          <Icon name="info" />
-          <span>操作说明</span>
-          <span class="spacer"></span>
-          <Icon name="chevronDown" class="guide-caret" />
-        </button>
-        <div class="guide-fold" :class="{ folded: !showGuide }">
-          <div class="guide-body">
+    <!-- 操作说明：独立卡片，默认收起；折叠/展开时卡片高度随动 -->
+    <section class="card guide-card" :class="{ open: showGuide }">
+      <button class="guide-toggle" :aria-expanded="showGuide" @click="showGuide = !showGuide">
+        <Icon name="info" />
+        <span>操作说明</span>
+        <span class="spacer"></span>
+        <Icon name="chevronDown" class="guide-caret" />
+      </button>
+      <div class="guide-fold" :class="{ folded: !showGuide }">
+        <div class="guide-body">
           <div class="guide-sec">
             <h3>一次完整的下载</h3>
             <ol class="guide-steps">
@@ -1322,7 +1323,6 @@ async function startSingle(item) {
           </div>
           </div>
         </div>
-      </div>
     </section>
 
     <!-- 解析结果入口：成功的一律进「选择内容」页，这里只留入口与失败项 -->
@@ -1548,11 +1548,12 @@ input:focus {
 }
 
 /* 操作说明：折叠面板（默认收起） */
-.guide {
-  margin-top: 12px;
-  background: var(--raised);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
+/* 操作说明：独立卡片（默认收起）。卡片的 bg/边框/圆角来自 .card，
+   内边距置 0，由标题行与小节自己撑出来 */
+.guide-card {
+  margin-top: 16px;
+  padding: 0;
+  overflow: hidden;
 }
 
 .guide-toggle {
@@ -1560,7 +1561,7 @@ input:focus {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 10px 14px;
+  padding: 14px 22px;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--muted);
@@ -1586,7 +1587,7 @@ input:focus {
   transition: transform var(--motion-fast) var(--ease-out);
 }
 
-.guide.open .guide-caret {
+.guide-card.open .guide-caret {
   transform: rotate(180deg);
 }
 
@@ -1610,15 +1611,15 @@ input:focus {
 }
 
 .guide-body {
-  /* 竖向 padding 让各小节自己带：折叠到 0fr 时不能有残留空白 */
-  padding: 0 14px;
+  /* 横向留白对齐卡片内边距；竖向 padding 让各小节自己带：折叠到 0fr 时不能有残留空白 */
+  padding: 0 22px;
   font-size: 12.5px;
   line-height: 1.8;
   color: var(--muted);
 }
 
 .guide-sec:last-child {
-  padding-bottom: 12px;
+  padding-bottom: 16px;
 }
 
 .guide-sec {
@@ -1648,12 +1649,12 @@ input:focus {
   padding-left: 18px;
 }
 
-.guide b {
+.guide-body b {
   color: var(--text);
   font-weight: 600;
 }
 
-.guide .code {
+.guide-body .code {
   padding: 1px 5px;
   font-size: 11.5px;
   color: var(--text);
@@ -1844,8 +1845,9 @@ input:focus {
 
 /* 解析链接卡：高度按内容，**不参与拉伸**，多余高度全给结果卡。
    千万不要用 max-height 压它：上限小于内容最小高度时，被压的是盒子而不是内容，
-   内容会溢出卡片、被下面的卡片盖住（实测踩过）。 */
-.parse-page:not(.fill-height) > .card {
+   内容会溢出卡片、被下面的卡片盖住（实测踩过）。
+   操作说明卡（.guide-card）排除在外：高度完全按内容，折叠就一条标题行 */
+.parse-page:not(.fill-height) > .card:not(.guide-card) {
   display: flex;
   flex: 0 1 auto;
   flex-direction: column;
