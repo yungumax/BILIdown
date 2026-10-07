@@ -350,7 +350,7 @@ watch(
 
 <template>
   <div>
-    <section class="card">
+    <section class="card" :class="{ 'lib-fill': !opened && folders.length }">
       <div class="tabs">
         <button :class="{ active: tab === TAB.fav }" @click="switchTab(TAB.fav)">
           收藏夹
@@ -950,16 +950,31 @@ h2 {
   box-shadow: 0 0 0 12px var(--card);
 }
 
-/* 集合列表的「已选 N 个集合 / 解析所选集合」同样钉底：
-   与 .pager 一套处理（含 -22px 封底缝），列表再长也不用滚到底才看得见 */
-.foot {
-  position: sticky;
-  bottom: -22px;
-  z-index: 2;
+/* 集合列表的底栏：硬固定在卡片底部（不随滚轮，滚到底也不释放）。
+   机制：卡片撑满可用高度、列表改为卡内滚动，底栏是布局的最后一段。
+   高度 = 100vh − 顶栏 46px（TitleBar.vue，改它要同步这里）− .content 上内边距 18px；
+   再用 -22px 底边距抵消 .content 下内边距，卡片底边与窗口底边齐平且不产生滚动。
+   别用 100%：.content 的高度对百分比不 definite，会解析失败退化成内容高度。 */
+.card.lib-fill {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 46px - 18px);
+  margin-bottom: -22px;
+  padding-bottom: 0;
+  min-height: 0;
+}
+
+.card.lib-fill .cards {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.card.lib-fill .foot {
+  flex: none;
+  margin-top: 0;
   padding: 12px 0 10px;
-  background: var(--card);
   border-top: 1px solid var(--line-soft);
-  box-shadow: 0 0 0 12px var(--card);
 }
 
 .count {
