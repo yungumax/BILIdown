@@ -349,7 +349,7 @@ watch(
 </script>
 
 <template>
-  <div>
+  <div class="lib-page">
     <section class="card" :class="{ 'lib-fill': !opened && folders.length }">
       <div class="tabs">
         <button :class="{ active: tab === TAB.fav }" @click="switchTab(TAB.fav)">
@@ -952,16 +952,25 @@ h2 {
 
 /* 集合列表的底栏：硬固定在卡片底部（不随滚轮，滚到底也不释放）。
    机制：卡片撑满可用高度、列表改为卡内滚动，底栏是布局的最后一段。
-   高度 = 100vh − 顶栏 46px（TitleBar.vue，改它要同步这里）− .content 上内边距 18px；
-   再用 -22px 底边距抵消 .content 下内边距，卡片底边与窗口底边齐平且不产生滚动。
-   别用 100%：.content 的高度对百分比不 definite，会解析失败退化成内容高度。 */
+   高度用 **flex 链**（.content 见 App.vue 的 :has 规则 → .lib-page → 本卡片
+   flex:1），不用 100vh——应用有随窗口缩放的整体 UI zoom（小窗口最低 0.85），
+   vh 单位按未缩放视口计算、渲染再乘 zoom，小窗口下会矮掉一整截（底栏悬空）。
+   flex 各级都在同一缩放坐标系里，天然一致。
+   -22px 底边距把卡片底边封到窗口底边（抵消 .content 的 22px 下内边距）。 */
+.lib-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .card.lib-fill {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 46px - 18px);
+  flex: 1;
+  min-height: 0;
   margin-bottom: -22px;
   padding-bottom: 0;
-  min-height: 0;
 }
 
 .card.lib-fill .cards {

@@ -510,6 +510,14 @@ async function doLogout() {
   padding: 18px 22px 22px;
 }
 
+/* 内容库集合列表的「填充模式」：内容区临时转 flex 列，让 .lib-page → 卡片
+   一路 flex:1 撑满可用高度（卡内滚列表、底栏钉窗口底）。
+   不能用 vh：应用有整体 UI zoom，vh 按未缩放视口算、渲染再乘 zoom。 */
+.content:has(.card.lib-fill) {
+  display: flex;
+  flex-direction: column;
+}
+
 
 .toast {
   position: fixed;
