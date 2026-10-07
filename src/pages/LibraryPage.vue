@@ -950,6 +950,18 @@ h2 {
   box-shadow: 0 0 0 12px var(--card);
 }
 
+/* 集合列表的「已选 N 个集合 / 解析所选集合」同样钉底：
+   与 .pager 一套处理（含 -22px 封底缝），列表再长也不用滚到底才看得见 */
+.foot {
+  position: sticky;
+  bottom: -22px;
+  z-index: 2;
+  padding: 12px 0 10px;
+  background: var(--card);
+  border-top: 1px solid var(--line-soft);
+  box-shadow: 0 0 0 12px var(--card);
+}
+
 .count {
   font-size: 12.5px;
   color: var(--muted);
