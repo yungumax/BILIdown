@@ -750,18 +750,18 @@ h2 {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
   height: 100%;
   color: var(--accent-ink);
 }
 
 .thumb-count svg {
-  width: 20px;
-  height: 20px;
+  width: 30px;
+  height: 30px;
 }
 
 .thumb-count b {
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .body {

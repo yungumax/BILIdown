@@ -393,10 +393,42 @@ pub async fn library_folders(state: State<'_, AppState>) -> Result<FavFolders, S
             .unwrap_or_default()
     };
 
+    let mut created = parse(&created, mid);
+    let mut subscribed = parse(&collected, mid);
+
+    // 收藏夹列表接口不给封面（我创建的恒为空，订阅的偶尔也缺），卡片上只剩
+    // 一个空框：并发拿收藏夹里最新一条内容的封面补上（ps=1 小请求，整体限
+    // 3 秒预算，超时/失败都留空走前端占位图，绝不拖慢库页本身）。
+    let need: Vec<i64> = created
+        .iter()
+        .chain(subscribed.iter())
+        .filter(|f| f.cover.is_empty() && f.media_count > 0)
+        .map(|f| f.id)
+        .take(12)
+        .collect();
+    if !need.is_empty() {
+        let mut handles = Vec::with_capacity(need.len());
+        for id in need {
+            let client = client.clone();
+            handles.push((id, tokio::spawn(async move { client.fav_first_cover(id as u64).await })));
+        }
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            for (id, handle) in handles {
+                let Ok(Some(cover)) = handle.await else { continue };
+                if let Some(folder) = created.iter_mut().find(|f| f.id == id) {
+                    folder.cover = cover;
+                } else if let Some(folder) = subscribed.iter_mut().find(|f| f.id == id) {
+                    folder.cover = cover;
+                }
+            }
+        })
+        .await;
+    }
+
     Ok(FavFolders {
         mid,
-        created: parse(&created, mid),
-        subscribed: parse(&collected, mid),
+        created,
+        subscribed,
     })
 }
 

@@ -827,6 +827,18 @@ impl BiliClient {
         self.fetch_json(&url).await
     }
 
+    /// 收藏夹里最新一条内容的封面（ps=1 只取一条，给列表卡片当缩略图）。
+    /// 「我创建的收藏夹」的列表接口不给 cover（实测恒为空），用这里补；
+    /// 收藏夹为空或请求失败都返回 None，调用方继续走占位图。
+    pub async fn fav_first_cover(&self, media_id: u64) -> Option<String> {
+        let url = format!(
+            "{API_FAV_LIST}?media_id={media_id}&pn=1&ps=1&order=mtime&type=2&tid=0&platform=web"
+        );
+        let page = self.fetch_json::<FavPage>(&url).await.ok()?;
+        let cover = page.medias.into_iter().next()?.cover;
+        (!cover.is_empty()).then_some(cover)
+    }
+
     /// UP 主合集内容（一页最多 100 条）。
     pub async fn seasons_archives(
         &self,
