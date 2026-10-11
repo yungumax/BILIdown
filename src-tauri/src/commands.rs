@@ -410,11 +410,16 @@ pub async fn library_folders(state: State<'_, AppState>) -> Result<FavFolders, S
         let mut handles = Vec::with_capacity(need.len());
         for id in need {
             let client = client.clone();
-            handles.push((id, tokio::spawn(async move { client.fav_first_cover(id as u64).await })));
+            handles.push((
+                id,
+                tokio::spawn(async move { client.fav_first_cover(id as u64).await }),
+            ));
         }
         let _ = tokio::time::timeout(std::time::Duration::from_secs(3), async {
             for (id, handle) in handles {
-                let Ok(Some(cover)) = handle.await else { continue };
+                let Ok(Some(cover)) = handle.await else {
+                    continue;
+                };
                 if let Some(folder) = created.iter_mut().find(|f| f.id == id) {
                     folder.cover = cover;
                 } else if let Some(folder) = subscribed.iter_mut().find(|f| f.id == id) {
