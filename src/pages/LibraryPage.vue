@@ -413,7 +413,7 @@ watch(
             @click="openFolder(item)"
           >
             <div class="thumb">
-              <img v-if="item.cover" :src="thumb(item.cover, 240, 160)" alt="" loading="lazy" referrerpolicy="no-referrer" />
+              <img v-if="item.cover" :src="thumb(item.cover)" alt="" loading="lazy" referrerpolicy="no-referrer" />
               <div v-else class="thumb-count">
                 <Icon name="bookmark" />
                 <b>{{ item.media_count }}</b>
@@ -729,10 +729,12 @@ h2 {
   background: var(--accent-soft);
 }
 
+/* 缩略图撑满卡片内容高度（跟随文字行数），只定宽度——固定 92×62 时
+   卡片下方会空出一大截，用户反馈「封面图片太小，距离边框太远」 */
 .thumb {
   flex: none;
-  width: 92px;
-  height: 62px;
+  align-self: stretch;
+  width: 140px;
   overflow: hidden;
   background: var(--thumb);
   border: 1px solid var(--line-soft);
