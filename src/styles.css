@@ -320,7 +320,7 @@ input[type="checkbox"]:disabled {
 
 /* 空状态编排入场：图标→标题→提示依次浮起（挂载即演，v-if 每次出现都成立） */
 .empty > * {
-  animation: empty-rise 380ms var(--ease-out) both;
+  animation: empty-rise 380ms var(--ease-out) backwards;
 }
 
 .empty > *:nth-child(2) {
@@ -347,7 +347,7 @@ input[type="checkbox"]:disabled {
    半透明（实测 items 停在 0.92/0.82/0.66 不归位）——JS 引擎单管时钟没有这个问题。
    登录对话框内容编排：复用 empty-rise（QR→说明→按钮依次浮起） */
 .dialog > * {
-  animation: empty-rise 380ms var(--ease-out) both;
+  animation: empty-rise 380ms var(--ease-out) backwards;
 }
 
 .dialog > *:nth-child(2) {
@@ -374,9 +374,11 @@ input[type="checkbox"]:disabled {
   }
 }
 
-/* 栏目切换：整页淡入 + 轻微上浮 */
+/* 栏目切换：整页淡入 + 轻微上浮。
+   填充必须用 backwards 别用 both：to 帧含 transform，both 会在动画结束后
+   永久套住它 → 元素永远带层叠上下文，页内 z-index 弹层会被兄弟内容盖住 */
 .page-in {
-  animation: page-in var(--motion) var(--ease-out) both;
+  animation: page-in var(--motion) var(--ease-out) backwards;
 }
 
 /* 弹层/对话框出现 */

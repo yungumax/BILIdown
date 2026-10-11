@@ -1,7 +1,7 @@
 <script setup>
 import Icon from "../components/Icon.vue";
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
-import { animate, stagger } from "animejs";
+import { entrance, stagger } from "../motion";
 import * as api from "../api";
 import {
   QUALITY_PREFS,
@@ -51,7 +51,7 @@ watch(active, async () => {
     const fields = document.querySelector(".card .fields");
     if (!fields) return;
     const kids = [...fields.children].slice(0, 14);
-    if (kids.length) animate(kids, { opacity: [0, 1], translateY: [8, 0], duration: 380, delay: stagger(32), ease: "outExpo" });
+    if (kids.length) entrance(kids, { opacity: [0, 1], translateY: [8, 0], duration: 380, delay: stagger(32), ease: "outExpo" });
   });
 });
 const activeCategory = computed(() =>
@@ -1634,6 +1634,14 @@ input::placeholder {
 .var-picker {
   position: relative;
   flex: none;
+}
+
+/* 面板开着时把宿主字段抬到兄弟字段之上：万一哪天又有内联 transform 把
+   层叠上下文带回来（anime 残留是三次「弹层被盖」同病的根源），面板也不能
+   被「预设名称」这些 DOM 靠后、后画上来的内容盖住。平时无任何视觉影响。 */
+.field:has(.var-panel) {
+  position: relative;
+  z-index: 30;
 }
 
 .var-picker .ghost {

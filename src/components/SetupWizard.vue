@@ -95,8 +95,8 @@ onMounted(() => {
     const card = document.querySelector(".setup-card");
     if (!card) return;
     const kids = [...card.children];
-    import("animejs").then(({ animate, stagger }) => {
-      animate(kids, {
+    import("../motion.js").then(({ entrance, stagger }) => {
+      entrance(kids, {
         opacity: [0, 1],
         translateY: [12, 0],
         duration: 520,

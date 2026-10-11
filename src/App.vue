@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { animate, stagger } from "animejs";
+import { entrance } from "./motion";
 
 import * as api from "./api";
 import TitleBar from "./components/TitleBar.vue";
@@ -28,7 +28,7 @@ watch(page, async () => {
     if (!card) return;
     const kids = [...card.children].filter((el) => getComputedStyle(el).position !== "fixed").slice(0, 10);
     if (!kids.length) return;
-    animate(kids, {
+    entrance(kids, {
       opacity: [0, 1],
       translateY: [10, 0],
       duration: 460,
@@ -73,8 +73,8 @@ onMounted(async () => {
   if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
-        animate(".titlebar", { opacity: [0, 1], translateY: [-6, 0], duration: 380, ease: "outExpo" });
-        animate(".sidebar nav .nav-item", { opacity: [0, 1], translateX: [-10, 0], duration: 440, delay: stagger(55), ease: "outExpo" });
+        entrance(".titlebar", { opacity: [0, 1], translateY: [-6, 0], duration: 380, ease: "outExpo" });
+        entrance(".sidebar nav .nav-item", { opacity: [0, 1], translateX: [-10, 0], duration: 440, delay: stagger(55), ease: "outExpo" });
       }),
     );
   }

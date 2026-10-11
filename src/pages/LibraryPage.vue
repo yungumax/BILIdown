@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { animate, stagger } from "animejs";
+import { entrance, stagger } from "../motion";
 import Icon from "../components/Icon.vue";
 import * as api from "../api";
 import { enqueueBatch, pickDefaultAudio, pickDefaultQuality } from "../download-request.js";
@@ -132,7 +132,7 @@ async function loadPage(page) {
       await nextTick();
       requestAnimationFrame(() => {
         const cells = [...document.querySelectorAll(".videos .video")].slice(0, 24);
-        if (cells.length) animate(cells, { opacity: [0, 1], translateY: [8, 0], duration: 300, delay: stagger(22), ease: "outExpo" });
+        if (cells.length) entrance(cells, { opacity: [0, 1], translateY: [8, 0], duration: 300, delay: stagger(22), ease: "outExpo" });
       });
     }
   } catch (error) {
@@ -337,7 +337,7 @@ watch(
     roseIn = true;
     await nextTick();
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    animate(".card .collection", {
+    entrance(".card .collection", {
       opacity: [0, 1],
       translateY: [16, 0],
       duration: 520,
